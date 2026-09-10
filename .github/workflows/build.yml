@@ -33,11 +33,11 @@ jobs:
           relevant:
             - 'Sources/**'
             - 'Tests/**'
-            - 'Fluid.xcodeproj/**'
+            - 'fluidSubtitles.xcodeproj/**'
             - 'Package.swift'
             - 'Package.resolved'
             - 'Info.plist'
-            - 'Fluid.entitlements'
+            - 'fluidSubtitles.entitlements'
             - '.swiftlint.yml'
             - '.github/workflows/build.yml'
 
@@ -61,7 +61,7 @@ jobs:
           lint --strict --config .swiftlint.yml
 
   build:
-    name: Build FluidVoice
+    name: Build fluidSubtitles
     if: needs.changes.outputs.relevant == 'true' && needs.lint.result == 'success'
     needs: [changes, lint]
     runs-on: macos-latest
@@ -94,10 +94,10 @@ jobs:
       run: |
         set -o pipefail
         xcodebuild test \
-          -project Fluid.xcodeproj \
-          -scheme Fluid \
+          -project fluidSubtitles.xcodeproj \
+          -scheme fluidSubtitles \
           -destination 'platform=macOS,arch=arm64' \
-          -skip-testing:FluidDictationIntegrationTests/DictationE2ETests/testDictationEndToEnd_whisperTiny_transcribesFixture \
+          -skip-testing:FluidSubtitlesIntegrationTests/DictationE2ETests/testDictationEndToEnd_whisperTiny_transcribesFixture \
           CODE_SIGN_IDENTITY="" \
           CODE_SIGNING_REQUIRED=NO \
           CODE_SIGNING_ALLOWED=NO \

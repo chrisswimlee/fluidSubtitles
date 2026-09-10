@@ -6,10 +6,12 @@
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>© Chris Swim Lee. fluidSubtitles is a branch of FluidVoice by altic-dev. Licensed under GPLv3.</string>
 	<key>CFBundleDisplayName</key>
-	<string>$(PRODUCT_NAME)</string>
+	<string>fluidSubtitles</string>
 	<key>CFBundleName</key>
-	<string>$(PRODUCT_NAME)</string>
+	<string>fluidSubtitles</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleVersion</key>
@@ -21,18 +23,18 @@
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
 	<key>NSAccessibilityUsageDescription</key>
-	<string>FluidVoice needs Accessibility permission to listen for global hotkeys and type text into other apps when you stop recording.</string>
+	<string>fluidSubtitles needs Accessibility permission to type Transcription into other apps. Theater captions on your screen do not require this.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>FluidVoice needs microphone access to record your voice for speech-to-text transcription. Your audio is processed locally and never sent to external servers.</string>
+	<string>fluidSubtitles needs microphone access to record your voice for live transcription and translation. Your audio is processed locally and never sent to external servers.</string>
 	<key>LSUIElement</key>
 	<false/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>FluidVoice needs permission to control system events for managing launch at startup settings.</string>
+	<string>fluidSubtitles needs permission to control system events for managing launch at startup settings.</string>
 	<key>POSTHOG_API_KEY</key>
-	<string>phc_coNu37345O2bgaAeQMD3tezkg1rDCbDS9Y3pOVvp2VM</string>
+	<string></string>
 	<key>POSTHOG_HOST</key>
-	<string>https://eu.i.posthog.com</string>
+	<string></string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>FluidVoice uses on-device speech recognition to transcribe your voice commands and text quickly and privately.</string>
+	<string>fluidSubtitles uses on-device speech recognition to transcribe your voice and translate it locally.</string>
 </dict>
 </plist>

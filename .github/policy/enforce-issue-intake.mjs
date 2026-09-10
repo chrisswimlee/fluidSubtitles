@@ -8,11 +8,18 @@ import {
   paginate,
   removeLabel,
   repoContext,
+  commentHasAnyMarker,
   upsertIssueComment,
 } from "./github-api.mjs";
 
-const BUG_MARKER = "<!-- fluidvoice-bug-intake -->";
-const STALE_MARKER = "<!-- fluidvoice-stale-repro -->";
+const BUG_MARKERS = [
+  "<!-- fluidsubtitles-bug-intake -->",
+  "<!-- fluidvoice-bug-intake -->",
+];
+const STALE_MARKERS = [
+  "<!-- fluidsubtitles-stale-repro -->",
+  "<!-- fluidvoice-stale-repro -->",
+];
 const STALE_REPRODUCTION_DAYS = 14;
 
 const LABELS = {
@@ -35,7 +42,7 @@ async function existingBugWarningComment(context, issueNumber) {
   const comments = await paginate(
     `/repos/${context.owner}/${context.repo}/issues/${issueNumber}/comments`,
   );
-  return comments.find((comment) => comment.body?.includes(BUG_MARKER));
+  return comments.find((comment) => commentHasAnyMarker(comment, BUG_MARKERS));
 }
 
 async function enforceBugIssue(context, issue) {
@@ -50,7 +57,7 @@ async function enforceBugIssue(context, issue) {
   await upsertIssueComment(
     context,
     issue.number,
-    BUG_MARKER,
+    BUG_MARKERS,
     [
       "This bug report is missing information required for maintainers to reproduce it.",
       "",
@@ -80,7 +87,7 @@ async function closeStaleReproductionIssues(context) {
     await upsertIssueComment(
       context,
       issue.number,
-      STALE_MARKER,
+      STALE_MARKERS,
       [
         `Closing this issue because it has been labeled \`needs reproduction\` for at least ${STALE_REPRODUCTION_DAYS} days without the missing reproduction details.`,
         "",

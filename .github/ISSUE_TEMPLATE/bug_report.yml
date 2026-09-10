@@ -1,19 +1,18 @@
 name: Bug Report
-description: Report a reproducible FluidVoice bug.
+description: Report a reproducible fluidSubtitles bug.
 title: "[BUG] "
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        If you are unsure whether this is a FluidVoice bug, please start a Discussion first:
-        https://github.com/altic-dev/FluidVoice/discussions
+        Include enough detail for a maintainer to reproduce the issue.
   - type: textarea
     id: description
     attributes:
       label: Describe the bug
       description: Briefly describe what is broken.
-      placeholder: FluidVoice crashes when...
+      placeholder: fluidSubtitles crashes when...
     validations:
       required: true
   - type: textarea
@@ -22,7 +21,7 @@ body:
       label: Reproduction steps
       description: Provide exact steps a maintainer can follow.
       placeholder: |
-        1. Open FluidVoice
+        1. Open fluidSubtitles
         2. Configure...
         3. Press...
         4. Observe...

@@ -8,11 +8,15 @@ import {
   paginate,
   removeLabel,
   repoContext,
+  commentHasAnyMarker,
   upsertIssueComment,
 } from "./github-api.mjs";
 
-const MARKER = "<!-- fluidvoice-pr-policy -->";
-const HOURS_BEFORE_CLOSE = 48;
+const MARKERS = [
+  "<!-- fluidsubtitles-pr-policy -->",
+  "<!-- fluidvoice-pr-policy -->",
+];
+const HOURS_BEFORE_CLOSE = 168;
 
 const LABELS = {
   template: {
@@ -45,7 +49,7 @@ async function existingWarningComment(context, pullNumber) {
   const comments = await paginate(
     `/repos/${context.owner}/${context.repo}/issues/${pullNumber}/comments`,
   );
-  return comments.find((comment) => comment.body?.includes(MARKER));
+  return comments.find((comment) => commentHasAnyMarker(comment, MARKERS));
 }
 
 function failureBody(result) {
@@ -63,7 +67,7 @@ function failureBody(result) {
     "",
     "Screenshots or video are required for UI, UX, settings, onboarding, overlay, menu bar, or visual behavior changes. If this PR has no visual changes, check the no-visual-change box in the template.",
     "",
-    `If this remains incomplete for ${HOURS_BEFORE_CLOSE} hours after opening, the PR may be closed.`,
+    `If this remains incomplete for 7 days after opening, the PR may be closed.`,
   ].join("\n");
 }
 
@@ -87,7 +91,7 @@ async function enforceOne(context, pr, { closeExpired, failOnInvalid, warningCom
 
   warningComment ??= await existingWarningComment(context, pr.number);
   await addLabels(context, pr.number, labelsToAdd);
-  await upsertIssueComment(context, pr.number, MARKER, failureBody(result));
+  await upsertIssueComment(context, pr.number, MARKERS, failureBody(result));
 
   const expired =
     !pr.draft &&
@@ -100,9 +104,9 @@ async function enforceOne(context, pr, { closeExpired, failOnInvalid, warningCom
     await upsertIssueComment(
       context,
       pr.number,
-      MARKER,
+      MARKERS,
       [
-        "This PR has been closed because it still does not follow the required PR template after the 48-hour correction window.",
+        "This PR has been closed because it still does not follow the required PR template after the 7-day correction window.",
         "",
         "Please open a new PR with the required description, related issue or accepted Discussion, testing notes, and screenshot/video evidence when applicable.",
       ].join("\n"),

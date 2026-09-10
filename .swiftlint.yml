@@ -29,7 +29,7 @@ opt_in_rules:
 excluded:
   - .build
   - DerivedData
-  - Fluid.xcodeproj
+  - fluidSubtitles.xcodeproj
   - scratch
 line_length:
   warning: 250

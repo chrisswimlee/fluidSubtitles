@@ -119,7 +119,7 @@ config/secrets.yml
 */*.entitlements.bak
 ## Developer-specific Xcode settings (for open source)
 # Each developer should have their own team/bundle ID setup
-Fluid.xcodeproj/project.pbxproj.local
+fluidSubtitles.xcodeproj/project.pbxproj.local
 xcconfig/Local.xcconfig
 
 ## Logs
@@ -199,20 +199,17 @@ RELEASE_NOTES_*
 
 **.dmg
 **.dmg.zip
-# Documentation backups (for future reference, not needed in repo)
-docs/
-
 
 .agent/
 create_dmg_only.sh
 **.m4a
-!Sources/Fluid/Resources/*.m4a
+!Sources/FluidSubtitles/Resources/*.m4a
 # Scratch directory
 scratch/
 
+# Upstream FluidVoice marketing leftovers — do not ship
 assets/
 .swiftpm/
-scripts/
 
 # Benchmark / eval reports (local-only)
 benchmark_reports/
@@ -223,3 +220,5 @@ sample/
 .codex
 AGENTS.md
 builds/
+**/__pycache__/
+*.pyc

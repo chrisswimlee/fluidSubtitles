@@ -25,4 +25,4 @@
 --trimwhitespace always
 --wraparguments beforefirst
 --wrapcollections beforefirst
---exclude .build,DerivedData,Fluid.xcodeproj
+--exclude .build,DerivedData,fluidSubtitles.xcodeproj

@@ -21,9 +21,9 @@ Build reliable automated test coverage for FluidVoice native macOS UI behavior (
 
 ## Phase 1: Testability Hooks (Accessibility IDs)
 ### Files likely to touch
-- `/Users/barathwajanandan/Documents/mac_apps/FluidVoice/Sources/Fluid/Views/BottomOverlayView.swift`
-- `/Users/barathwajanandan/Documents/mac_apps/FluidVoice/Sources/Fluid/Views/NotchContentViews.swift`
-- `/Users/barathwajanandan/Documents/mac_apps/FluidVoice/Sources/Fluid/UI/AISettingsView+AdvancedSettings.swift`
+- `/Users/barathwajanandan/Documents/mac_apps/FluidVoice/Sources/FluidSubtitles/Views/BottomOverlayView.swift`
+- `/Users/barathwajanandan/Documents/mac_apps/FluidVoice/Sources/FluidSubtitles/Views/NotchContentViews.swift`
+- `/Users/barathwajanandan/Documents/mac_apps/FluidVoice/Sources/FluidSubtitles/UI/AISettingsView+AdvancedSettings.swift`
 
 ### IDs to add first
 - Prompt chip button
@@ -50,9 +50,9 @@ Build reliable automated test coverage for FluidVoice native macOS UI behavior (
 
 ## Phase 3: Deterministic UI Test Runtime
 ### Files likely to touch
-- `/Users/barathwajanandan/Documents/mac_apps/FluidVoice/Sources/Fluid/FluidApp.swift`
-- `/Users/barathwajanandan/Documents/mac_apps/FluidVoice/Sources/Fluid/ContentView.swift`
-- `/Users/barathwajanandan/Documents/mac_apps/FluidVoice/Sources/Fluid/Services/NotchOverlayManager.swift`
+- `/Users/barathwajanandan/Documents/mac_apps/FluidVoice/Sources/FluidSubtitles/FluidApp.swift`
+- `/Users/barathwajanandan/Documents/mac_apps/FluidVoice/Sources/FluidSubtitles/ContentView.swift`
+- `/Users/barathwajanandan/Documents/mac_apps/FluidVoice/Sources/FluidSubtitles/Services/NotchOverlayManager.swift`
 
 ### Additions
 - `--ui-testing` launch argument handling.
@@ -89,8 +89,8 @@ Build reliable automated test coverage for FluidVoice native macOS UI behavior (
 5. Test docs include how to run locally.
 
 ## Local Run Commands (to finalize when branch starts)
-- Unit tests: `xcodebuild test -project Fluid.xcodeproj -scheme Fluid -destination 'platform=macOS,arch=arm64' -only-testing:FluidTests`
-- UI tests: `xcodebuild test -project Fluid.xcodeproj -scheme Fluid -destination 'platform=macOS,arch=arm64' -only-testing:FluidVoiceUITests`
+- Unit tests: `xcodebuild test -project fluidSubtitles.xcodeproj -scheme fluidSubtitles -destination 'platform=macOS,arch=arm64' -only-testing:FluidTests`
+- UI tests: `xcodebuild test -project fluidSubtitles.xcodeproj -scheme fluidSubtitles -destination 'platform=macOS,arch=arm64' -only-testing:FluidVoiceUITests`
 
 ## Notes
 - Keep internal compatibility symbols (`rewrite*`) unchanged in this automation branch unless needed for explicit test seams.

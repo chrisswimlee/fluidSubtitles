@@ -1,0 +1,3 @@
+// Shared signed-build settings. Local team IDs stay out of git.
+// Copy Local.xcconfig.example to Local.xcconfig (gitignored) and set DEVELOPMENT_TEAM.
+#include? "Local.xcconfig"

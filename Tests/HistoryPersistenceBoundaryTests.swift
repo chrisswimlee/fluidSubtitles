@@ -30,6 +30,13 @@ final class DebugLogger {
     static let shared = DebugLogger()
     func info(_ message: String, source: String) {}
     func debug(_ message: String, source: String) {}
+    func warning(_ message: String, source: String) {}
+}
+
+enum FluidProduct {
+    static let displayName = "Fluid"
+    static let supportFolderName = "fluidSubtitles"
+    static let priorSupportFolderNames = [String]()
 }
 
 @main struct HistoryPersistenceBoundaryTests {
@@ -80,12 +87,15 @@ final class DebugLogger {
         precondition(store.todaySummary == .init(words: 2, transcriptions: 1), "Startup stats must include merged pending edits")
         await store.finishPendingWrites()
         precondition(defaults.data(forKey: key) == nil, "Retire legacy only after successful import")
-        precondition(store.entries.count == 8400)
+        precondition(store.totalEntryCount == 8400)
+        precondition(store.entries.count <= TranscriptionHistoryStore.publishedPageLimit)
         precondition(store.entries.first(where: { $0.id == newID })?.audio == audio)
         precondition(!store.entries.contains(where: { $0.id == legacy[1].id }))
         let reloaded = try await TranscriptionHistoryWriter(defaults: defaults, url: url).load()
-        precondition(reloaded == store.entries, "Migration, metadata and concurrent startup edits must round-trip")
-        print("PASS: 8,400-entry migration, exact round-trip, startup insert/audio/delete")
+        precondition(reloaded.count == 8400, "Disk must keep the full history, not only the published page")
+        precondition(reloaded.first(where: { $0.id == newID })?.audio == audio)
+        precondition(!reloaded.contains(where: { $0.id == legacy[1].id }))
+        print("PASS: 8,400-entry migration, disk+stats round-trip, startup insert/audio/delete")
 
         // Reject a write touching any old entry. A new dictation and its audio must only update their row.
         try self.sql(url, "CREATE TRIGGER reject_old BEFORE INSERT ON history WHEN NEW.id != '\(newID.uuidString)' BEGIN SELECT RAISE(FAIL, 'unrelated row rewritten'); END")

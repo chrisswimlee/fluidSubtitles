@@ -93,10 +93,16 @@ export async function removeLabel({ owner, repo }, issueNumber, label) {
   );
 }
 
+export function commentHasAnyMarker(comment, markers) {
+  return markers.some((marker) => comment.body?.includes(marker));
+}
+
 export async function upsertIssueComment({ owner, repo }, issueNumber, marker, body) {
+  const markers = Array.isArray(marker) ? marker : [marker];
+  const writeMarker = markers[0];
   const comments = await paginate(`/repos/${owner}/${repo}/issues/${issueNumber}/comments`);
-  const existing = comments.find((comment) => comment.body?.includes(marker));
-  const markedBody = `${marker}\n${body}`;
+  const existing = comments.find((comment) => commentHasAnyMarker(comment, markers));
+  const markedBody = `${writeMarker}\n${body}`;
 
   if (existing) {
     await githubRequest("PATCH", `/repos/${owner}/${repo}/issues/comments/${existing.id}`, {

@@ -1,0 +1,9 @@
+// Copy this file to Local.xcconfig (gitignored) and set your Apple team ID.
+// A free Personal Team is enough for local Debug builds.
+//
+//   cp xcconfig/Local.xcconfig.example xcconfig/Local.xcconfig
+//
+// Or pass the team when building:
+//   FLUIDSUBTITLES_DEVELOPMENT_TEAM=XXXXXXXXXX ./build.sh
+
+DEVELOPMENT_TEAM = YOUR_TEAM_ID

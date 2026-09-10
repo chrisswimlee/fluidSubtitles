@@ -1,0 +1,52 @@
+fluidSubtitles
+Copyright (C) 2026 Chris Swim Lee
+
+This product is a GPLv3 branch of FluidVoice by altic-dev
+https://github.com/altic-dev/FluidVoice
+
+Speech recognition, live engines, and the core macOS app remain their work.
+Live translation and Theater captions were added in this branch.
+
+------------------------------------------------------------------------
+
+Third-party software and models
+
+Apple Translation, Speech, and related system frameworks
+Copyright Apple Inc. Used under Apple’s system SDK terms. Language packs are
+downloaded by the user through Apple’s frameworks.
+
+FluidAudio
+https://github.com/altic-dev/FluidAudio
+Used for on-device speech models. See that repository for its license.
+
+DynamicNotchKit
+https://github.com/altic-dev/DynamicNotchKit
+See that repository for its license.
+
+transcribe-cpp-swift
+https://github.com/altic-dev/transcribe-cpp-swift
+See that repository for its license.
+
+AppUpdater, PromiseKit, and their dependencies
+See Package.resolved for versions and each project’s license.
+
+NVIDIA Parakeet and Nemotron speech models
+Distributed by NVIDIA / Hugging Face under each model card’s license.
+Users download weights themselves; this repository does not redistribute them.
+
+Whisper models
+Distributed under the licenses on the corresponding model cards.
+Users download weights themselves.
+
+Optional cloud AI providers (OpenAI, Anthropic, and others)
+Provider logos in this repository are trademarks of their owners and are used
+only to identify those services. Use of a provider requires the user’s own
+account and API key.
+
+MLX / mlx-lm
+Optional local cleanup runner. See the MLX project licenses.
+
+------------------------------------------------------------------------
+
+This NOTICE file is for attribution. The GNU GPLv3 in LICENSE governs the
+source code of fluidSubtitles.

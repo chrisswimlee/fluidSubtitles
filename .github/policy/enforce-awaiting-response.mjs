@@ -15,7 +15,10 @@ const LABEL = {
   description: "Issue will close after three days unless this label is removed.",
 };
 const DAYS_BEFORE_CLOSE = 3;
-const CLOSE_MARKER = "<!-- fluidvoice-awaiting-response-close -->";
+const CLOSE_MARKERS = [
+  "<!-- fluidsubtitles-awaiting-response-close -->",
+  "<!-- fluidvoice-awaiting-response-close -->",
+];
 
 function eventPayload() {
   return JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"));
@@ -53,7 +56,7 @@ async function warnOrClose(context, issue, now = new Date()) {
   await upsertIssueComment(
     context,
     issue.number,
-    CLOSE_MARKER,
+    CLOSE_MARKERS,
     "Closing this issue because it remained labeled `awaiting response` for three days.",
   );
   await githubRequest(

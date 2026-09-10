@@ -1,6 +1,6 @@
 <!--
 PRs that do not follow this template will be blocked by the PR Policy check.
-If the missing information is not fixed after 48 hours, the PR may be closed.
+If the missing information is not fixed after 7 days, the PR may be closed.
 -->
 
 ## Description

@@ -6,7 +6,7 @@ import Carbon.HIToolbox
 enum PasteKeyCodeCacheRegressionTests {
     static func main() {
         precondition(Thread.isMainThread)
-        let name = Notification.Name("FluidVoice.PasteKeyCacheTest.\(UUID().uuidString)")
+        let name = Notification.Name("fluidSubtitles.PasteKeyCacheTest.\(UUID().uuidString)")
         var selectedKey: CGKeyCode = 9
         var lookups = 0
         let cache = PasteKeyCodeCache(notificationName: name) {
@@ -22,7 +22,7 @@ enum PasteKeyCodeCacheRegressionTests {
         }
         precondition(lookups == 1, "Pastes must not query the layout")
         DistributedNotificationCenter.default().postNotificationName(
-            Notification.Name("FluidVoice.UnrelatedTest.\(UUID().uuidString)"),
+            Notification.Name("fluidSubtitles.UnrelatedTest.\(UUID().uuidString)"),
             object: nil,
             userInfo: nil,
             deliverImmediately: true
