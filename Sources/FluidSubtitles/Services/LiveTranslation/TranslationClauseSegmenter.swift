@@ -246,17 +246,24 @@ extension TranslationClauseSegmenter {
     fileprivate static let koreanEndings: [String] = [
         "습니까", "습니다", "ㅂ니까", "ㅂ니다", "입니다",
         "이에요", "예요", "어요", "아요", "해요", "네요", "군요",
-        "십시오", "세요", "죠", "까",
+        "십시오", "세요", "거든요", "잖아요", "는데요",
+        "할게요", "을게요", "게요", "니까", "을까", "할까", "일까",
+        "죠",
         "했다", "였다", "았다", "었다", "인다", "는다", "된다",
     ]
+
+    fileprivate static let shortKoreanEndings: Set<String> = ["죠"]
 
     fileprivate static let japaneseEndings: [String] = [
         "ました", "ましたか", "です", "でした", "ません", "ます", "でしょうか",
     ]
 
     fileprivate static let thaiEndings: [String] = [
-        "ครับ", "ค่ะ", "คะ", "นะ", "เลย", "ไหม", "มั้ย", "ด้วย", "แล้ว",
+        "ครับผม", "ครับ", "ค่ะ", "คะ", "จ้ะ", "นะ", "เลย", "ไหม", "มั้ย",
+        "ด้วย", "แล้ว", "ล่ะ", "สิ",
     ]
+
+    fileprivate static let shortThaiEndings: Set<String> = ["นะ", "สิ"]
 
     fileprivate static func isBoundary(in text: String, at index: String.Index, languageID _: String) -> Bool {
         let character = text[index]
@@ -304,8 +311,31 @@ extension TranslationClauseSegmenter {
     fileprivate static func hasEnding(_ text: String, endings: [String]) -> Bool {
         let folded = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return endings.contains { ending in
-            folded.hasSuffix(ending) || folded.hasSuffix(ending + ".") || folded.hasSuffix(ending + "?")
+            self.matchesEnding(folded, ending: ending)
+                || self.matchesEnding(folded, ending: ending + ".")
+                || self.matchesEnding(folded, ending: ending + "?")
         }
+    }
+
+    fileprivate static func matchesEnding(_ text: String, ending: String) -> Bool {
+        guard text.hasSuffix(ending) else { return false }
+        let bare = ending.trimmingCharacters(in: CharacterSet(charactersIn: ".?"))
+        if Self.shortKoreanEndings.contains(bare) || Self.shortThaiEndings.contains(bare) || bare.count <= 1 {
+            return self.hasScriptBoundary(beforeSuffix: ending, in: text)
+        }
+        return true
+    }
+
+    fileprivate static func hasScriptBoundary(beforeSuffix suffix: String, in text: String) -> Bool {
+        guard text.count > suffix.count else { return false }
+        let previous = text[text.index(text.endIndex, offsetBy: -suffix.count - 1)]
+        if Self.shortKoreanEndings.contains(suffix.trimmingCharacters(in: CharacterSet(charactersIn: ".?"))) {
+            return previous.unicodeScalars.contains { (0xAC00...0xD7A3).contains($0.value) }
+        }
+        if Self.shortThaiEndings.contains(suffix.trimmingCharacters(in: CharacterSet(charactersIn: ".?"))) {
+            return previous.unicodeScalars.contains { (0x0E00...0x0E7F).contains($0.value) }
+        }
+        return previous.isLetter || previous.isNumber
     }
 
     fileprivate static func forceCut(_ text: String) -> (head: String, rest: String) {
@@ -397,6 +427,7 @@ struct LectureCaptionEntry: Equatable, Identifiable {
     let id: UInt64
     var source: String
     var translated: String
+    var wasPolished: Bool = false
 }
 
 /// Lecture caption history: one translated line per source clause, with prefix rewrite.
@@ -416,29 +447,57 @@ struct LectureCaptionLog: Equatable {
         Array(self.sourceLines.suffix(LiveTranslationTiming.contextCount(languageID: languageID)))
     }
 
-    mutating func commit(source: String, translated: String) {
+    func contextTranslatedLines(count: Int = LiveTranslationTiming.polishPriorCaptionCount) -> [String] {
+        Array(self.translatedLines.suffix(count))
+    }
+
+    var captionPairs: [CaptionHistoryPair] {
+        self.entries.map {
+            CaptionHistoryPair(source: $0.source, translated: $0.translated, wasPolished: $0.wasPolished)
+        }
+    }
+
+    var didPolishAnyLine: Bool {
+        self.entries.contains(where: \.wasPolished)
+    }
+
+    @discardableResult
+    mutating func commit(source: String, translated: String) -> (id: UInt64, trimmedCount: Int)? {
         let cleanedSource = source.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanedTranslation = translated.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanedSource.isEmpty, !cleanedTranslation.isEmpty else { return }
+        guard !cleanedSource.isEmpty, !cleanedTranslation.isEmpty else { return nil }
 
         if let lastSource = self.entries.last?.source {
             if TranslationClauseSegmenter.shouldReplaceLast(previous: lastSource, incoming: cleanedSource) {
                 self.entries[self.entries.count - 1].source = cleanedSource
                 self.entries[self.entries.count - 1].translated = cleanedTranslation
-                self.trimIfNeeded()
-                return
+                self.entries[self.entries.count - 1].wasPolished = false
+                let trimmed = self.trimIfNeeded()
+                return (self.entries.last?.id ?? self.nextID, trimmed)
             }
-            if lastSource == cleanedSource { return }
+            if lastSource == cleanedSource { return nil }
             if TranslationClauseSegmenter.shouldIgnoreAsStalePrefix(previous: lastSource, incoming: cleanedSource) {
-                return
+                return nil
             }
         }
 
+        let id = self.nextID
         self.entries.append(
-            LectureCaptionEntry(id: self.nextID, source: cleanedSource, translated: cleanedTranslation)
+            LectureCaptionEntry(id: id, source: cleanedSource, translated: cleanedTranslation)
         )
         self.nextID += 1
-        self.trimIfNeeded()
+        return (id, self.trimIfNeeded())
+    }
+
+    @discardableResult
+    mutating func updateTranslated(id: UInt64, translated: String, wasPolished: Bool) -> Bool {
+        let cleaned = translated.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty, let index = self.entries.firstIndex(where: { $0.id == id }) else {
+            return false
+        }
+        self.entries[index].translated = cleaned
+        self.entries[index].wasPolished = wasPolished
+        return true
     }
 
     mutating func replaceTranslatedLines(_ lines: [String]) {
@@ -462,10 +521,29 @@ struct LectureCaptionLog: Equatable {
         self.trimIfNeeded()
     }
 
-    private mutating func trimIfNeeded() {
-        if self.entries.count > LiveTranslationTiming.maxCommittedLines {
-            let overflow = self.entries.count - LiveTranslationTiming.maxCommittedLines
-            self.entries.removeFirst(overflow)
-        }
+    @discardableResult
+    private mutating func trimIfNeeded() -> Int {
+        guard self.entries.count > LiveTranslationTiming.maxCommittedLines else { return 0 }
+        let overflow = self.entries.count - LiveTranslationTiming.maxCommittedLines
+        self.entries.removeFirst(overflow)
+        return overflow
+    }
+}
+
+enum LiveTranslationConfirm {
+    static func shouldReDecode(
+        unread: [String],
+        tail: String,
+        languageID: String,
+        isFinal: Bool
+    ) -> Bool {
+        if isFinal { return true }
+        if !unread.isEmpty { return false }
+        if TranslationClauseSegmenter.looksComplete(tail, languageID: languageID) { return false }
+        return TranslationClauseSegmenter.isReadyToCommit(
+            tail,
+            languageID: languageID,
+            allowPauseFinalize: true
+        )
     }
 }

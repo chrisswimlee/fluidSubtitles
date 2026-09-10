@@ -47,6 +47,23 @@ enum TranslationGlossary {
         }
         return result
     }
+
+    /// Terms that appear in the source but vanished from a polished caption.
+    static func lostProtectedTerms(source: String, polished: String, terms: [String]) -> [String] {
+        terms.filter { term in
+            let needle = term.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard needle.count >= 2 else { return false }
+            let presentInSource = source.range(
+                of: needle,
+                options: [.caseInsensitive, .diacriticInsensitive]
+            ) != nil
+            let presentInPolished = polished.range(
+                of: needle,
+                options: [.caseInsensitive, .diacriticInsensitive]
+            ) != nil
+            return presentInSource && !presentInPolished
+        }
+    }
 }
 
 enum SpokenLanguageResolver {
@@ -120,7 +137,10 @@ enum LiveTranslationTiming {
     static let contextSentenceCount = 4
     /// About an hour of lecture clauses at a speaking pace.
     static let maxCommittedLines = 200
-    static let polishTimeoutNanoseconds: UInt64 = 3_500_000_000
+    static let polishTimeoutNanoseconds: UInt64 = 2_000_000_000
+    static let polishMaxTokens = 64
+    static let polishTemperature = 0.1
+    static let polishPriorCaptionCount = 2
 
     static func completeSettleNanoseconds(languageID: String) -> UInt64 {
         switch TranslationClauseSegmenter.languageCode(from: languageID) {

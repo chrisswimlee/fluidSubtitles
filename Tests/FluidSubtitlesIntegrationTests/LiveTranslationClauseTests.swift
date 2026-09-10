@@ -441,21 +441,126 @@ final class LiveTranslationClauseTests: XCTestCase {
         XCTAssertFalse(TranslationClauseSegmenter.isPauseFinalizable("ผมจะ", languageID: "th"))
     }
 
-    func testPolishPromptUsesLectureContextInsteadOfRetranslating() {
+    func testPolishPromptUsesExchangeContextInsteadOfRetranslating() {
         let messages = LLMTranslationPrompt.polishMessages(
             sourceText: "그걸 적용하면 됩니다.",
             draft: "If we apply it, it works.",
             priorSource: ["We trained the model on last quarter's data."],
+            priorCaptions: ["We trained the model on last quarter's data."],
             sourceLanguage: "Korean",
             targetLanguage: "English"
         )
         let system = messages[0]["content"] ?? ""
         let user = messages[1]["content"] ?? ""
-        XCTAssertTrue(system.contains("polishing a live lecture caption"))
+        XCTAssertTrue(system.contains("language-exchange caption"))
+        XCTAssertTrue(system.contains("Return the draft unchanged unless there is a clear error"))
         XCTAssertTrue(system.contains("verb-final"))
         XCTAssertFalse(system.contains("Translate from Korean to English."))
+        XCTAssertFalse(system.contains("drop polite particles"))
         XCTAssertTrue(user.contains("We trained the model on last quarter's data."))
+        XCTAssertTrue(user.contains("Previous captions:"))
         XCTAssertTrue(user.contains("그걸 적용하면 됩니다."))
         XCTAssertTrue(user.contains("If we apply it, it works."))
+    }
+
+    func testKoreanConversationalEndingsCompleteAClause() {
+        XCTAssertTrue(TranslationClauseSegmenter.looksComplete("그건 그렇거든요", languageID: "ko"))
+        XCTAssertTrue(TranslationClauseSegmenter.looksComplete("제가 할게요", languageID: "ko"))
+        XCTAssertTrue(TranslationClauseSegmenter.looksComplete("지금 갑니까", languageID: "ko"))
+        XCTAssertTrue(TranslationClauseSegmenter.looksComplete("그렇죠", languageID: "ko"))
+        XCTAssertFalse(TranslationClauseSegmenter.looksComplete("hello죠", languageID: "ko"))
+        XCTAssertFalse(TranslationClauseSegmenter.looksComplete("가까", languageID: "ko"))
+    }
+
+    func testThaiPoliteEndingsCompleteAClause() {
+        XCTAssertTrue(TranslationClauseSegmenter.looksComplete("ได้เลยครับผม", languageID: "th"))
+        XCTAssertTrue(TranslationClauseSegmenter.looksComplete("ไปเลยจ้ะ", languageID: "th"))
+        XCTAssertTrue(TranslationClauseSegmenter.looksComplete("เอาล่ะ", languageID: "th"))
+    }
+
+    func testConfirmSkipsCompleteTailsAndRunsOnStop() {
+        XCTAssertFalse(
+            LiveTranslationConfirm.shouldReDecode(
+                unread: ["Today we trained the model."],
+                tail: "",
+                languageID: "en",
+                isFinal: false
+            )
+        )
+        XCTAssertFalse(
+            LiveTranslationConfirm.shouldReDecode(
+                unread: [],
+                tail: "적용했습니다",
+                languageID: "ko",
+                isFinal: false
+            )
+        )
+        XCTAssertTrue(
+            LiveTranslationConfirm.shouldReDecode(
+                unread: [],
+                tail: "Then we applied it to the new data set",
+                languageID: "en",
+                isFinal: false
+            )
+        )
+        XCTAssertTrue(
+            LiveTranslationConfirm.shouldReDecode(
+                unread: [],
+                tail: "적용했습니다",
+                languageID: "ko",
+                isFinal: true
+            )
+        )
+    }
+
+    func testAcceptedPolishedRejectsOffScriptAndLongRewrites() {
+        let english = TranslationLanguageCatalog.english
+        let korean = TranslationLanguageCatalog.korean
+        XCTAssertEqual(
+            LLMTranslationEngine.acceptedPolished(
+                "If we apply it, it works.",
+                draft: "If we apply that, it works.",
+                target: english
+            ),
+            "If we apply it, it works."
+        )
+        XCTAssertNil(
+            LLMTranslationEngine.acceptedPolished(
+                "그걸 적용하면 됩니다.",
+                draft: "If we apply it, it works.",
+                target: english
+            )
+        )
+        XCTAssertNil(
+            LLMTranslationEngine.acceptedPolished(
+                "This is a much longer rewritten caption that adds a second sentence.",
+                draft: "If we apply it.",
+                target: english
+            )
+        )
+        XCTAssertNil(
+            LLMTranslationEngine.acceptedPolished(
+                "Line one\nLine two",
+                draft: "Line one",
+                target: english
+            )
+        )
+        XCTAssertNotNil(
+            LLMTranslationEngine.acceptedPolished(
+                "그걸 적용하면 됩니다.",
+                draft: "그걸 적용하면 돼요.",
+                target: korean
+            )
+        )
+    }
+
+    func testCaptionLogPatchesALineByID() {
+        var log = LectureCaptionLog()
+        let first = log.commit(source: "Hello.", translated: "안녕하세요.")
+        XCTAssertEqual(first?.id, 1)
+        XCTAssertTrue(log.updateTranslated(id: 1, translated: "안녕.", wasPolished: true))
+        XCTAssertEqual(log.translatedLines, ["안녕."])
+        XCTAssertTrue(log.didPolishAnyLine)
+        XCTAssertEqual(log.captionPairs.first?.wasPolished, true)
     }
 }

@@ -20,6 +20,12 @@ nonisolated struct AudioBudgetMeasurementGate: Equatable, Sendable {
 
 // MARK: - Transcription History Entry Model
 
+struct CaptionHistoryPair: Codable, Equatable, Sendable {
+    let source: String
+    let translated: String
+    let wasPolished: Bool
+}
+
 struct TranscriptionHistoryEntry: Codable, Identifiable, Equatable, Sendable {
     let id: UUID
     let timestamp: Date
@@ -38,6 +44,7 @@ struct TranscriptionHistoryEntry: Codable, Identifiable, Equatable, Sendable {
     /// message for display / debugging.
     let aiProcessingError: String?
     let audio: DictationAudioMetadata?
+    let captionPairs: [CaptionHistoryPair]?
 
     init(
         id: UUID = UUID(),
@@ -52,7 +59,8 @@ struct TranscriptionHistoryEntry: Codable, Identifiable, Equatable, Sendable {
         aiProcessingDurationMilliseconds: Int? = nil,
         aiTokensPerSecond: Double? = nil,
         aiProcessingError: String? = nil,
-        audio: DictationAudioMetadata? = nil
+        audio: DictationAudioMetadata? = nil,
+        captionPairs: [CaptionHistoryPair]? = nil
     ) {
         self.id = id
         self.timestamp = timestamp
@@ -68,6 +76,7 @@ struct TranscriptionHistoryEntry: Codable, Identifiable, Equatable, Sendable {
         self.aiTokensPerSecond = aiTokensPerSecond
         self.aiProcessingError = aiProcessingError
         self.audio = audio
+        self.captionPairs = captionPairs
     }
 
     private init(
@@ -84,7 +93,8 @@ struct TranscriptionHistoryEntry: Codable, Identifiable, Equatable, Sendable {
         aiProcessingDurationMilliseconds: Int?,
         aiTokensPerSecond: Double?,
         aiProcessingError: String?,
-        audio: DictationAudioMetadata?
+        audio: DictationAudioMetadata?,
+        captionPairs: [CaptionHistoryPair]?
     ) {
         self.id = id
         self.timestamp = timestamp
@@ -100,6 +110,7 @@ struct TranscriptionHistoryEntry: Codable, Identifiable, Equatable, Sendable {
         self.aiTokensPerSecond = aiTokensPerSecond
         self.aiProcessingError = aiProcessingError
         self.audio = audio
+        self.captionPairs = captionPairs
     }
 
     init(from decoder: Decoder) throws {
@@ -124,6 +135,7 @@ struct TranscriptionHistoryEntry: Codable, Identifiable, Equatable, Sendable {
         self.aiTokensPerSecond = try container.decodeIfPresent(Double.self, forKey: .aiTokensPerSecond)
         self.aiProcessingError = try container.decodeIfPresent(String.self, forKey: .aiProcessingError)
         self.audio = try container.decodeIfPresent(DictationAudioMetadata.self, forKey: .audio)
+        self.captionPairs = try container.decodeIfPresent([CaptionHistoryPair].self, forKey: .captionPairs)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -131,7 +143,7 @@ struct TranscriptionHistoryEntry: Codable, Identifiable, Equatable, Sendable {
         case characterCount, wasAIProcessed, processingModel
         case transcriptionDurationMilliseconds, aiProcessingDurationMilliseconds
         case aiTokensPerSecond
-        case aiProcessingError, audio
+        case aiProcessingError, audio, captionPairs
     }
 
     /// Preview text for list display (first 80 chars)
@@ -198,7 +210,8 @@ struct TranscriptionHistoryEntry: Codable, Identifiable, Equatable, Sendable {
             aiProcessingDurationMilliseconds: self.aiProcessingDurationMilliseconds,
             aiTokensPerSecond: self.aiTokensPerSecond,
             aiProcessingError: self.aiProcessingError,
-            audio: audio
+            audio: audio,
+            captionPairs: self.captionPairs
         )
     }
 }
@@ -289,7 +302,8 @@ final class TranscriptionHistoryStore: ObservableObject {
         aiProcessingDurationMilliseconds: Int? = nil,
         aiTokensPerSecond: Double? = nil,
         aiProcessingError: String? = nil,
-        audio: DictationAudioMetadata? = nil
+        audio: DictationAudioMetadata? = nil,
+        captionPairs: [CaptionHistoryPair]? = nil
     ) {
         // Skip empty transcriptions
         guard !processedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
@@ -307,7 +321,8 @@ final class TranscriptionHistoryStore: ObservableObject {
             aiProcessingDurationMilliseconds: aiProcessingDurationMilliseconds,
             aiTokensPerSecond: aiTokensPerSecond,
             aiProcessingError: aiProcessingError,
-            audio: audio
+            audio: audio,
+            captionPairs: captionPairs
         )
 
         // Insert at beginning (newest first)

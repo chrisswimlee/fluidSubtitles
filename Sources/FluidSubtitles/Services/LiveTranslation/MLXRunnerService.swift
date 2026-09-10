@@ -40,6 +40,7 @@ final class MLXRunnerService: ObservableObject {
     private var serveProcess: Process?
     private var commandProcess: Process?
     private var pythonPath: String?
+    private(set) var lastSuccessfulCallAt: Date?
 
     private init() {
         let selected = SettingsStore.shared.mlxRunnerModelID
@@ -62,6 +63,14 @@ final class MLXRunnerService: ObservableObject {
 
     var needsRuntimeInstall: Bool {
         !self.status.runtimeReady
+    }
+
+    var canServe: Bool {
+        self.status.running && self.lastSuccessfulCallAt != nil
+    }
+
+    func markSuccessfulCall() {
+        self.lastSuccessfulCallAt = Date()
     }
 
     func isInstalled(_ modelID: String) -> Bool {
@@ -285,9 +294,43 @@ final class MLXRunnerService: ObservableObject {
     }
 
     func isHealthy() async -> Bool {
+        if await self.pingModels() {
+            self.lastSuccessfulCallAt = Date()
+            return true
+        }
+        if await self.pingChat() {
+            self.lastSuccessfulCallAt = Date()
+            return true
+        }
+        return false
+    }
+
+    private func pingModels() async -> Bool {
         guard let url = URL(string: "\(self.baseURL)/models") else { return false }
         var request = URLRequest(url: url)
         request.timeoutInterval = 2
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            return (response as? HTTPURLResponse)?.statusCode == 200
+        } catch {
+            return false
+        }
+    }
+
+    private func pingChat() async -> Bool {
+        guard let url = URL(string: "\(self.baseURL)/chat/completions") else { return false }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 2
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer mlx-runner", forHTTPHeaderField: "Authorization")
+        let body: [String: Any] = [
+            "model": self.selectedModel.repo,
+            "messages": [["role": "user", "content": "."]],
+            "max_tokens": 1,
+            "stream": false,
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
             return (response as? HTTPURLResponse)?.statusCode == 200

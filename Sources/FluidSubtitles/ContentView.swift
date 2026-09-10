@@ -2614,6 +2614,8 @@ struct ContentView: View {
         if shouldPersistOutputs, SettingsStore.shared.saveTranscriptionHistory {
             let historyEntryID = UUID()
             let historyTimestamp = Date()
+            let pairs = LiveTranslationController.shared.subscriber.captionPairs
+            let polished = LiveTranslationController.shared.subscriber.didPolishAnyLine
             TranscriptionHistoryStore.shared.addEntry(
                 id: historyEntryID,
                 timestamp: historyTimestamp,
@@ -2621,12 +2623,13 @@ struct ContentView: View {
                 processedText: translated,
                 appName: appInfo.name,
                 windowTitle: appInfo.windowTitle,
-                wasAIProcessed: false,
-                processingModel: nil,
+                wasAIProcessed: polished,
+                processingModel: polished ? SettingsStore.shared.mlxRunnerModelID : nil,
                 transcriptionDurationMilliseconds: transcriptionDurationMilliseconds,
                 aiProcessingDurationMilliseconds: nil,
                 aiTokensPerSecond: nil,
-                aiProcessingError: nil
+                aiProcessingError: nil,
+                captionPairs: pairs.isEmpty ? nil : pairs
             )
             self.persistDictationAudioIfNeeded(
                 audioFile,

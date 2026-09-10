@@ -16,6 +16,24 @@ final class LiveTranslationGlossaryTests: XCTestCase {
         )
     }
 
+    func testLostProtectedTermsRejectsDroppedNames() {
+        XCTAssertEqual(
+            TranslationGlossary.lostProtectedTerms(
+                source: "We are demoing fluidSubtitles in Keynote today",
+                polished: "We are demoing the app in Keynote today",
+                terms: ["fluidSubtitles", "Keynote"]
+            ),
+            ["fluidSubtitles"]
+        )
+        XCTAssertTrue(
+            TranslationGlossary.lostProtectedTerms(
+                source: "We are demoing fluidSubtitles in Keynote today",
+                polished: "We are demoing fluidSubtitles in Keynote today",
+                terms: ["fluidSubtitles", "Keynote"]
+            ).isEmpty
+        )
+    }
+
     func testEmptyTermsLeaveTextAlone() {
         let protected = TranslationGlossary.protect("hello", terms: [])
         XCTAssertEqual(protected.text, "hello")
