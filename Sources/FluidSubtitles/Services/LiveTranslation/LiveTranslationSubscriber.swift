@@ -1,5 +1,9 @@
 import Combine
+import Darwin
 import Foundation
+
+// swiftlint:disable function_body_length cyclomatic_complexity type_body_length
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
 
 @MainActor
 final class LiveTranslationSubscriber: ObservableObject {
@@ -7,9 +11,12 @@ final class LiveTranslationSubscriber: ObservableObject {
     @Published private(set) var translatedDraft: String = ""
     @Published private(set) var committedLines: [String] = []
     @Published private(set) var lastLatencyMilliseconds: Int?
+    @Published private(set) var lastLatencySample = LiveTranslationLatencySample()
     @Published private(set) var statusText: String = ""
 
     private var captionLog = LectureCaptionLog()
+    private let archive: LectureCaptionArchive
+    private var latencyTracker = LiveTranslationLatencyTracker()
     private var listenBatchStart = 0
     private var postedLineCount = 0
     private var inFlightSources: [String] = []
@@ -18,40 +25,106 @@ final class LiveTranslationSubscriber: ObservableObject {
     private var lastSettleUnread: [String] = []
     private var completedSettleTask: Task<Void, Never>?
     private var tailSettleTask: Task<Void, Never>?
+    private var eouHoldTask: Task<Void, Never>?
+    private var pauseRevisionTask: Task<Void, Never>?
+    private var failedRetryTask: Task<Void, Never>?
+    private var didPauseReviseThisUtterance = false
+    private var didAutoRetryFailure = false
     private var commitChain: Task<Void, Never>?
-    private var polishTasks: [UInt64: Task<Void, Never>] = [:]
     private var generation: UInt64 = 0
+    private var translatedDraftSource: String = ""
     private let appleEngine: AppleTranslationEngine
+    private let translator: TranslationEngine
     private let llmEngine: LLMTranslationEngine
+    private var polishTasks: [UInt64: Task<Void, Never>] = [:]
+    private var lastFailedSource: String?
     var confirmTranscript: (() async -> String)?
+    var canRetryTranslation: Bool { self.lastFailedSource != nil }
+    var isApproachingLineLimit: Bool {
+        self.captionLog.entries.count >= LiveTranslationTiming.maxCommittedLines - 10
+    }
+
+    var archivedLineCount: Int { self.archive.overflowCount }
+    var sessionLineCount: Int { self.archivedLineCount + self.captionLog.entries.count }
+
+    var lineWindowStatus: String? {
+        if self.archivedLineCount > 0 {
+            return "Showing last \(self.captionLog.entries.count) of \(self.sessionLineCount)"
+        }
+        if self.isApproachingLineLimit {
+            return "Approaching the \(LiveTranslationTiming.maxCommittedLines)-line window. Older lines stay in the session archive."
+        }
+        return nil
+    }
 
     var committedSourceLines: [String] { self.captionLog.sourceLines }
     var committedLineIDs: [UInt64] { self.captionLog.lineIDs }
     var captionPairs: [CaptionHistoryPair] { self.captionLog.captionPairs }
-    var didPolishAnyLine: Bool { self.captionLog.didPolishAnyLine }
+    var exportCaptionPairs: [CaptionHistoryPair] {
+        TheaterCaptionExport.pairs(from: self.archive.loadAll()) + self.captionLog.captionPairs
+    }
+
+    /// Translated draft after a clause commits. Incomplete speech stays off Theater.
+    var liveCaptionText: String {
+        let draft = self.translatedDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let last = self.committedLines.last?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !draft.isEmpty, draft != last {
+            return draft
+        }
+        return ""
+    }
+
+    /// Incomplete speech stays off Theater until the clause commits.
+    var liveSpokenText: String { "" }
+
+    /// Unpublished clauses stay in the private buffer, not on the board.
+    var pendingSpokenLines: [String] { [] }
+
+    /// Peel against the whole board. A trailing ASR window can still contain
+    /// sentences committed before this Listen.
+    private var printedSources: [String] {
+        self.captionLog.sourceLines + self.inFlightSources
+    }
 
     init(
         appleEngine: AppleTranslationEngine? = nil,
+        translator: TranslationEngine? = nil,
+        archive: LectureCaptionArchive? = nil,
         llmEngine: LLMTranslationEngine? = nil
     ) {
-        self.appleEngine = appleEngine ?? .shared
+        let engine = appleEngine ?? .shared
+        self.appleEngine = engine
+        self.translator = translator ?? engine
+        self.archive = archive ?? LectureCaptionArchive()
         self.llmEngine = llmEngine ?? LLMTranslationEngine()
+        self.archive.recount()
     }
 
-    func reset() {
+    func reset(clearArchive: Bool = false) {
         self.cancelSettles()
         self.cancelCommitsAndPolish()
         self.generation += 1
+        self.translatedDraftSource = ""
         self.sourceDraft = ""
         self.translatedDraft = ""
         self.committedLines = []
         self.captionLog = LectureCaptionLog()
+        if clearArchive {
+            self.archive.reset()
+        }
+        self.latencyTracker = LiveTranslationLatencyTracker()
+        self.lastLatencySample = LiveTranslationLatencySample()
+        self.lastLatencyMilliseconds = nil
         self.listenBatchStart = 0
         self.postedLineCount = 0
         self.lastHeardText = ""
         self.lastSettleTail = ""
         self.lastSettleUnread = []
         self.statusText = ""
+        self.lastFailedSource = nil
+        self.didPauseReviseThisUtterance = false
+        self.didAutoRetryFailure = false
+        self.llmEngine.resetListenEchoTally()
     }
 
     /// Stop settling new speech. Keep captions already committed this session.
@@ -59,6 +132,7 @@ final class LiveTranslationSubscriber: ObservableObject {
         self.cancelSettles()
         self.cancelCommitsAndPolish()
         self.generation += 1
+        self.translatedDraftSource = ""
         self.lastSettleTail = ""
         self.lastSettleUnread = []
         self.lastHeardText = ""
@@ -69,14 +143,142 @@ final class LiveTranslationSubscriber: ObservableObject {
     /// Start another listen without wiping captions already on Theater.
     func beginListening() {
         self.cancelSettles()
+        self.cancelCommitsAndPolish()
+        self.generation += 1
+        self.translatedDraftSource = ""
+        self.lastSettleTail = ""
+        self.lastSettleUnread = []
+        self.lastHeardText = ""
+        self.sourceDraft = ""
+        self.translatedDraft = self.captionLog.translatedLines.last ?? ""
+        self.statusText = "Listening…"
+        self.lastFailedSource = nil
+        self.didPauseReviseThisUtterance = false
+        self.didAutoRetryFailure = false
+        self.llmEngine.resetListenEchoTally()
+        self.listenBatchStart = self.captionLog.sourceLines.count
+        self.latencyTracker.resetUtterance()
+        self.latencyTracker.markListenStart(ProcessInfo.processInfo.systemUptime)
+        self.objectWillChange.send()
+    }
+
+    func noteLanguagePairChanged() {
+        self.cancelSettles()
+        self.cancelCommitsAndPolish()
+        self.generation += 1
+        self.translatedDraftSource = ""
         self.lastSettleTail = ""
         self.lastSettleUnread = []
         self.lastHeardText = ""
         self.sourceDraft = ""
         self.translatedDraft = self.captionLog.translatedLines.last ?? ""
         self.statusText = ""
-        self.listenBatchStart = self.captionLog.translatedLines.count
+        self.lastFailedSource = nil
+        self.llmEngine.resetListenEchoTally()
+        self.listenBatchStart = self.captionLog.sourceLines.count
         self.objectWillChange.send()
+    }
+
+    func noteFirstBuffer() {
+        self.latencyTracker.markFirstBuffer(ProcessInfo.processInfo.systemUptime)
+    }
+
+    func noteSpeechStart(hostTime: UInt64) {
+        let now = ProcessInfo.processInfo.systemUptime
+        let start = LiveTranslationHostClock.uptime(
+            fromHostTime: hostTime,
+            nowUptime: now,
+            nowHostTime: mach_absolute_time()
+        )
+        self.noteSpeechStart(uptime: start)
+    }
+
+    func noteSpeechStart(uptime: TimeInterval) {
+        self.pauseRevisionTask?.cancel()
+        self.pauseRevisionTask = nil
+        self.didPauseReviseThisUtterance = false
+        self.latencyTracker.markSpeechStart(uptime)
+    }
+
+    func noteSilenceHold() {
+        if self.pauseRevisionTask == nil, !self.didPauseReviseThisUtterance {
+            self.latencyTracker.resetUtterance()
+        }
+        self.schedulePauseRevision()
+    }
+
+    func recountArchive() {
+        self.archive.recount()
+        self.objectWillChange.send()
+    }
+
+    func persistLastLatency() {
+        LastListenLatencyStore.write(self.lastLatencySample)
+    }
+
+    func refreshThermal(_ thermal: ProcessInfo.ThermalState = ProcessInfo.processInfo.thermalState) {
+        self.lastLatencySample = self.latencyTracker.refreshThermal(thermal)
+    }
+
+    func handleEndOfUtterance() {
+        // Parakeet EOU is a pause, not a sentence. Hold briefly so the last ASR
+        // tick can land, then restart settle. Do not commit the open tail.
+        let token = self.generation
+        let languageID = SpokenLanguageResolver.sourceLanguage().id
+        self.completedSettleTask?.cancel()
+        self.tailSettleTask?.cancel()
+        self.eouHoldTask?.cancel()
+        self.completedSettleTask = nil
+        self.tailSettleTask = nil
+        self.lastSettleUnread = []
+        self.lastSettleTail = ""
+        self.eouHoldTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: LiveTranslationTiming.eouHoldNanoseconds)
+            guard !Task.isCancelled else { return }
+            await self?.restartSettlesAfterHold(generation: token, languageID: languageID)
+        }
+    }
+
+    func waitForIdleForTesting() async {
+        await self.completedSettleTask?.value
+        await self.eouHoldTask?.value
+        await self.tailSettleTask?.value
+        await self.pauseRevisionTask?.value
+        await self.commitChain?.value
+    }
+
+    func reportFailure(_ message: String) {
+        self.statusText = message
+        self.objectWillChange.send()
+    }
+
+    func retryFailedTranslation() {
+        guard let source = self.lastFailedSource else { return }
+        self.lastFailedSource = nil
+        self.statusText = ""
+        self.enqueueCommit(source, reason: .completedSentence)
+    }
+
+    func snapshot() -> TheaterBoardSnapshot {
+        TheaterBoardSnapshot(entries: self.captionLog.entries, nextID: self.captionLog.nextID)
+    }
+
+    func restore(_ snapshot: TheaterBoardSnapshot) {
+        self.cancelSettles()
+        self.cancelCommitsAndPolish()
+        self.generation += 1
+        self.captionLog.restore(snapshot)
+        self.committedLines = self.captionLog.translatedLines
+        self.listenBatchStart = self.captionLog.sourceLines.count
+        self.postedLineCount = self.committedLines.count
+        self.translatedDraftSource = ""
+        self.sourceDraft = ""
+        self.translatedDraft = self.captionLog.translatedLines.last ?? ""
+        self.statusText = ""
+        self.lastFailedSource = nil
+        self.lastHeardText = ""
+        self.lastSettleTail = ""
+        self.lastSettleUnread = []
     }
 
     func pendingInsertDocument() -> String {
@@ -85,6 +287,14 @@ final class LiveTranslationSubscriber: ObservableObject {
             committed: Array(self.committedLines.dropFirst(start)),
             draft: ""
         )
+    }
+
+    /// Same answer as `pendingInsertDocument().isEmpty` without joining the board.
+    var hasPendingInsertText: Bool {
+        let start = min(self.committedLines.count, max(self.postedLineCount, self.listenBatchStart))
+        return self.committedLines.dropFirst(start).contains {
+            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
     }
 
     func consumePendingInsertDocument() -> String {
@@ -99,10 +309,12 @@ final class LiveTranslationSubscriber: ObservableObject {
     }
 
     func applyEditedLines(_ lines: [String]) {
-        self.captionLog.replaceTranslatedLines(lines)
+        let overflow = self.captionLog.replaceTranslatedLines(lines)
+        self.archiveOverflow(overflow)
         self.committedLines = self.captionLog.translatedLines
         self.listenBatchStart = min(self.listenBatchStart, self.committedLines.count)
         self.postedLineCount = min(self.postedLineCount, self.committedLines.count)
+        self.translatedDraftSource = ""
         self.sourceDraft = ""
         self.translatedDraft = self.captionLog.translatedLines.last ?? ""
     }
@@ -115,40 +327,54 @@ final class LiveTranslationSubscriber: ObservableObject {
     }
 
     func seedCommittedForTesting(source: String, translated: String) {
-        self.captionLog.commit(source: source, translated: translated)
+        if let committed = self.captionLog.commit(source: source, translated: translated) {
+            self.archiveOverflow(committed.overflow)
+            self.adjustIndexes(trimmedCount: committed.overflow.count)
+        }
         self.committedLines = self.captionLog.translatedLines
         self.sourceDraft = source
         self.translatedDraft = translated
+        self.translatedDraftSource = source
     }
 
     func handlePartial(_ text: String) {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return }
+        self.eouHoldTask?.cancel()
+        self.eouHoldTask = nil
         self.lastHeardText = cleaned
         let languageID = SpokenLanguageResolver.sourceLanguage().id
-        let split = TranslationClauseSegmenter.split(cleaned, languageID: languageID)
-
-        guard !cleaned.isEmpty else {
-            self.sourceDraft = ""
-            self.translatedDraft = ""
-            return
+        let now = ProcessInfo.processInfo.systemUptime
+        if self.latencyTracker.speechStart == nil {
+            self.latencyTracker.markSpeechStart(now)
         }
+        self.latencyTracker.markASRReady(now)
 
-        let absorbed = self.captionLog.sourceLines + self.inFlightSources
-        let unread = TranslationClauseSegmenter.unreadCompleted(
-            completed: split.completed,
-            already: absorbed
+        let leftover = TranslationClauseSegmenter.leftoverTail(
+            cleaned,
+            already: self.printedSources,
+            languageID: languageID
         )
-        let tail = TranslationClauseSegmenter.leftoverTail(cleaned, already: absorbed)
+        if self.shouldCancelPauseRevision(leftover: leftover) {
+            self.pauseRevisionTask?.cancel()
+            self.pauseRevisionTask = nil
+            self.didPauseReviseThisUtterance = false
+        }
         if !self.sourceDraft.isEmpty,
-           !TranslationClauseSegmenter.isSameClause(self.sourceDraft, tail),
-           !TranslationClauseSegmenter.shouldReplaceLast(previous: self.sourceDraft, incoming: tail),
-           !TranslationClauseSegmenter.shouldIgnoreAsStalePrefix(previous: self.sourceDraft, incoming: tail)
+           !TranslationClauseSegmenter.isSameClause(self.sourceDraft, leftover),
+           !TranslationClauseSegmenter.shouldReplaceLast(previous: self.sourceDraft, incoming: leftover),
+           !TranslationClauseSegmenter.shouldIgnoreAsStalePrefix(previous: self.sourceDraft, incoming: leftover)
         {
             self.translatedDraft = ""
+            self.translatedDraftSource = ""
         }
-        self.sourceDraft = tail
+        self.sourceDraft = leftover
+        if !self.statusText.contains("failed") {
+            self.statusText = "Listening…"
+        }
 
-        if unread.isEmpty, tail.isEmpty {
+        let split = TranslationClauseSegmenter.split(leftover, languageID: languageID)
+        if split.completed.isEmpty, split.tail.isEmpty {
             self.completedSettleTask?.cancel()
             self.tailSettleTask?.cancel()
             self.lastSettleTail = ""
@@ -157,19 +383,26 @@ final class LiveTranslationSubscriber: ObservableObject {
         }
 
         let token = self.generation
-        switch TranslationClauseSegmenter.decision(forTail: tail, languageID: languageID) {
+        switch TranslationClauseSegmenter.decision(forTail: split.tail, languageID: languageID) {
         case .commitNow:
             Task { [weak self] in
-                await self?.flushSettled(generation: token, isFinal: false)
+                await self?.flushSettled(generation: token, isFinal: false, reason: .openTailAged)
             }
         case .ignore, .waitForStability:
             self.scheduleSettles(
-                unread: unread,
-                tail: tail,
+                unread: split.completed,
+                tail: split.tail,
                 languageID: languageID,
                 generation: token
             )
         }
+    }
+
+    private enum FlushReason {
+        case completedClause
+        case openTailAged
+        case pauseConfirm
+        case stop
     }
 
     private func scheduleSettles(
@@ -187,7 +420,7 @@ final class LiveTranslationSubscriber: ObservableObject {
                         nanoseconds: LiveTranslationTiming.completeSettleNanoseconds(languageID: languageID)
                     )
                     guard !Task.isCancelled else { return }
-                    await self?.flushSettled(generation: token, isFinal: false)
+                    await self?.flushSettled(generation: token, isFinal: false, reason: .completedClause)
                 }
             }
         }
@@ -201,128 +434,278 @@ final class LiveTranslationSubscriber: ObservableObject {
                 tail: tail,
                 languageID: languageID
             )
+            let reason: FlushReason = TranslationClauseSegmenter.looksComplete(tail, languageID: languageID)
+                ? .completedClause
+                : .openTailAged
             if delay == 0 {
                 Task { [weak self] in
-                    await self?.flushSettled(generation: token, isFinal: false)
+                    await self?.flushSettled(generation: token, isFinal: false, reason: .openTailAged)
                 }
                 return
             }
             self.tailSettleTask = Task { [weak self] in
                 try? await Task.sleep(nanoseconds: delay)
                 guard !Task.isCancelled else { return }
-                await self?.flushSettled(generation: token, isFinal: false)
+                await self?.flushSettled(generation: token, isFinal: false, reason: reason)
             }
         } else if !tail.isEmpty {
             self.lastSettleTail = tail
         }
     }
 
-    private func flushSettled(generation token: UInt64, isFinal: Bool) async {
+    private func flushSettled(generation token: UInt64, isFinal: Bool, reason: FlushReason) async {
         guard token == self.generation else { return }
         let languageID = SpokenLanguageResolver.sourceLanguage().id
         var cleaned = self.lastHeardText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
 
-        var split = TranslationClauseSegmenter.split(cleaned, languageID: languageID)
-        var absorbed = self.captionLog.sourceLines + self.inFlightSources
-        var unread = TranslationClauseSegmenter.unreadCompleted(
-            completed: split.completed,
-            already: absorbed
-        )
-        var tail = TranslationClauseSegmenter.leftoverTail(cleaned, already: absorbed)
-
         if LiveTranslationConfirm.shouldReDecode(
-            unread: unread,
-            tail: tail,
-            languageID: languageID,
-            isFinal: isFinal
-        ), let confirmed = await self.confirmTranscript?() {
+            isFinal: isFinal,
+            isPause: reason == .pauseConfirm,
+            languageID: languageID
+        ),
+           let confirmed = await self.confirmTranscript?() {
             let cleanedConfirm = confirmed.trimmingCharacters(in: .whitespacesAndNewlines)
-            if Self.shouldPreferConfirmation(cleanedConfirm, over: self.lastHeardText) {
+            if Self.shouldPreferConfirmation(
+                cleanedConfirm,
+                over: self.lastHeardText,
+                already: self.printedSources
+            ) {
                 self.lastHeardText = cleanedConfirm
                 cleaned = cleanedConfirm
-                split = TranslationClauseSegmenter.split(cleaned, languageID: languageID)
-                absorbed = self.captionLog.sourceLines + self.inFlightSources
-                unread = TranslationClauseSegmenter.unreadCompleted(
-                    completed: split.completed,
-                    already: absorbed
-                )
-                tail = TranslationClauseSegmenter.leftoverTail(cleaned, already: absorbed)
             }
         }
 
-        for sentence in unread {
-            self.enqueueCommit(sentence, reason: .completedSentence)
+        let remaining = TranslationClauseSegmenter.leftoverTail(
+            cleaned,
+            already: self.printedSources,
+            languageID: languageID
+        )
+        self.commitNextSettledUnit(
+            remaining: remaining,
+            languageID: languageID,
+            allowPauseFinalize: reason == .openTailAged,
+            forceOpenTail: false,
+            generation: token
+        )
+    }
+
+    private func commitNextSettledUnit(
+        remaining initial: String,
+        languageID: String,
+        allowPauseFinalize: Bool,
+        forceOpenTail: Bool,
+        generation token: UInt64
+    ) {
+        var remaining = initial
+        var steps = 0
+        while steps < 32, !remaining.isEmpty {
+            steps += 1
+            let next = TranslationClauseSegmenter.nextCommitUnit(
+                remaining,
+                languageID: languageID,
+                allowPauseFinalize: allowPauseFinalize
+            )
+            let unit: String
+            let rest: String
+            if let next {
+                unit = next.unit
+                rest = next.rest
+            } else if forceOpenTail {
+                let split = TranslationClauseSegmenter.split(remaining, languageID: languageID)
+                if let first = split.completed.first {
+                    unit = first
+                    rest = TranslationClauseSegmenter.leftoverTail(
+                        remaining,
+                        already: [first],
+                        languageID: languageID
+                    )
+                } else {
+                    unit = split.tail.isEmpty ? remaining : split.tail
+                    rest = ""
+                }
+            } else {
+                self.sourceDraft = remaining
+                self.lastSettleUnread = []
+                self.lastSettleTail = remaining
+                return
+            }
+
+            if rest == remaining { break }
+            if self.shouldSkipSettledUnit(unit) {
+                remaining = rest
+                continue
+            }
+
+            self.enqueueCommit(unit, reason: .completedSentence)
+            self.sourceDraft = rest
+            self.lastSettleUnread = []
+            self.lastSettleTail = rest
+            guard !rest.isEmpty else { return }
+            self.scheduleBacklogSettle(languageID: languageID, generation: token)
+            return
         }
 
-        let absorbedAfterEnqueue = self.captionLog.sourceLines + self.inFlightSources
-        tail = TranslationClauseSegmenter.leftoverTail(cleaned, already: absorbedAfterEnqueue)
-        self.sourceDraft = tail
+        self.sourceDraft = remaining
         self.lastSettleUnread = []
-        self.lastSettleTail = tail
-        switch TranslationClauseSegmenter.decision(forTail: tail, languageID: languageID) {
-        case .ignore:
-            return
-        case .commitNow:
-            self.enqueueCommit(tail, reason: .completedSentence)
-        case .waitForStability:
-            guard TranslationClauseSegmenter.isReadyToCommit(
-                tail,
-                languageID: languageID,
-                allowPauseFinalize: true
-            ) else { return }
-            self.enqueueCommit(tail, reason: .stableTail)
+        self.lastSettleTail = remaining
+    }
+
+    private func shouldSkipSettledUnit(_ unit: String) -> Bool {
+        if self.inFlightSources.contains(where: { TranslationClauseSegmenter.isSameClause($0, unit) }) {
+            return true
+        }
+        if let last = self.captionLog.sourceLines.last {
+            if TranslationClauseSegmenter.isSameClause(last, unit),
+               !TranslationClauseSegmenter.shouldReplaceLast(previous: last, incoming: unit)
+            {
+                return true
+            }
+            if TranslationClauseSegmenter.shouldReviseCommitted(
+                previous: last,
+                incoming: unit,
+                languageID: SpokenLanguageResolver.sourceLanguage().id
+            ), !TranslationClauseSegmenter.shouldReplaceLast(previous: last, incoming: unit) {
+                return true
+            }
+        }
+        if self.captionLog.sourceLines.contains(where: {
+            TranslationClauseSegmenter.isSameClause($0, unit)
+        }) {
+            return !TranslationClauseSegmenter.shouldReplaceLast(
+                previous: self.captionLog.sourceLines.last ?? "",
+                incoming: unit
+            )
+        }
+        return false
+    }
+
+    /// Commit leftover clauses one pause at a time. Never drain the rest of the
+    /// talk in the same turn, even when ASR restitched several sentences at once.
+    private func scheduleBacklogSettle(languageID: String, generation token: UInt64) {
+        self.completedSettleTask?.cancel()
+        self.tailSettleTask?.cancel()
+        self.tailSettleTask = Task { [weak self] in
+            try? await Task.sleep(
+                nanoseconds: LiveTranslationTiming.completeSettleNanoseconds(languageID: languageID)
+            )
+            guard !Task.isCancelled else { return }
+            await self?.flushSettled(generation: token, isFinal: false, reason: .completedClause)
         }
     }
 
-    private static func shouldPreferConfirmation(_ confirmed: String, over heard: String) -> Bool {
+    private static func shouldPreferConfirmation(
+        _ confirmed: String,
+        over heard: String,
+        already: [String] = []
+    ) -> Bool {
         let next = confirmed.trimmingCharacters(in: .whitespacesAndNewlines)
         let current = heard.trimmingCharacters(in: .whitespacesAndNewlines)
         if next.isEmpty { return false }
         if current.isEmpty { return true }
-        return next.count >= max(8, (current.count * 2) / 3)
+        if already.isEmpty {
+            return LiveTranslationConfirm.prefersFirstConfirmation(confirmed: next, heard: current)
+        }
+
+        let languageID = SpokenLanguageResolver.sourceLanguage().id
+        let nextLeftover = TranslationClauseSegmenter.leftoverTail(
+            next,
+            already: already,
+            languageID: languageID
+        )
+        let currentLeftover = TranslationClauseSegmenter.leftoverTail(
+            current,
+            already: already,
+            languageID: languageID
+        )
+        if nextLeftover.isEmpty { return false }
+        if currentLeftover.isEmpty { return true }
+        guard Self.isLeftoverRevision(nextLeftover, of: currentLeftover) else { return false }
+        return nextLeftover.count >= max(8, (currentLeftover.count * 2) / 3)
+    }
+
+    private static func isLeftoverRevision(_ incoming: String, of previous: String) -> Bool {
+        if TranslationClauseSegmenter.isSameClause(previous, incoming) { return true }
+        let left = Self.foldedClause(previous)
+        let right = Self.foldedClause(incoming)
+        guard !left.isEmpty, !right.isEmpty else { return false }
+        return right.hasPrefix(left) || left.hasPrefix(right)
+    }
+
+    private static func foldedClause(_ text: String) -> String {
+        let kept = text.lowercased().compactMap { character -> Character? in
+            if character.isLetter || character.isNumber { return character }
+            if character.isWhitespace { return " " }
+            return nil
+        }
+        return String(kept)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func restartSettlesAfterHold(generation token: UInt64, languageID: String) {
+        guard token == self.generation else { return }
+        let leftover = TranslationClauseSegmenter.leftoverTail(
+            self.lastHeardText,
+            already: self.printedSources,
+            languageID: languageID
+        )
+        let split = TranslationClauseSegmenter.split(leftover, languageID: languageID)
+        if split.completed.isEmpty, split.tail.isEmpty { return }
+        self.lastSettleUnread = []
+        self.lastSettleTail = ""
+        self.scheduleSettles(
+            unread: split.completed,
+            tail: split.tail,
+            languageID: languageID,
+            generation: token
+        )
     }
 
     func translateFinal(_ text: String) async -> String {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return text }
 
-        if let confirmed = await self.confirmTranscript?() {
-            let cleanedConfirm = confirmed.trimmingCharacters(in: .whitespacesAndNewlines)
-            if Self.shouldPreferConfirmation(cleanedConfirm, over: cleaned) {
-                self.lastHeardText = cleanedConfirm
-            } else {
-                self.lastHeardText = cleaned
-            }
-        } else {
-            self.lastHeardText = cleaned
-        }
+        self.lastHeardText = cleaned
 
-        await self.flushSettled(generation: self.generation, isFinal: true)
+        await self.flushSettled(generation: self.generation, isFinal: true, reason: .stop)
         if let chain = self.commitChain {
             await chain.value
         }
-        await self.waitForPolish()
 
         let languageID = SpokenLanguageResolver.sourceLanguage().id
         let heard = self.lastHeardText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let absorbed = self.captionLog.sourceLines + self.inFlightSources
-        let leftover = TranslationClauseSegmenter.leftoverTail(heard, already: absorbed)
-        let split = TranslationClauseSegmenter.split(leftover, languageID: languageID)
-        var units = split.completed
-        if !split.tail.isEmpty {
-            units.append(split.tail)
-        }
-
-        let unread = TranslationClauseSegmenter.unreadCompleted(completed: units, already: absorbed)
+        let leftover = TranslationClauseSegmenter.leftoverTail(
+            heard,
+            already: self.printedSources,
+            languageID: languageID
+        )
         let token = self.generation
-        for sentence in unread {
-            await self.commitUnit(sentence, generation: token, reason: .final)
+        var remaining = leftover
+        while let next = TranslationClauseSegmenter.nextCommitUnit(
+            remaining,
+            languageID: languageID,
+            allowPauseFinalize: false
+        ) {
+            await self.commitUnit(next.unit, generation: token, reason: .final)
+            remaining = next.rest
         }
-        await self.waitForPolish()
+        if !remaining.isEmpty {
+            let unit: String
+            if remaining.count >= LiveTranslationTiming.maxDraftCharacters {
+                unit = String(remaining.prefix(LiveTranslationTiming.maxDraftCharacters))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            } else {
+                unit = remaining
+            }
+            if !unit.isEmpty {
+                await self.commitUnit(unit, generation: token, reason: .final)
+            }
+        }
 
         self.sourceDraft = ""
         self.translatedDraft = self.captionLog.translatedLines.last ?? ""
+        self.translatedDraftSource = self.captionLog.sourceLines.last ?? ""
         return self.pendingInsertDocument()
     }
 
@@ -353,95 +736,121 @@ final class LiveTranslationSubscriber: ObservableObject {
         }
     }
 
-    private func commitUnit(_ source: String, generation: UInt64, reason: CommitReason) async {
+    private func commitUnit(_ source: String, generation: UInt64, reason _: CommitReason) async {
         let cleaned = source.trimmingCharacters(in: .whitespacesAndNewlines)
         defer { self.inFlightSources.removeAll { $0 == cleaned } }
         guard generation == self.generation else { return }
         guard !cleaned.isEmpty else { return }
 
+        if let lastSource = self.captionLog.sourceLines.last {
+            if TranslationClauseSegmenter.shouldIgnoreAsStalePrefix(previous: lastSource, incoming: cleaned) {
+                return
+            }
+            if TranslationClauseSegmenter.shouldReviseCommitted(
+                previous: lastSource,
+                incoming: cleaned,
+                languageID: SpokenLanguageResolver.sourceLanguage().id
+            ), !TranslationClauseSegmenter.shouldReplaceLast(previous: lastSource, incoming: cleaned) {
+                return
+            }
+        }
         let replaceLast = self.captionLog.sourceLines.last.map {
             TranslationClauseSegmenter.shouldReplaceLast(previous: $0, incoming: cleaned)
         } ?? false
         if !replaceLast, self.captionLog.sourceLines.last == cleaned {
             return
         }
-        if let lastSource = self.captionLog.sourceLines.last,
-           TranslationClauseSegmenter.shouldIgnoreAsStalePrefix(previous: lastSource, incoming: cleaned)
-        {
-            return
-        }
-
-        let languageID = SpokenLanguageResolver.sourceLanguage().id
-        let priorSource: [String]
-        let priorCaptions: [String]
-        if replaceLast {
-            priorSource = Array(
-                self.captionLog.sourceLines.dropLast().suffix(
-                    LiveTranslationTiming.contextCount(languageID: languageID)
-                )
-            )
-            priorCaptions = Array(self.captionLog.translatedLines.dropLast().suffix(
-                LiveTranslationTiming.polishPriorCaptionCount
-            ))
-        } else {
-            priorSource = self.captionLog.contextSourceLines(languageID: languageID)
-            priorCaptions = self.captionLog.contextTranslatedLines()
-        }
 
         do {
-            self.statusText = "Translating…"
-            let translated = try await self.performTranslation(cleaned)
-            guard generation == self.generation else { return }
-            let resolved = translated.isEmpty ? cleaned : translated
+            let resolved: String
+            if SpokenLanguageResolver.isSameLanguagePair() {
+                resolved = cleaned
+            } else if let cached = self.cachedLiveTranslation(for: cleaned) {
+                resolved = cached
+            } else {
+                self.statusText = "Translating…"
+                let translated = try await self.performTranslation(cleaned, kind: .commit)
+                guard generation == self.generation else { return }
+                guard let safe = LLMTranslationEngine.captionSafeForBoard(translated, sourceText: cleaned)
+                else {
+                    throw TranslationEngineError.localRejected
+                }
+                resolved = safe
+            }
 
             guard let committed = self.captionLog.commit(source: cleaned, translated: resolved) else { return }
-            self.adjustIndexes(trimmedCount: committed.trimmedCount)
+            self.archiveOverflow(committed.overflow)
+            self.adjustIndexes(trimmedCount: committed.overflow.count)
             self.committedLines = self.captionLog.translatedLines
-            self.statusText = ""
-
-            if self.sourceDraft == cleaned || reason == .final {
-                self.translatedDraft = resolved
+            if !self.committedLines.isEmpty {
+                SettingsStore.shared.theaterListenUsed = true
             }
+            self.didAutoRetryFailure = false
+            self.publishLatencySample(mtMilliseconds: self.lastLatencyMilliseconds ?? 0)
+            self.latencyTracker.resetUtterance()
 
-            self.schedulePolish(
-                lineID: committed.id,
-                sourceText: cleaned,
-                draft: resolved,
-                priorSource: priorSource,
-                priorCaptions: priorCaptions,
-                generation: generation
+            let heard = self.lastHeardText.isEmpty ? self.sourceDraft : self.lastHeardText
+            let leftover = TranslationClauseSegmenter.leftoverTail(
+                heard,
+                already: self.printedSources,
+                languageID: SpokenLanguageResolver.sourceLanguage().id
             )
+            self.sourceDraft = leftover
+            self.statusText = leftover.isEmpty ? "" : "Listening…"
+            if leftover.isEmpty {
+                self.translatedDraft = resolved
+                self.translatedDraftSource = cleaned
+            } else if TranslationClauseSegmenter.isSameClause(leftover, cleaned) {
+                self.sourceDraft = ""
+                self.translatedDraft = resolved
+                self.translatedDraftSource = cleaned
+                self.statusText = ""
+            } else {
+                self.translatedDraft = ""
+                self.translatedDraftSource = ""
+            }
         } catch {
             guard generation == self.generation else { return }
-            if let committed = self.captionLog.commit(source: cleaned, translated: cleaned) {
-                self.adjustIndexes(trimmedCount: committed.trimmedCount)
-            }
-            self.committedLines = self.captionLog.translatedLines
-            self.statusText = "Showing spoken line — translation failed"
+            self.lastFailedSource = cleaned
+            self.statusText = "Translation failed — Retry / Download pack"
             DebugLogger.shared.error(
                 "Lecture translation failed: \(error.localizedDescription)",
                 source: "LiveTranslation"
             )
+            if !self.didAutoRetryFailure {
+                self.didAutoRetryFailure = true
+                self.scheduleFailedRetry(cleaned, generation: generation)
+            }
         }
     }
 
-    private func performTranslation(_ text: String) async throws -> String {
+    private func cachedLiveTranslation(for source: String) -> String? {
+        let cleaned = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cached = self.translatedDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty, !cached.isEmpty else { return nil }
+        guard TranslationClauseSegmenter.isSameClause(self.translatedDraftSource, cleaned) else { return nil }
+        return cached
+    }
+
+    private func performTranslation(_ text: String, kind: TranslationRequestKind = .commit) async throws -> String {
         let settings = SettingsStore.shared
         let source = SpokenLanguageResolver.sourceLanguage(settings: settings)
         let target = SpokenLanguageResolver.targetLanguage(settings: settings)
+        if source.id == target.id {
+            self.lastLatencyMilliseconds = 0
+            return text
+        }
         self.appleEngine.prepare(source: source, target: target)
 
         let terms = TranslationGlossary.protectedTerms(from: settings)
-        let protected = TranslationGlossary.protect(text, terms: terms)
         let started = ProcessInfo.processInfo.systemUptime
-
-        var translated = try await self.translateWithRetry(
-            protected.text,
+        let translated = try await self.translateClause(
+            text,
             source: source,
-            target: target
+            target: target,
+            terms: terms,
+            kind: kind
         )
-        translated = TranslationGlossary.restore(translated, tokens: protected.tokens)
-
         let ms = Int(((ProcessInfo.processInfo.systemUptime - started) * 1000).rounded())
         self.lastLatencyMilliseconds = ms
         DebugLogger.shared.debug(
@@ -449,6 +858,250 @@ final class LiveTranslationSubscriber: ObservableObject {
             source: "LiveTranslation"
         )
         return translated
+    }
+
+    /// Apple Translation is `session.translate(text)` with no prompt. Isolated
+    /// Korean/Thai clauses lose zero-subject context, so commit sends the last
+    /// 2–4 source clauses plus the new one, then peels the new caption out.
+    private func translateClause(
+        _ text: String,
+        source: TranslationLanguage,
+        target: TranslationLanguage,
+        terms: [String],
+        kind: TranslationRequestKind
+    ) async throws -> String {
+        let prior = self.priorClausesForContextualTranslation(incoming: text)
+        if let local = await self.localCommitTranslation(
+            text,
+            priorSource: prior.sources,
+            source: source,
+            target: target,
+            terms: terms
+        ) {
+            return local
+        }
+        if !prior.sources.isEmpty {
+            let payload = TranslationClauseSegmenter.joinTranslatedLines(
+                prior.sources + [text],
+                languageID: source.id
+            )
+            let contextual = try await self.translateProtected(
+                payload,
+                terms: terms,
+                source: source,
+                target: target,
+                kind: kind
+            )
+            if let peeled = Self.peeledNewTranslation(
+                contextual,
+                priorTranslations: prior.translations,
+                targetID: target.id
+            ) {
+                return peeled
+            }
+        }
+        return try await self.translateProtected(
+            text,
+            terms: terms,
+            source: source,
+            target: target,
+            kind: kind
+        )
+    }
+
+    private func priorClausesForContextualTranslation(
+        incoming: String
+    ) -> (sources: [String], translations: [String]) {
+        var sources = self.captionLog.contextSourceLines
+        var translations = Array(self.captionLog.translatedLines.suffix(sources.count))
+        guard !sources.isEmpty, sources.count == translations.count else {
+            return ([], [])
+        }
+        if let last = sources.last,
+           TranslationClauseSegmenter.shouldReplaceLast(previous: last, incoming: incoming)
+        {
+            sources.removeLast()
+            translations.removeLast()
+        }
+        let count = min(LiveTranslationTiming.contextSentenceCount, sources.count)
+        guard count > 0 else { return ([], []) }
+        return (Array(sources.suffix(count)), Array(translations.suffix(count)))
+    }
+
+    private static func peeledNewTranslation(
+        _ translated: String,
+        priorTranslations: [String],
+        targetID: String
+    ) -> String? {
+        let cleaned = translated.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty, !priorTranslations.isEmpty else { return nil }
+        let leftover = TranslationClauseSegmenter.leftoverTail(
+            cleaned,
+            already: priorTranslations,
+            languageID: targetID
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+        if leftover.isEmpty { return nil }
+        if leftover == cleaned || TranslationClauseSegmenter.isSameClause(leftover, cleaned) {
+            return nil
+        }
+        if priorTranslations.contains(where: { TranslationClauseSegmenter.isSameClause($0, leftover) }) {
+            return nil
+        }
+        if Self.leftoverContainsPriorCaption(leftover, priors: priorTranslations) {
+            return nil
+        }
+        return leftover
+    }
+
+    private static func leftoverContainsPriorCaption(_ leftover: String, priors: [String]) -> Bool {
+        priors.contains { prior in
+            let trimmed = prior.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.count >= 2 else { return false }
+            return leftover.range(
+                of: trimmed,
+                options: [.caseInsensitive, .diacriticInsensitive]
+            ) != nil
+        }
+    }
+
+    private func localCommitTranslation(
+        _ text: String,
+        priorSource: [String],
+        source: TranslationLanguage,
+        target: TranslationLanguage,
+        terms: [String]
+    ) async -> String? {
+        guard self.llmEngine.isReadyForCommitTranslation() else { return nil }
+        let protected = TranslationGlossary.protect(text, terms: terms)
+        do {
+            let translated = try await self.llmEngine.translateCommit(
+                protected.text,
+                priorSource: priorSource,
+                source: source,
+                target: target
+            )
+            let restored = TranslationGlossary.restore(translated, tokens: protected.tokens)
+            if !TranslationGlossary.lostProtectedTerms(
+                source: text,
+                polished: restored,
+                terms: terms
+            ).isEmpty {
+                return nil
+            }
+            return restored
+        } catch {
+            DebugLogger.shared.debug(
+                "Local commit translation skipped: \(error.localizedDescription)",
+                source: "LiveTranslation"
+            )
+            return nil
+        }
+    }
+
+    private func translateProtected(
+        _ text: String,
+        terms: [String],
+        source: TranslationLanguage,
+        target: TranslationLanguage,
+        kind: TranslationRequestKind
+    ) async throws -> String {
+        let protected = TranslationGlossary.protect(text, terms: terms)
+        let translated = try await self.translateWithRetry(
+            protected.text,
+            source: source,
+            target: target,
+            engine: self.translator,
+            kind: kind
+        )
+        return TranslationGlossary.restore(translated, tokens: protected.tokens)
+    }
+
+    private func translateWithRetry(
+        _ text: String,
+        source: TranslationLanguage,
+        target: TranslationLanguage,
+        engine: TranslationEngine,
+        kind: TranslationRequestKind
+    ) async throws -> String {
+        do {
+            return try await engine.translate(text, source: source, target: target, kind: kind)
+        } catch {
+            if let engineError = error as? TranslationEngineError, engineError.isSuperseded {
+                throw error
+            }
+            DebugLogger.shared.debug(
+                "Apple Translation retry after \(error.localizedDescription)",
+                source: "LiveTranslation"
+            )
+            return try await engine.translate(text, source: source, target: target, kind: kind)
+        }
+    }
+
+    private func publishLatencySample(mtMilliseconds: Int) {
+        self.lastLatencySample = self.latencyTracker.markTranslated(
+            at: ProcessInfo.processInfo.systemUptime,
+            mtMilliseconds: mtMilliseconds,
+            thermal: ProcessInfo.processInfo.thermalState
+        )
+    }
+
+    private func archiveOverflow(_ overflow: [LectureCaptionEntry]) {
+        guard !overflow.isEmpty else { return }
+        self.archive.append(overflow)
+    }
+
+    private func cancelSettles() {
+        self.completedSettleTask?.cancel()
+        self.tailSettleTask?.cancel()
+        self.eouHoldTask?.cancel()
+        self.pauseRevisionTask?.cancel()
+        self.failedRetryTask?.cancel()
+        self.completedSettleTask = nil
+        self.tailSettleTask = nil
+        self.eouHoldTask = nil
+        self.pauseRevisionTask = nil
+        self.failedRetryTask = nil
+    }
+
+    private func shouldCancelPauseRevision(leftover: String) -> Bool {
+        let leftover = leftover.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !leftover.isEmpty else { return false }
+        if TranslationClauseSegmenter.isSameClause(self.sourceDraft, leftover) { return false }
+        if TranslationClauseSegmenter.shouldIgnoreAsStalePrefix(
+            previous: self.sourceDraft,
+            incoming: leftover
+        ) {
+            return false
+        }
+        return true
+    }
+
+    private func schedulePauseRevision() {
+        guard !self.didPauseReviseThisUtterance else { return }
+        guard self.pauseRevisionTask == nil else { return }
+        let token = self.generation
+        self.pauseRevisionTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: LiveTranslationTiming.eouHoldNanoseconds)
+            guard !Task.isCancelled else { return }
+            await self?.reviseOnPause(generation: token)
+        }
+    }
+
+    private func reviseOnPause(generation: UInt64) async {
+        guard generation == self.generation else { return }
+        guard !self.didPauseReviseThisUtterance else { return }
+        self.didPauseReviseThisUtterance = true
+        await self.flushSettled(generation: generation, isFinal: false, reason: .pauseConfirm)
+    }
+
+    private func scheduleFailedRetry(_ source: String, generation: UInt64) {
+        self.failedRetryTask?.cancel()
+        self.failedRetryTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled, let self else { return }
+            guard generation == self.generation, self.lastFailedSource == source else { return }
+            self.retryFailedTranslation()
+        }
     }
 
     private func schedulePolish(
@@ -482,7 +1135,9 @@ final class LiveTranslationSubscriber: ObservableObject {
                 guard let accepted = LLMTranslationEngine.acceptedPolished(
                     polished,
                     draft: draft,
-                    target: target
+                    target: target,
+                    priorSource: priorSource,
+                    priorCaptions: priorCaptions
                 ), accepted != draft else { return }
                 if !TranslationGlossary.lostProtectedTerms(
                     source: sourceText,
@@ -491,12 +1146,8 @@ final class LiveTranslationSubscriber: ObservableObject {
                 ).isEmpty {
                     return
                 }
-                if self.captionLog.updateTranslated(id: lineID, translated: accepted, wasPolished: true) {
-                    self.committedLines = self.captionLog.translatedLines
-                    if self.translatedDraft == draft {
-                        self.translatedDraft = accepted
-                    }
-                }
+                // Printed captions stay. Polish must not rewrite a line that
+                // is already on the board.
             } catch {
                 DebugLogger.shared.debug(
                     "Caption polish skipped: \(error.localizedDescription)",
@@ -504,22 +1155,6 @@ final class LiveTranslationSubscriber: ObservableObject {
                 )
             }
             self.polishTasks[lineID] = nil
-        }
-    }
-
-    private func translateWithRetry(
-        _ text: String,
-        source: TranslationLanguage,
-        target: TranslationLanguage
-    ) async throws -> String {
-        do {
-            return try await self.appleEngine.translate(text, source: source, target: target)
-        } catch {
-            DebugLogger.shared.debug(
-                "Apple Translation retry after \(error.localizedDescription)",
-                source: "LiveTranslation"
-            )
-            return try await self.appleEngine.translate(text, source: source, target: target)
         }
     }
 
@@ -552,22 +1187,6 @@ final class LiveTranslationSubscriber: ObservableObject {
             group.cancelAll()
             return first
         }
-    }
-
-    private func waitForPolish() async {
-        let tasks = Array(self.polishTasks.values)
-        await withTaskGroup(of: Void.self) { group in
-            for task in tasks {
-                group.addTask { await task.value }
-            }
-        }
-    }
-
-    private func cancelSettles() {
-        self.completedSettleTask?.cancel()
-        self.tailSettleTask?.cancel()
-        self.completedSettleTask = nil
-        self.tailSettleTask = nil
     }
 
     private func cancelCommitsAndPolish() {

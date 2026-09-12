@@ -11,6 +11,9 @@ import SwiftUI
 
 enum SettingsSearchTarget: Hashable {
     case liveTranslation
+    case theaterAppearance
+    case translateInsertShortcut
+    case captionListenShortcut
     case general
     case launchAtStartup
     case showWindowAtLogin
@@ -18,14 +21,11 @@ enum SettingsSearchTarget: Hashable {
     case accentColor
     case transcriptionSounds
     case automaticUpdates
-    case analyticsPrivacy
 
     case dictation
     case microphonePermission
     case globalHotkey
     case primaryDictationShortcuts
-    case commandModeShortcut
-    case editModeShortcut
     case cancelRecordingShortcut
     case pasteLastTranscriptionShortcut
     case activationMode
@@ -64,10 +64,11 @@ enum SettingsSearchTarget: Hashable {
     case experimental
     case fasterLongDictation
     case historyPerformance
+    case aiProviders
 
     var section: SettingsSection {
         switch self {
-        case .liveTranslation:
+        case .liveTranslation, .theaterAppearance, .translateInsertShortcut, .captionListenShortcut:
             return .translation
 
         case .general,
@@ -80,12 +81,9 @@ enum SettingsSearchTarget: Hashable {
             return .general
 
         case .dictation,
-             .analyticsPrivacy,
              .microphonePermission,
              .globalHotkey,
              .primaryDictationShortcuts,
-             .commandModeShortcut,
-             .editModeShortcut,
              .cancelRecordingShortcut,
              .pasteLastTranscriptionShortcut,
              .activationMode,
@@ -116,7 +114,10 @@ enum SettingsSearchTarget: Hashable {
              .overlayStyle,
              .livePreview,
              .bottomOffset:
-            return .overlay
+            return .dictation
+
+        case .aiProviders:
+            return .aiProviders
 
         case .dataAndDiagnostics, .backupAndRestore, .debugLogs:
             return .dataAndDiagnostics
@@ -133,9 +134,9 @@ extension SettingsSection {
         case .translation: return .liveTranslation
         case .general: return .general
         case .dictation: return .dictation
+        case .aiProviders: return .aiProviders
         case .notifications: return .notifications
         case .audio: return .audio
-        case .overlay: return .overlay
         case .dataAndDiagnostics: return .dataAndDiagnostics
         case .experimental: return .experimental
         }
@@ -172,10 +173,29 @@ enum SettingsSearchIndex {
     private static let entries: [Entry] = [
         .init(
             target: .liveTranslation,
-            title: "Translate",
-            terms: ["translate theater captions insert hotkey language pair apple translation korean english thai"]
+            title: "Theater",
+            terms: ["translate theater captions language pair apple translation korean english thai I speak"]
         ),
-        .init(target: .general, title: "General", terms: ["app settings preferences"]),
+        .init(
+            target: .theaterAppearance,
+            title: "Theater Window",
+            terms: [
+                "caption font size spoken line source translation theater window captions only dark light appearance theme",
+                "hide from screen share zoom keynote recording capture projector OBS",
+                "also hear english korean thai questions whisper auto detect Q&A",
+            ]
+        ),
+        .init(
+            target: .captionListenShortcut,
+            title: "Listen Shortcut",
+            terms: ["listen hotkey shortcut theater captions"]
+        ),
+        .init(
+            target: .translateInsertShortcut,
+            title: "Type into an App",
+            terms: ["insert hotkey shortcut type translation into app"]
+        ),
+        .init(target: .general, title: "General", terms: ["app settings preferences startup menu bar dock"]),
         .init(
             target: .launchAtStartup,
             title: "Launch at startup",
@@ -202,11 +222,6 @@ enum SettingsSearchIndex {
             title: "Automatic Updates",
             terms: ["beta releases check for updates release notes rollback previous builds version"]
         ),
-        .init(
-            target: .analyticsPrivacy,
-            title: "Share Detailed Anonymous Analytics",
-            terms: ["Analytics Privacy what we collect telemetry data active use weekly opt out"]
-        ),
 
         .init(target: .dictation, title: "Dictation", terms: ["typing transcription keyboard preferences"]),
         .init(
@@ -220,8 +235,6 @@ enum SettingsSearchIndex {
             title: "Primary Dictation Shortcuts",
             terms: ["keyboard shortcut mouse button record hotkey"]
         ),
-        .init(target: .commandModeShortcut, title: "Command Mode", terms: ["voice commands terminal hotkey shortcut"]),
-        .init(target: .editModeShortcut, title: "Edit Mode", terms: ["rewrite selected text hotkey shortcut"]),
         .init(
             target: .cancelRecordingShortcut,
             title: "Cancel Recording",
@@ -276,7 +289,7 @@ enum SettingsSearchIndex {
         .init(
             target: .dictionarySuggestions,
             title: "Auto-Learn Corrections",
-            terms: ["automatic corrections learn words custom dictionary frequency ignore"]
+            terms: ["automatic corrections learn words custom dictionary frequency ignore import lecture terms glossary pack"]
         ),
         .init(
             target: .accessibilityPermission,
@@ -316,7 +329,12 @@ enum SettingsSearchIndex {
             terms: ["speaker headphones audio system default refresh loading"]
         ),
 
-        .init(target: .overlay, title: "Overlay", terms: ["recording indicator notch pill visualizer"]),
+        .init(
+            target: .aiProviders,
+            title: "AI Providers",
+            terms: ["ai providers local models api cleanup styles dictation polish"]
+        ),
+        .init(target: .overlay, title: "Recording Overlay", terms: ["recording indicator notch pill visualizer overlay"]),
         .init(
             target: .overlaySensitivity,
             title: "Sensitivity",

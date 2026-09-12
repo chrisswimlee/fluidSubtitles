@@ -1,6 +1,10 @@
 import AppKit
 import Foundation
 import PromiseKit
+import Security
+
+// swiftlint:disable function_body_length cyclomatic_complexity type_body_length
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
 
 enum SimpleUpdateError: Error, LocalizedError {
     case invalidURL
@@ -13,6 +17,9 @@ enum SimpleUpdateError: Error, LocalizedError {
     case unzipFailed
     case notAnAppBundle
     case codesignMismatch
+    case checksumMissing
+    case checksumMismatch
+    case unexpectedBundleID
     case rollbackUnavailable
     case rollbackRestoreFailed
     case updatesNotConfigured
@@ -29,6 +36,9 @@ enum SimpleUpdateError: Error, LocalizedError {
         case .unzipFailed: return "Failed to extract the update archive."
         case .notAnAppBundle: return "Extracted content does not contain an app bundle."
         case .codesignMismatch: return "Downloaded app’s code signature does not match current app."
+        case .checksumMissing: return "The GitHub release does not include a SHA256SUMS file."
+        case .checksumMismatch: return "The downloaded update did not match the published SHA256."
+        case .unexpectedBundleID: return "The downloaded update is not a fluidSubtitles app."
         case .rollbackUnavailable: return "No rollback backup is available."
         case .rollbackRestoreFailed: return "Failed to restore a previous version."
         case .updatesNotConfigured: return "\(FluidProduct.displayName) does not publish automatic updates yet."
@@ -247,12 +257,31 @@ final class SimpleUpdater {
         }
     }
 
-    // Allowed Apple Developer Team IDs for code-sign validation
-    // Restrict update transitions to this app's approved signing teams.
-    private let allowedTeamIDs: Set<String> = [
-        "V4J43B279J",
-        "537RRRT57V",
-    ]
+    // Allowed Apple Developer Team IDs for code-sign validation.
+    // Always include the running app’s team so this fork can update itself.
+    private var allowedTeamIDs: Set<String> {
+        var ids = FluidProduct.allowedUpdateTeamIDs
+        if let current = Self.currentSigningTeamID() {
+            ids.insert(current)
+        }
+        return ids
+    }
+
+    private static func currentSigningTeamID() -> String? {
+        var staticCode: SecStaticCode?
+        guard SecStaticCodeCreateWithPath(Bundle.main.bundleURL as CFURL, [], &staticCode) == errSecSuccess,
+              let staticCode
+        else { return nil }
+        var info: CFDictionary?
+        guard SecCodeCopySigningInformation(
+            staticCode,
+            SecCSFlags(rawValue: kSecCSSigningInformation),
+            &info
+        ) == errSecSuccess,
+              let info = info as? [String: Any]
+        else { return nil }
+        return info[kSecCodeInfoTeamIdentifier as String] as? String
+    }
 
     private static let githubDateFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
@@ -378,7 +407,6 @@ final class SimpleUpdater {
             throw SimpleUpdateError.noSuitableRelease
         }
 
-        let currentBundle = Bundle.main
         // up to date
         if !(latestVersion > current) {
             throw PMKError.cancelled // mimic AppUpdater semantics for up-to-date
@@ -397,6 +425,12 @@ final class SimpleUpdater {
         }
 
         guard let asset = asset else { throw SimpleUpdateError.noAsset }
+        guard let checksumAsset = latest.assets.first(where: {
+            $0.name.caseInsensitiveCompare("SHA256SUMS") == .orderedSame ||
+                $0.name.caseInsensitiveCompare("SHA256SUMS.txt") == .orderedSame
+        }) else {
+            throw SimpleUpdateError.checksumMissing
+        }
 
         self.showUpdateInstallStatus(version: rawVersion)
 
@@ -415,7 +449,24 @@ final class SimpleUpdater {
             throw SimpleUpdateError.downloadFailed
         }
 
-        // unzip
+        let checksumText: String
+        do {
+            let (data, _) = try await URLSession.shared.data(from: checksumAsset.browser_download_url)
+            checksumText = String(data: data, encoding: .utf8) ?? ""
+        } catch {
+            throw SimpleUpdateError.checksumMissing
+        }
+        guard let expectedDigest = UpdateSignaturePolicy.expectedSHA256(
+            fromChecksumFile: checksumText,
+            assetName: downloadURL.lastPathComponent
+        ) else {
+            throw SimpleUpdateError.checksumMissing
+        }
+        let actualDigest = UpdateSignaturePolicy.hexSHA256(of: try Data(contentsOf: downloadURL))
+        guard actualDigest == expectedDigest else {
+            throw SimpleUpdateError.checksumMismatch
+        }
+
         let extractedBundleURL: URL
         do {
             extractedBundleURL = try await self.unzip(at: downloadURL)
@@ -427,52 +478,41 @@ final class SimpleUpdater {
             throw SimpleUpdateError.notAnAppBundle
         }
 
-        // Validate code signing identity matches (skip in DEBUG for easier local testing)
-        #if DEBUG
-        // In Debug builds the local app is typically signed with a development cert, while
-        // releases are signed with Developer ID. Skip strict check to enable testing.
-        _ = currentBundle // keep reference used in Release path
-        #else
-        let curID = try await codeSigningIdentity(for: currentBundle.bundleURL)
-        let newID = try await codeSigningIdentity(for: extractedBundleURL)
-
-        func teamID(from identity: String) -> String? {
-            // Handle TeamIdentifier= format first
-            if identity.hasPrefix("TeamIdentifier=") {
-                return String(identity.dropFirst("TeamIdentifier=".count))
-            }
-
-            // Handle Authority= format (extract team ID from parentheses)
-            guard let l = identity.lastIndex(of: "("), let r = identity.lastIndex(of: ")"), l < r else { return nil }
-            let inside = identity[identity.index(after: l)..<r]
-            return String(inside)
+        try await self.verifyCodeSignature(for: extractedBundleURL)
+        let newInfo = try await self.codeSigningInformation(for: extractedBundleURL)
+        let newTeam = UpdateSignaturePolicy.teamID(fromCodesignOutput: newInfo)
+        let newBundleID = UpdateSignaturePolicy.bundleIdentifier(fromCodesignOutput: newInfo)
+            ?? Bundle(url: extractedBundleURL)?.bundleIdentifier
+        guard newBundleID == FluidProduct.bundleIdentifier else {
+            throw SimpleUpdateError.unexpectedBundleID
+        }
+        let designated = UpdateSignaturePolicy.designatedRequirement(fromCodesignOutput: newInfo) ?? ""
+        if !designated.contains(FluidProduct.bundleIdentifier) {
+            throw SimpleUpdateError.unexpectedBundleID
         }
 
-        // Allow update if:
-        // - full identity matches OR
-        // - Team IDs match OR
-        // - both current and new Team IDs are in the allowedTeamIDs set
-        // This enables dev→prod updates across your two known Team IDs.
-        let sameIdentity = curID == newID
-        let curTeam = teamID(from: curID)
-        let newTeam = teamID(from: newID)
-        let sameTeam = (curTeam != nil && curTeam == newTeam)
-        let bothAllowed: Bool = {
-            guard let ct = curTeam, let nt = newTeam else { return false }
-            return self.allowedTeamIDs.contains(ct) && self.allowedTeamIDs.contains(nt)
-        }()
-
-        guard sameIdentity || sameTeam || bothAllowed else {
-            DebugLogger.shared.error("SimpleUpdater: Code-sign mismatch. Current=\(curID) New=\(newID)", source: "SimpleUpdater")
-            DebugLogger.shared.error("SimpleUpdater: Current Team=\(curTeam ?? "none") New Team=\(newTeam ?? "none")", source: "SimpleUpdater")
+        let currentTeam = Self.currentSigningTeamID()
+        let accepted = UpdateSignaturePolicy.accepts(
+            currentTeam: currentTeam,
+            newTeam: newTeam,
+            allowed: self.allowedTeamIDs,
+            bundleIdentifier: newBundleID
+        )
+        guard accepted else {
+            DebugLogger.shared.error(
+                "SimpleUpdater: Code-sign mismatch. Current Team=\(currentTeam ?? "none") New Team=\(newTeam ?? "none")",
+                source: "SimpleUpdater"
+            )
             throw SimpleUpdateError.codesignMismatch
         }
-        #endif
 
         self.createRollbackBackup(beforeRollback: false)
 
         // Replace and relaunch
-        try self.performSwapAndRelaunch(installedAppURL: currentBundle.bundleURL, downloadedAppURL: extractedBundleURL)
+        try self.performSwapAndRelaunch(
+            installedAppURL: Bundle.main.bundleURL,
+            downloadedAppURL: extractedBundleURL
+        )
         shouldKeepOperationActive = true
     }
 
@@ -808,56 +848,73 @@ final class SimpleUpdater {
     }
 
     private func unzip(at url: URL) async throws -> URL {
-        let workDir = url.deletingLastPathComponent()
+        let extractDir = url.deletingLastPathComponent()
+            .appendingPathComponent("extract-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: extractDir, withIntermediateDirectories: true)
         let proc = Process()
-        proc.currentDirectoryURL = workDir
-        proc.launchPath = "/usr/bin/unzip"
-        proc.arguments = [url.path]
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+        proc.arguments = ["-o", url.path, "-d", extractDir.path]
 
         return try await withCheckedThrowingContinuation { cont in
-            proc.terminationHandler = { _ in
-                // Find first .app in workDir
-                if let appURL = try? FileManager.default.contentsOfDirectory(
-                    at: workDir,
-                    includingPropertiesForKeys: [
-                        .isDirectoryKey,
-                    ],
-                    options: [.skipsSubdirectoryDescendants]
-                )
-                .first(where: { $0.pathExtension == "app"
-                }) {
-                    cont.resume(returning: appURL)
-                } else {
+            proc.terminationHandler = { process in
+                guard process.terminationStatus == 0,
+                      let appURL = UpdateSignaturePolicy.selectSoleTopLevelApp(in: extractDir),
+                      UpdateSignaturePolicy.isSafeExtractedApp(appURL, workDirectory: extractDir)
+                else {
                     cont.resume(throwing: SimpleUpdateError.unzipFailed)
+                    return
+                }
+                cont.resume(returning: appURL)
+            }
+            do { try proc.run() } catch { cont.resume(throwing: error) }
+        }
+    }
+
+    private func verifyCodeSignature(for bundleURL: URL) async throws {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        proc.arguments = ["--verify", "--deep", "--strict", bundleURL.path]
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            proc.terminationHandler = { process in
+                if process.terminationStatus == 0 {
+                    cont.resume()
+                } else {
+                    cont.resume(throwing: SimpleUpdateError.codesignMismatch)
                 }
             }
             do { try proc.run() } catch { cont.resume(throwing: error) }
         }
     }
 
-    private func codeSigningIdentity(for bundleURL: URL) async throws -> String {
-        let proc = Process()
-        proc.launchPath = "/usr/bin/codesign"
-        proc.arguments = ["-dvvv", bundleURL.path]
-        let pipe = Pipe()
-        proc.standardError = pipe
+    private func codeSigningInformation(for bundleURL: URL) async throws -> String {
+        let details = Process()
+        details.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        details.arguments = ["-dvvv", bundleURL.path]
+        let detailsPipe = Pipe()
+        details.standardError = detailsPipe
 
-        return try await withCheckedThrowingContinuation { cont in
-            proc.terminationHandler = { _ in
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                let s = String(data: data, encoding: .utf8) ?? ""
+        let requirements = Process()
+        requirements.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        requirements.arguments = ["-d", "--requirements", "-", bundleURL.path]
+        let requirementsPipe = Pipe()
+        requirements.standardOutput = requirementsPipe
+        requirements.standardError = Pipe()
 
-                // First try to get TeamIdentifier (most reliable)
-                if let teamLine = s.split(separator: "\n").first(where: { $0.hasPrefix("TeamIdentifier=") }) {
-                    cont.resume(returning: String(teamLine))
-                } else {
-                    // Fallback to Authority line
-                    let line = s.split(separator: "\n").first(where: { $0.hasPrefix("Authority=") })
-                    cont.resume(returning: line.map(String.init) ?? "")
-                }
-            }
-            do { try proc.run() } catch { cont.resume(throwing: error) }
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            details.terminationHandler = { _ in cont.resume() }
+            do { try details.run() } catch { cont.resume(throwing: error) }
         }
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            requirements.terminationHandler = { _ in cont.resume() }
+            do { try requirements.run() } catch { cont.resume(throwing: error) }
+        }
+
+        let detailText = String(data: detailsPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let requirementText = String(
+            data: requirementsPipe.fileHandleForReading.readDataToEndOfFile(),
+            encoding: .utf8
+        ) ?? ""
+        return detailText + "\n" + requirementText
     }
 
     private func performSwapAndRelaunch(installedAppURL: URL, downloadedAppURL: URL) throws {

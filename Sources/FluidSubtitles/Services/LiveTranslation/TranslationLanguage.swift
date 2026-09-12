@@ -28,6 +28,8 @@ enum TranslationLanguageCatalog {
     static let thai = TranslationLanguage(id: "th", displayName: "Thai", appleLanguageCode: "th")
 
     /// fluidSubtitles only translates among these three languages.
+    /// Theater speech: Korean works with Apple Speech, Cohere, or Whisper.
+    /// Thai works best with Apple Speech or Whisper; Nemotron Thai is experimental.
     static let all: [TranslationLanguage] = [
         Self.english,
         Self.korean,
@@ -35,6 +37,17 @@ enum TranslationLanguageCatalog {
     ]
 
     static let supportedIDs: Set<String> = Set(Self.all.map(\.id))
+
+    /// Shown under Theater language pickers when I speak is Thai and no mismatch is visible.
+    static let thaiTheaterEngineHint = "Thai speech works best with Apple Speech or Whisper."
+
+    /// Nemotron can list Thai, but Theater should not treat that as a production default.
+    static let thaiNemotronExperimentalWarning =
+        "Thai is experimental on Nemotron. Apple Speech or Whisper is the better Theater default."
+
+    static func theaterEngineHint(forSource source: TranslationLanguage) -> String? {
+        source.id == Self.thai.id ? Self.thaiTheaterEngineHint : nil
+    }
 
     static func displayName(for language: Locale.Language) -> String {
         let identifier = language.minimalIdentifier
@@ -82,11 +95,11 @@ enum TranslationLanguageCatalog {
     }
 
     static func defaultTarget(forSource source: TranslationLanguage) -> TranslationLanguage {
-        source.id == Self.english.id ? Self.thai : Self.english
+        source.id == Self.english.id ? Self.korean : Self.english
     }
 
-    static func targets(excluding source: TranslationLanguage) -> [TranslationLanguage] {
-        self.all.filter { $0.id != source.id }
+    static func targets(excluding _: TranslationLanguage) -> [TranslationLanguage] {
+        self.all
     }
 
     /// Prefer Apple's already-listed language (especially regionless `en`) over a constructed locale.
@@ -115,4 +128,24 @@ enum TranslationListenKind: String, Sendable {
     case captions
     /// Type the translation into the app that was focused when listening started.
     case insert
+}
+
+/// Ordered ASR hints for Theater Q&A. Whisper can auto-detect when extras are on.
+enum SpokenLanguageHints {
+    static func orderedIDs(primaryID: String, alsoHearOthers: Bool) -> [String] {
+        let primary = TranslationLanguageCatalog.language(id: primaryID)?.id
+            ?? TranslationLanguageCatalog.english.id
+        var ids = [primary]
+        if alsoHearOthers {
+            for language in TranslationLanguageCatalog.all where language.id != primary {
+                ids.append(language.id)
+            }
+        }
+        return ids
+    }
+
+    /// `nil` means Whisper auto-detect. Apple Speech stays on I speak.
+    static func whisperLanguageCode(stored: String?, alsoHearOthers: Bool) -> String? {
+        alsoHearOthers ? nil : stored
+    }
 }

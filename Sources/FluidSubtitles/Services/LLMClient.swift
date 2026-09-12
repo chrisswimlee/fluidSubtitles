@@ -1,5 +1,8 @@
 import Foundation
 
+// swiftlint:disable function_body_length cyclomatic_complexity type_body_length
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
+
 // MARK: - Error Types
 
 nonisolated enum LLMError: Error, LocalizedError, @unchecked Sendable {

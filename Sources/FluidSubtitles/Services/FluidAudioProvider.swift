@@ -790,8 +790,7 @@ final class FluidAudioProvider: TranscriptionProvider {
         DebugLogger.shared.info("FluidAudioProvider: released in-memory models", source: "FluidAudioProvider")
     }
 
-    /// Provides direct access to the underlying AsrManager for advanced use cases
-    /// (e.g., MeetingTranscriptionService sharing)
+    /// Direct access to the underlying AsrManager for in-process model sharing.
     var underlyingManager: AsrManager? {
         return self.streamingAsrManager
     }
@@ -879,3 +878,6 @@ final class FluidAudioProvider: TranscriptionProvider {
     func resetStreamingPreviewCache() {}
 }
 #endif
+// swiftlint:disable function_body_length cyclomatic_complexity type_body_length
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
+

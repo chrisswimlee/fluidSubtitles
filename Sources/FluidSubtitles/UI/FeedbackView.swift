@@ -26,22 +26,11 @@ struct FeedbackView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                // Header
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Image(systemName: "envelope.fill")
-                            .font(.system(size: 32))
-                            .foregroundStyle(self.theme.palette.accent)
-                        VStack(alignment: .leading) {
-                            Text("Send Feedback")
-                                .font(.system(size: 28, weight: .bold))
-                            Text("Help us improve \(FluidProduct.displayName)")
-                                .font(.system(size: 16))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                .padding(.bottom, 8)
+                FluidPageHeader(
+                    systemImage: "envelope.fill",
+                    title: "Feedback",
+                    subtitle: "Report a problem or suggest a change."
+                )
 
                 // Friendly Message & GitHub CTA
                 ThemedCard(style: .prominent, hoverEffect: false) {
@@ -52,11 +41,11 @@ struct FeedbackView: View {
                                 .foregroundStyle(.pink)
 
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("We'd love to hear from you!")
+                                Text("What should change?")
                                     .font(.system(size: 18, weight: .semibold))
                                     .foregroundStyle(self.theme.palette.primaryText)
 
-                                Text("Your feedback helps us make \(FluidProduct.displayName) even better")
+                                Text("A short note is enough. Include steps if something broke.")
                                     .font(.system(size: 14))
                                     .foregroundStyle(self.theme.palette.secondaryText)
                             }
@@ -112,7 +101,6 @@ struct FeedbackView: View {
                             }
                         }
                     }
-                    .padding(20)
                 }
 
                 // Feedback Form
@@ -188,11 +176,10 @@ struct FeedbackView: View {
                             }
                         }
                     }
-                    .padding(20)
                 }
                 .modifier(CardAppearAnimation(delay: 0.1, appear: self.$appear))
             }
-            .padding(24)
+            .fluidPageContent()
         }
         .onAppear {
             self.appear = true

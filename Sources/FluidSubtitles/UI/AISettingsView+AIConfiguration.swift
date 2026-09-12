@@ -8,6 +8,9 @@
 import AppKit
 import SwiftUI
 
+// swiftlint:disable file_length type_body_length function_body_length cyclomatic_complexity
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
+
 // MARK: - Conditional Drawing Group Modifier
 
 /// Applies drawingGroup() only when enabled, allowing conditional GPU rasterization.
@@ -63,7 +66,6 @@ extension AIEnhancementSettingsView {
                     .transition(.opacity)
                     .animation(.easeOut(duration: 0.12), value: self.selectedConfigurationSection)
                 }
-                .padding(16)
             }
         }
     }
@@ -71,42 +73,21 @@ extension AIEnhancementSettingsView {
     private var aiSetupHeader: some View {
         let isProviders = self.selectedConfigurationSection == .providers
 
-        return HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(self.theme.palette.contentBackground.opacity(0.82))
-                    .overlay(
-                        LinearGradient(
-                            colors: [.white.opacity(0.1), .clear],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(self.theme.palette.accent.opacity(0.35), lineWidth: 1)
-                    )
-
-                Image(systemName: isProviders ? "cpu" : "wand.and.stars")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(self.theme.palette.accent)
+        return FluidPageHeader(
+            systemImage: isProviders ? "cpu" : "wand.and.stars",
+            title: isProviders ? "AI Providers" : "Cleanup Styles",
+            subtitle: isProviders
+                ? "Configure local models and API providers."
+                : "Choose how \(FluidProduct.displayName) cleans up your dictation. This cleans dictation. Theater uses Custom Dictionary."
+        ) {
+            Picker("AI section", selection: self.$selectedConfigurationSection) {
+                Text("Providers").tag(AIEnhancementConfigurationSection.providers)
+                Text("Cleanup Styles").tag(AIEnhancementConfigurationSection.advancedPrompts)
             }
-            .frame(width: 34, height: 34)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(isProviders ? "AI Providers" : "Cleanup Styles")
-                    .font(.title3)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(self.theme.palette.primaryText)
-                Text(isProviders
-                    ? "Configure local models and API providers."
-                    : "Choose how \(FluidProduct.displayName) cleans up your dictation.")
-                    .font(.caption)
-                    .foregroundStyle(self.theme.palette.secondaryText)
-            }
-
-            Spacer()
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 280)
+            .labelsHidden()
+            .accessibilityLabel("AI section")
         }
     }
 

@@ -1,5 +1,8 @@
 import Foundation
 
+// swiftlint:disable function_body_length cyclomatic_complexity type_body_length
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
+
 extension ASRService {
     static func applySpokenPunctuationFormatting(
         _ text: String,
@@ -92,9 +95,9 @@ private enum SpokenPunctuationFormatter {
             }
         }
 
-        var isHorizontalWhitespaceText: Bool {
+        var isSpokenHorizontalWhitespaceText: Bool {
             guard case let .text(text) = self, !text.isEmpty else { return false }
-            return text.allSatisfy(\.isHorizontalWhitespace)
+            return text.allSatisfy(\.isSpokenHorizontalWhitespace)
         }
     }
 
@@ -102,9 +105,9 @@ private enum SpokenPunctuationFormatter {
         case text(String)
         case punctuation(symbol: String, spacing: Spacing)
 
-        var isHorizontalWhitespaceText: Bool {
+        var isSpokenHorizontalWhitespaceText: Bool {
             guard case let .text(text) = self, !text.isEmpty else { return false }
-            return text.allSatisfy(\.isHorizontalWhitespace)
+            return text.allSatisfy(\.isSpokenHorizontalWhitespace)
         }
 
         var isFormattingAction: Bool {
@@ -557,10 +560,10 @@ private enum SpokenPunctuationFormatter {
         var cursor = index
         for (wordIndex, prefixWord) in prefixWords.enumerated() {
             if wordIndex > 0 {
-                guard cursor < tokens.count, tokens[cursor].isHorizontalWhitespaceText else {
+                guard cursor < tokens.count, tokens[cursor].isSpokenHorizontalWhitespaceText else {
                     return nil
                 }
-                while cursor < tokens.count, tokens[cursor].isHorizontalWhitespaceText {
+                while cursor < tokens.count, tokens[cursor].isSpokenHorizontalWhitespaceText {
                     cursor += 1
                 }
             }
@@ -571,10 +574,10 @@ private enum SpokenPunctuationFormatter {
             cursor += 1
         }
 
-        guard cursor < tokens.count, tokens[cursor].isHorizontalWhitespaceText else {
+        guard cursor < tokens.count, tokens[cursor].isSpokenHorizontalWhitespaceText else {
             return nil
         }
-        while cursor < tokens.count, tokens[cursor].isHorizontalWhitespaceText {
+        while cursor < tokens.count, tokens[cursor].isSpokenHorizontalWhitespaceText {
             cursor += 1
         }
         return cursor < tokens.count ? cursor : nil
@@ -597,11 +600,11 @@ private enum SpokenPunctuationFormatter {
             var matched = true
             for (wordIndex, expectedWord) in rule.words.enumerated() {
                 if wordIndex > 0 {
-                    guard cursor < tokens.count, tokens[cursor].isHorizontalWhitespaceText else {
+                    guard cursor < tokens.count, tokens[cursor].isSpokenHorizontalWhitespaceText else {
                         matched = false
                         break
                     }
-                    while cursor < tokens.count, tokens[cursor].isHorizontalWhitespaceText {
+                    while cursor < tokens.count, tokens[cursor].isSpokenHorizontalWhitespaceText {
                         cursor += 1
                     }
                 }
@@ -733,7 +736,7 @@ private enum SpokenPunctuationFormatter {
         guard index > 0 else { return nil }
         var cursor = index - 1
         while cursor >= 0 {
-            if !tokens[cursor].isHorizontalWhitespaceText {
+            if !tokens[cursor].isSpokenHorizontalWhitespaceText {
                 return cursor
             }
             if cursor == 0 { break }
@@ -750,7 +753,7 @@ private enum SpokenPunctuationFormatter {
     private static func significantTokenIndex(atOrAfter index: Int, in tokens: [Token]) -> Int? {
         var cursor = index
         while cursor < tokens.count {
-            if !tokens[cursor].isHorizontalWhitespaceText {
+            if !tokens[cursor].isSpokenHorizontalWhitespaceText {
                 return cursor
             }
             cursor += 1
@@ -840,7 +843,7 @@ private enum SpokenPunctuationFormatter {
 
     private static func removingTrailingGeneratedPeriod(from text: String) -> String {
         var cleaned = text
-        while cleaned.last?.isHorizontalWhitespace == true {
+        while cleaned.last?.isSpokenHorizontalWhitespace == true {
             cleaned.removeLast()
         }
         guard cleaned.last == "." else { return text }
@@ -854,7 +857,7 @@ private enum SpokenPunctuationFormatter {
 
     private static func removingLeadingGeneratedPunctuation(from text: String, includesComma: Bool) -> String {
         var punctuationIndex = text.startIndex
-        while punctuationIndex < text.endIndex, text[punctuationIndex].isHorizontalWhitespace {
+        while punctuationIndex < text.endIndex, text[punctuationIndex].isSpokenHorizontalWhitespace {
             punctuationIndex = text.index(after: punctuationIndex)
         }
         guard punctuationIndex < text.endIndex else { return text }
@@ -865,7 +868,7 @@ private enum SpokenPunctuationFormatter {
         guard afterPunctuation == text.endIndex || text[afterPunctuation] != punctuation else { return text }
 
         var remainderStart = afterPunctuation
-        while remainderStart < text.endIndex, text[remainderStart].isHorizontalWhitespace {
+        while remainderStart < text.endIndex, text[remainderStart].isSpokenHorizontalWhitespace {
             remainderStart = text.index(after: remainderStart)
         }
         return String(text[remainderStart...])
@@ -893,7 +896,7 @@ private enum SpokenPunctuationFormatter {
         guard index > 0 else { return nil }
         var cursor = index - 1
         while cursor >= 0 {
-            if !parts[cursor].isHorizontalWhitespaceText {
+            if !parts[cursor].isSpokenHorizontalWhitespaceText {
                 return parts[cursor]
             }
             if cursor == 0 { break }
@@ -905,7 +908,7 @@ private enum SpokenPunctuationFormatter {
     private static func significantPart(after index: Int, in parts: [OutputPart]) -> OutputPart? {
         var cursor = index + 1
         while cursor < parts.count {
-            if !parts[cursor].isHorizontalWhitespaceText {
+            if !parts[cursor].isSpokenHorizontalWhitespaceText {
                 return parts[cursor]
             }
             cursor += 1
@@ -1003,7 +1006,7 @@ private enum SpokenPunctuationFormatter {
     }
 
     private static func removeTrailingHorizontalWhitespace(from text: inout String) {
-        while text.last?.isHorizontalWhitespace == true {
+        while text.last?.isSpokenHorizontalWhitespace == true {
             text.removeLast()
         }
     }
@@ -1011,7 +1014,7 @@ private enum SpokenPunctuationFormatter {
     private static func indexSkippingWhitespace(after index: Int, in parts: [OutputPart]) -> Int {
         var nextIndex = index + 1
         while nextIndex < parts.count {
-            guard case let .text(text) = parts[nextIndex], text.allSatisfy(\.isHorizontalWhitespace) else {
+            guard case let .text(text) = parts[nextIndex], text.allSatisfy(\.isSpokenHorizontalWhitespace) else {
                 break
             }
             nextIndex += 1
@@ -1024,7 +1027,7 @@ private enum SpokenPunctuationFormatter {
         for part in parts[index...] {
             switch part {
             case let .text(text):
-                if text.contains(where: { !$0.isHorizontalWhitespace }) {
+                if text.contains(where: { !$0.isSpokenHorizontalWhitespace }) {
                     return true
                 }
             case .punctuation:
@@ -1075,7 +1078,7 @@ private extension Character {
         self.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) }
     }
 
-    var isHorizontalWhitespace: Bool {
+    var isSpokenHorizontalWhitespace: Bool {
         self.unicodeScalars.allSatisfy { CharacterSet.whitespaces.contains($0) }
     }
 

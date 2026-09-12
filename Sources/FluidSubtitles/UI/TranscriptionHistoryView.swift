@@ -2,6 +2,9 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+// swiftlint:disable function_body_length cyclomatic_complexity type_body_length
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
+
 struct TranscriptionHistoryView: View {
     @ObservedObject private var historyStore = TranscriptionHistoryStore.shared
     @ObservedObject private var settings = SettingsStore.shared
@@ -95,7 +98,7 @@ struct TranscriptionHistoryView: View {
         .alert("Report Sent", isPresented: self.$showReportConfirmation) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Thank you for helping improve \(FluidProduct.displayName) dictation.")
+            Text("Thank you for helping improve \(FluidProduct.displayName).")
         }
         .sheet(item: self.$selectedReportEntry) { entry in
             TranscriptionFeedbackReportSheet(entry: entry) {
@@ -114,7 +117,7 @@ struct TranscriptionHistoryView: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.secondary)
 
-            TextField("Search transcriptions...", text: self.$searchQuery)
+            TextField("Search captions...", text: self.$searchQuery)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
 
@@ -310,16 +313,23 @@ struct TranscriptionHistoryView: View {
                 .foregroundStyle(.tertiary)
 
             VStack(spacing: 4) {
-                Text(self.searchQuery.isEmpty ? "No History Yet" : "No Results")
+                Text(self.searchQuery.isEmpty ? "No captions yet" : "No Results")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.secondary)
 
                 Text(self.searchQuery.isEmpty
-                    ? "Your transcriptions will appear here"
+                    ? "Open Theater and press Listen. Captions from this Mac will appear here."
                     : "Try a different search term")
                     .font(.system(size: 12))
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
+            }
+
+            if self.searchQuery.isEmpty {
+                Button("Open Theater") {
+                    PresenterCaptionController.shared.setVisible(true)
+                }
+                .buttonStyle(.borderedProminent)
             }
 
             Spacer()
@@ -465,6 +475,23 @@ struct TranscriptionHistoryView: View {
                                     .stroke(Color.orange.opacity(0.3), lineWidth: 1)
                             )
                     )
+                }
+
+                if let pairs = entry.captionPairs, !pairs.isEmpty {
+                    self.captionPairsSection(pairs)
+                    HStack(spacing: 8) {
+                        Button("Export bilingual") {
+                            self.exportCaptionPairs(pairs, format: .bilingualText)
+                        }
+                        Button("Export SRT") {
+                            self.exportCaptionPairs(pairs, format: .srt)
+                        }
+                        Button("Export VTT") {
+                            self.exportCaptionPairs(pairs, format: .vtt)
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
 
                 // Final Text Section
@@ -701,6 +728,53 @@ struct TranscriptionHistoryView: View {
             alert.addButton(withTitle: "OK")
             alert.runModal()
         }
+    }
+
+    private func captionPairsSection(_ pairs: [CaptionHistoryPair]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Captions")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.5)
+
+            ForEach(Array(pairs.enumerated()), id: \.offset) { _, pair in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(pair.translated)
+                        .font(.system(size: 14, weight: .medium))
+                        .textSelection(.enabled)
+                    if !pair.source.isEmpty, pair.source != pair.translated {
+                        Text(pair.source)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+        }
+    }
+
+    private func exportCaptionPairs(_ pairs: [CaptionHistoryPair], format: TheaterExportFormat) {
+        let text: String
+        let ext: String
+        switch format {
+        case .bilingualText:
+            text = TheaterCaptionExport.bilingualText(pairs: pairs)
+            ext = "txt"
+        case .srt:
+            text = TheaterCaptionExport.srt(pairs: pairs)
+            ext = "srt"
+        case .vtt:
+            text = TheaterCaptionExport.vtt(pairs: pairs)
+            ext = "vtt"
+        }
+        guard !text.isEmpty else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.plainText]
+        panel.nameFieldStringValue = TheaterCaptionExport.savePanelName(extension: ext)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        try? text.write(to: url, atomically: true, encoding: .utf8)
     }
 
     // MARK: - No Selection View

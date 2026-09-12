@@ -10,6 +10,9 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+// swiftlint:disable file_length type_body_length function_body_length cyclomatic_complexity
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
+
 // This legacy screen still owns several dictionary editors; split them into standalone views incrementally.
 // swiftlint:disable:next type_body_length
 struct CustomDictionaryView: View {
@@ -263,8 +266,7 @@ struct CustomDictionaryView: View {
                     self.aiPostProcessingSection
                 }
             }
-            .frame(maxWidth: 860, alignment: .leading)
-            .padding(self.theme.metrics.spacing.xl)
+            .fluidPageContent()
         }
         .dismissTextFocusOnBackgroundTap()
         .overlay {
@@ -326,24 +328,17 @@ struct CustomDictionaryView: View {
     // MARK: - Page Header
 
     private var pageHeader: some View {
-        HStack(alignment: .center, spacing: self.theme.metrics.spacing.md) {
-            self.settingsIconTile(systemName: "text.book.closed.fill")
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Custom Dictionary")
-                    .font(self.theme.typography.title)
-                Text("Correct recurring mistakes and teach the voice engine the words you use.")
-                    .font(self.theme.typography.bodySmall)
-                    .foregroundStyle(self.theme.palette.secondaryText)
-            }
-
-            Spacer(minLength: self.theme.metrics.spacing.md)
-
+        FluidPageHeader(
+            systemImage: "text.book.closed.fill",
+            title: "Custom Dictionary",
+            subtitle: "Fix names and terms. Theater keeps these words unchanged while translating."
+        ) {
             HStack(spacing: self.theme.metrics.spacing.sm) {
                 Button(action: self.importDictionary) {
                     Label("Import", systemImage: "square.and.arrow.down")
                 }
                 .fluidButton(.compact, size: .compact)
+                .help("JSON dictionary or lecture terms pack")
 
                 Button(action: self.exportDictionary) {
                     Label("Export", systemImage: "square.and.arrow.up")
@@ -353,42 +348,18 @@ struct CustomDictionaryView: View {
         }
     }
 
-    private func settingsIconTile(systemName: String) -> some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: self.theme.metrics.corners.md, style: .continuous)
-                .fill(self.theme.palette.contentBackground.opacity(0.82))
-                .overlay(
-                    LinearGradient(
-                        colors: [.white.opacity(0.1), .clear],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: self.theme.metrics.corners.md, style: .continuous))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: self.theme.metrics.corners.md, style: .continuous)
-                        .stroke(self.theme.palette.accent.opacity(0.35), lineWidth: 1)
-                )
-
-            Image(systemName: systemName)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(self.theme.palette.accent)
-        }
-        .frame(width: 34, height: 34)
-    }
-
     // MARK: - Teach Words
 
     private var trainReplacementSection: some View {
         ThemedCard(style: .standard, hoverEffect: false) {
             VStack(alignment: .leading, spacing: self.theme.metrics.spacing.lg) {
                 HStack(alignment: .center, spacing: self.theme.metrics.spacing.md) {
-                    self.settingsIconTile(systemName: "mic.fill")
+                    SettingsIconTile(systemName: "mic.fill")
 
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Teach Words")
                             .font(self.theme.typography.sectionTitle)
-                        Text("Show \(FluidProduct.displayName) the right spelling, by voice or by typing.")
+                        Text("Show \(FluidProduct.displayName) the right spelling, by voice or by typing. Works for Theater listen and dictation.")
                             .font(self.theme.typography.caption)
                             .foregroundStyle(self.theme.palette.secondaryText)
                     }
@@ -807,7 +778,7 @@ struct CustomDictionaryView: View {
     private var yourDictionarySection: some View {
         ThemedCard(style: .standard, hoverEffect: false) {
             HStack(alignment: .center, spacing: self.theme.metrics.spacing.md) {
-                self.settingsIconTile(systemName: "book.closed.fill")
+                SettingsIconTile(systemName: "book.closed.fill")
 
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
@@ -856,7 +827,7 @@ struct CustomDictionaryView: View {
     private var punctuationDictionarySection: some View {
         ThemedCard(style: .standard, hoverEffect: false) {
             HStack(alignment: .center, spacing: self.theme.metrics.spacing.md) {
-                self.settingsIconTile(systemName: "textformat")
+                SettingsIconTile(systemName: "textformat")
 
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
@@ -957,7 +928,7 @@ struct CustomDictionaryView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Saved Replacements")
                         .font(self.theme.typography.captionStrong)
-                    Text("These run automatically after dictation.")
+                    Text("Used when Theater or dictation hears this word.")
                         .font(self.theme.typography.caption)
                         .foregroundStyle(self.theme.palette.secondaryText)
                 }
@@ -1006,7 +977,7 @@ struct CustomDictionaryView: View {
     private var aiPostProcessingSection: some View {
         ThemedCard(style: .standard, hoverEffect: false) {
             HStack(alignment: .center, spacing: self.theme.metrics.spacing.md) {
-                self.settingsIconTile(systemName: "character.book.closed")
+                SettingsIconTile(systemName: "character.book.closed")
 
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {

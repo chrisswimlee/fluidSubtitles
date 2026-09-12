@@ -6,6 +6,7 @@
 #   ./build.sh            # signed Debug build
 #   ./build.sh public     # signed Debug build
 #   ./build.sh unsigned   # unsigned Debug build (CI / no signing identity)
+#   ./build.sh release    # signed Release zip; notarize when Apple credentials are set
 
 set -euo pipefail
 
@@ -83,6 +84,98 @@ EOF
     exec xcodebuild "${build_args[@]}" DEVELOPMENT_TEAM="${development_team}"
 }
 
+app_version() {
+    /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${PROJECT_DIR}/Info.plist"
+}
+
+restore_ctranscribe_layout() {
+    local framework="$1/Contents/Frameworks/CTranscribe.framework"
+    if [ ! -d "${framework}/Versions/A" ]; then
+        echo "CTranscribe.framework is missing from the Release app." >&2
+        exit 1
+    fi
+    rm -rf \
+        "${framework}/Versions/Current" \
+        "${framework}/CTranscribe" \
+        "${framework}/Resources" \
+        "${framework}/Versions/A/_CodeSignature"
+    ln -s A "${framework}/Versions/Current"
+    ln -s Versions/Current/CTranscribe "${framework}/CTranscribe"
+    ln -s Versions/Current/Resources "${framework}/Resources"
+}
+
+run_release_build() {
+    local development_team
+    local version
+    local app_path
+    local zip_name
+    local zip_path
+    local identity="${FLUIDSUBTITLES_CODESIGN_IDENTITY:-Developer ID Application}"
+    local -a build_args=(
+        -project fluidSubtitles.xcodeproj
+        -scheme fluidSubtitles
+        -configuration Release
+        -destination 'platform=macOS'
+        -derivedDataPath "${DERIVED_DATA_PATH}"
+        build
+    )
+
+    cd "${PROJECT_DIR}"
+    development_team="$(resolve_development_team)"
+    if [ -z "${development_team}" ]; then
+        echo "A DEVELOPMENT_TEAM is required for ./build.sh release." >&2
+        exit 1
+    fi
+
+    echo "Running signed Release fluidSubtitles build..."
+    xcodebuild "${build_args[@]}" \
+        DEVELOPMENT_TEAM="${development_team}" \
+        CODE_SIGN_IDENTITY="${identity}"
+
+    app_path="${DERIVED_DATA_PATH}/Build/Products/Release/fluidSubtitles.app"
+    if [ ! -d "${app_path}" ]; then
+        app_path="$(find "${DERIVED_DATA_PATH}/Build/Products/Release" -maxdepth 1 -name '*.app' | head -n 1)"
+    fi
+    if [ -z "${app_path}" ] || [ ! -d "${app_path}" ]; then
+        echo "Release app was not found in ${DERIVED_DATA_PATH}/Build/Products/Release." >&2
+        exit 1
+    fi
+
+    restore_ctranscribe_layout "${app_path}"
+    codesign --force --sign "${identity}" --timestamp --options runtime \
+        "${app_path}/Contents/Frameworks/CTranscribe.framework"
+    codesign --force --sign "${identity}" --timestamp --options runtime \
+        --entitlements "${PROJECT_DIR}/fluidSubtitles.entitlements" \
+        "${app_path}"
+    codesign --verify --deep --strict "${app_path}"
+
+    version="$(app_version)"
+    zip_name="fluidsubtitles-${version}.zip"
+    zip_path="${PROJECT_DIR}/dist/${zip_name}"
+    mkdir -p "${PROJECT_DIR}/dist"
+
+    if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ] && [ -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]; then
+        echo "Notarizing ${app_path}..."
+        ditto -c -k --keepParent "${app_path}" "${zip_path}"
+        xcrun notarytool submit "${zip_path}" \
+            --apple-id "${APPLE_ID}" \
+            --team-id "${APPLE_TEAM_ID}" \
+            --password "${APPLE_APP_SPECIFIC_PASSWORD}" \
+            --wait
+        xcrun stapler staple "${app_path}"
+    else
+        if [ "${REQUIRE_NOTARIZATION:-}" = "1" ] || [ -n "${GITHUB_ACTIONS:-}" ]; then
+            echo "APPLE_ID, APPLE_TEAM_ID, and APPLE_APP_SPECIFIC_PASSWORD are required. Refusing to publish an unsigned zip." >&2
+            exit 1
+        fi
+        echo "Skipping notarization. Set APPLE_ID, APPLE_TEAM_ID, and APPLE_APP_SPECIFIC_PASSWORD to notarize."
+    fi
+
+    rm -f "${zip_path}"
+    ditto -c -k --keepParent "${app_path}" "${zip_path}"
+    echo "Release zip: ${zip_path}"
+}
+
 case "${PROFILE}" in
     public|oss|incremental|fast|"")
         run_public_build signed
@@ -90,9 +183,12 @@ case "${PROFILE}" in
     unsigned|ci)
         run_public_build unsigned
         ;;
+    release|notarize)
+        run_release_build
+        ;;
     *)
         echo "Unknown build profile: ${PROFILE}"
-        echo "Valid profiles: public, unsigned"
+        echo "Valid profiles: public, unsigned, release"
         exit 1
         ;;
 esac

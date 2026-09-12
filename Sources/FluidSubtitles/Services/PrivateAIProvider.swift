@@ -157,8 +157,6 @@ struct PrivateAIRegisteredModel: Sendable, Codable, Hashable, Identifiable {
 
 enum PrivateAIModelTask: String, Sendable, Codable, Hashable {
     case dictation
-    case edit
-    case command
 }
 
 enum PrivateAIRuntimeState: String, Sendable, Codable, Hashable {
@@ -208,8 +206,8 @@ extension PrivateAIProviderFeatureProviding {
         self.selectedModelDefaultsKey
     }
 
-    func modelIDs(for task: PrivateAIModelTask) -> [String] {
-        task == .dictation ? self.modelIDs() : []
+    func modelIDs(for _: PrivateAIModelTask) -> [String] {
+        self.modelIDs()
     }
 
     func matches(model: String) -> Bool {

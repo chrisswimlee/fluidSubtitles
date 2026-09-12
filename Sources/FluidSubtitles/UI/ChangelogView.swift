@@ -32,8 +32,7 @@ struct ChangelogView: View {
 
                 self.footer
             }
-            .padding(24)
-            .frame(maxWidth: 880, alignment: .leading)
+            .fluidPageContent()
         }
         .task {
             self.loadCachedReleases()
@@ -43,19 +42,11 @@ struct ChangelogView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: self.theme.metrics.spacing.sm) {
-            HStack(spacing: self.theme.metrics.spacing.md) {
-                Image(systemName: "doc.text.magnifyingglass")
-                    .font(.system(size: 30, weight: .semibold))
-                    .foregroundStyle(self.theme.palette.accent)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Change logs")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(self.theme.palette.primaryText)
-                }
-
-                Spacer()
-
+            FluidPageHeader(
+                systemImage: "doc.text.magnifyingglass",
+                title: "Changelog",
+                subtitle: "Recent releases of \(FluidProduct.displayName)."
+            ) {
                 if self.isRefreshing {
                     ProgressView()
                         .controlSize(.small)

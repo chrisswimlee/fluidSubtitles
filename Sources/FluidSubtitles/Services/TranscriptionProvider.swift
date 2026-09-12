@@ -104,21 +104,23 @@ final nonisolated class ModelPreparationProgressRelay: @unchecked Sendable {
 
 // MARK: - Transcription Result
 
-/// Unified result type for ASR transcription across all providers
-/// Named ASRTranscriptionResult to avoid conflict with MeetingTranscriptionService.TranscriptionResult
+/// Unified result type used by every Voice Engine.
 struct ASRTranscriptionResult {
     let text: String
     let confidence: Float
     let pronunciationEnrollment: PronunciationEnrollmentCapture?
+    let endOfUtterance: Bool
 
     init(
         text: String,
         confidence: Float = 1.0,
-        pronunciationEnrollment: PronunciationEnrollmentCapture? = nil
+        pronunciationEnrollment: PronunciationEnrollmentCapture? = nil,
+        endOfUtterance: Bool = false
     ) {
         self.text = text
         self.confidence = confidence
         self.pronunciationEnrollment = pronunciationEnrollment
+        self.endOfUtterance = endOfUtterance
     }
 }
 
@@ -166,7 +168,7 @@ protocol TranscriptionProvider {
     var prefersNativeFileTranscription: Bool { get }
 
     /// Transcribe a complete audio/video file.
-    /// Providers that do not implement this can rely on MeetingTranscriptionService fallback chunking.
+    /// Providers that do not implement this return an unsupported-file error.
     func transcribeFile(at fileURL: URL) async throws -> ASRTranscriptionResult
 
     /// Check if models exist on disk (without loading them)

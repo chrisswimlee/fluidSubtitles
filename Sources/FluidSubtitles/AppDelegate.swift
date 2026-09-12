@@ -17,7 +17,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private var didRequestMainWindowReopen = false
     private var shouldSuppressNextReopenActivation = false
     private var wasLaunchedAsLoginItem = false
-    private var analyticsActivationSuppressionDeadline: Date?
 
     var shouldPresentStartupMicrophoneNotice: Bool {
         !self.wasLaunchedAsLoginItem || SettingsStore.shared.showMainWindowAtLoginLaunch
@@ -31,9 +30,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         // Must be read during the launch callback - the current Apple Event identifies
         // login-item launches (used to optionally start silently, see issue #369).
         self.wasLaunchedAsLoginItem = Self.detectLoginItemLaunch()
-        if self.wasLaunchedAsLoginItem {
-            self.analyticsActivationSuppressionDeadline = Date().addingTimeInterval(3)
-        }
         DebugLogger.shared.info(
             "Application launched [loginItemLaunch=\(self.wasLaunchedAsLoginItem)]",
             source: "AppDelegate"
@@ -42,19 +38,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
         // Initialize app settings (dock visibility, etc.)
         SettingsStore.shared.initializeAppSettings()
-        LocalAPIServer.shared.start()
-        if SettingsStore.shared.mlxRunnerEnabled {
-            Task { @MainActor in
-                await MLXRunnerService.shared.refresh()
-            }
+
+        let firstOpenKey = "AnalyticsFirstOpenAt"
+        let isTrueFirstOpen = UserDefaults.standard.object(forKey: firstOpenKey) == nil
+        if isTrueFirstOpen {
+            UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: firstOpenKey)
         }
-
-        // Record first-open synchronously before async analytics bootstrap so
-        // onboarding initialization is deterministic on brand-new installs.
-        let isTrueFirstOpen = AnalyticsIdentityStore.shared.ensureFirstOpenRecorded()
         SettingsStore.shared.bootstrapOnboardingState(isTrueFirstOpen: isTrueFirstOpen)
-
-        AnalyticsService.shared.bootstrap()
 
         // Check for updates automatically if enabled (initial check on launch)
         self.checkForUpdatesAutomatically()
@@ -94,8 +84,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         DebugLogger.shared.info("Application will terminate", source: "AppDelegate")
         self.shutdownPrivateAIRuntimeForTermination()
         self.shutdownASRRuntimeForTermination()
-        LocalAPIServer.shared.stop()
-        self.shutdownMLXRunnerForTermination()
         // Clean up the update check timer
         self.updateCheckTimer?.invalidate()
         self.updateCheckTimer = nil
@@ -141,26 +129,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         }
     }
 
-    private func shutdownMLXRunnerForTermination() {
-        var didFinishShutdown = false
-        Task { @MainActor in
-            await MLXRunnerService.shared.stopAndWait()
-            didFinishShutdown = true
-        }
-
-        let deadline = Date().addingTimeInterval(8)
-        while !didFinishShutdown, Date() < deadline {
-            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
-        }
-
-        if !didFinishShutdown {
-            DebugLogger.shared.warning(
-                "Timed out waiting for MLX runner shutdown during termination",
-                source: "AppDelegate"
-            )
-        }
-    }
-
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if self.shouldSuppressNextReopenActivation {
             self.shouldSuppressNextReopenActivation = false
@@ -178,12 +146,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     func applicationDidBecomeActive(_ notification: Notification) {
         DispatchQueue.global(qos: .utility).async {
             try? KeychainService.shared.refreshCachedKeys()
-        }
-        if let deadline = self.analyticsActivationSuppressionDeadline, Date() <= deadline {
-            self.analyticsActivationSuppressionDeadline = nil
-        } else {
-            self.analyticsActivationSuppressionDeadline = nil
-            AnalyticsService.shared.recordAppActivity()
         }
     }
 

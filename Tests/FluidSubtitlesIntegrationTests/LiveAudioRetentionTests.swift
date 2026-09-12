@@ -43,6 +43,15 @@ final class LiveAudioRetentionTests: XCTestCase {
         XCTAssertLessThan(preview.samples.count, tenMinutes)
     }
 
+    func testIncrementalPreviewCanCopyDeltaFromTheRingWithoutTheFullWindow() {
+        let buffer = ThreadSafeAudioBuffer(maximumRetainedSamples: 32)
+        buffer.append(Array(0..<32).map(Float.init))
+        let delta = buffer.getRange(startingAt: 24, count: 8)
+        XCTAssertEqual(delta, Array(24..<32).map(Float.init))
+        XCTAssertEqual(delta.count, 8)
+        XCTAssertEqual(buffer.retainedCount, 32)
+    }
+
     func testWindowedPreviewCopiesLastThirtySecondsNeverFullPrefix() {
         let tenMinutes = 10 * 60 * 16_000
         let retained = Array(repeating: Float(0.5), count: LiveAudioRetention.maximumRetainedSamples)
@@ -56,6 +65,16 @@ final class LiveAudioRetentionTests: XCTestCase {
         XCTAssertEqual(preview.kind, .retainedWindow)
         XCTAssertEqual(preview.samples.count, LiveAudioRetention.maximumRetainedSamples)
         XCTAssertLessThan(preview.samples.count, tenMinutes)
+    }
+
+    func testLiveTranscriptBoundKeepsTheNewestSentences() {
+        let older = (1...80).map { "This is committed sentence number \($0) of the talk." }.joined(separator: " ")
+        let newest = "And this is the clause we are speaking now."
+        let bounded = StreamingTranscriptStitcher.boundLiveTranscript(older + " " + newest)
+        XCTAssertLessThanOrEqual(bounded.count, StreamingTranscriptStitcher.maximumLiveCharacters)
+        XCTAssertTrue(bounded.hasSuffix(newest))
+        XCTAssertFalse(bounded.contains("sentence number 1 of the talk"))
+        XCTAssertEqual(StreamingTranscriptStitcher.boundLiveTranscript("Short."), "Short.")
     }
 
     func testWindowStitchRewritesOverlapWithoutDuplicatingSentences() {

@@ -29,22 +29,11 @@ struct SettingsBackupPayload: Codable, Equatable {
     let promptModeShortcutEnabled: Bool
     let promptModeSelectedPromptID: String?
     let secondaryDictationPromptOff: Bool?
-    let commandModeHotkeyShortcut: HotkeyShortcut?
-    let commandModeShortcutEnabled: Bool
-    let commandModeSelectedModel: String?
-    let commandModeSelectedProviderID: String
-    let commandModeConfirmBeforeExecute: Bool
-    let commandModeLinkedToGlobal: Bool
-    let rewriteModeHotkeyShortcut: HotkeyShortcut
-    let rewriteModeShortcutEnabled: Bool
-    let rewriteModeSelectedModel: String?
-    let rewriteModeSelectedProviderID: String
-    let rewriteModeLinkedToGlobal: Bool
     let cancelRecordingHotkeyShortcut: HotkeyShortcut
     // Optional so older backup files (which predate this setting) still decode.
     let pasteLastTranscriptionHotkeyShortcut: HotkeyShortcut?
     let pasteLastTranscriptionShortcutEnabled: Bool?
-    let showThinkingTokens: Bool
+    let showThinkingTokens: Bool?
     let hideFromDockAndAppSwitcher: Bool
     let showMainWindowAtLoginLaunch: Bool?
     let accentColorOption: SettingsStore.AccentColorOption
@@ -54,7 +43,6 @@ struct SettingsBackupPayload: Codable, Equatable {
     let autoUpdateCheckEnabled: Bool
     let betaReleasesEnabled: Bool
     let enableDebugLogs: Bool
-    let shareAnonymousAnalytics: Bool
     let pressAndHoldMode: Bool
     let hotkeyMode: HotkeyActivationMode?
     let enableStreamingPreview: Bool
@@ -117,20 +105,21 @@ struct SettingsBackupPayload: Codable, Equatable {
     let selectedDictationPromptID: String?
     let dictationPromptOff: Bool?
     let dictationPromptRoutingScope: SettingsStore.PromptRoutingScope?
-    let editPromptOff: Bool?
-    let selectedEditPromptID: String?
-    let editPromptRoutingScope: SettingsStore.PromptRoutingScope?
     let defaultDictationPromptOverride: String?
-    let defaultEditPromptOverride: String?
-    let fileTranscriptionSpeakerLabelsEnabled: Bool?
-    let fileTranscriptionExpectedSpeakerCount: Int?
     let theaterWindowEnabled: Bool?
     let translationInsertHotkeyEnabled: Bool?
     let translationInsertHotkeyShortcut: HotkeyShortcut?
+    let captionListenHotkeyEnabled: Bool?
+    let captionListenHotkeyShortcut: HotkeyShortcut?
     let translationSourceLanguageID: String?
     let translationTargetLanguageID: String?
     let presenterFontSize: Int?
     let presenterFontFamily: String?
+    let theaterHideChrome: Bool?
+    let theaterHighContrast: Bool?
+    let theaterAppearance: String?
+    let theaterHideFromScreenShare: Bool?
+    let theaterAlsoHearOtherLanguages: Bool?
 }
 
 struct AppBackupDocument: Codable, Equatable {

@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 #if os(macOS)
 import ServiceManagement
@@ -49,6 +50,18 @@ extension SettingsStore {
             )
         }
         #endif
+    }
+
+    func applyLaunchAtStartupStatus(enabled: Bool, statusMessage: String, errorMessage: String?) {
+        objectWillChange.send()
+        self.launchAtStartupEnabled = enabled
+        self.launchAtStartupStatusMessage = statusMessage
+        self.launchAtStartupErrorMessage = errorMessage
+    }
+
+    func applyLaunchAtStartupErrorMessage(_ message: String?) {
+        objectWillChange.send()
+        self.launchAtStartupErrorMessage = message
     }
 
     func setLaunchAtStartup(_ enabled: Bool) {

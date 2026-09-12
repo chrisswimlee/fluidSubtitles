@@ -1,5 +1,8 @@
 import Foundation
 
+// swiftlint:disable function_body_length cyclomatic_complexity type_body_length
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
+
 struct DictationLiteralOutputPlan: Equatable {
     enum Step: Equatable {
         case text(String)
@@ -240,7 +243,7 @@ private enum DictationLiteralFormatter {
         windowTitle: String? = nil
     ) -> String {
         guard SettingsStore.shared.literalDictationFormattingEnabled else { return text }
-        guard text.last?.isHorizontalWhitespace == true else { return text }
+        guard text.last?.isLiteralHorizontalWhitespace == true else { return text }
 
         let withoutTrailingWhitespace = self.removingTrailingHorizontalWhitespace(from: text)
         guard !withoutTrailingWhitespace.isEmpty else { return text }
@@ -431,7 +434,7 @@ private enum DictationLiteralFormatter {
 
     private static func removingTrailingHorizontalWhitespace(from text: String) -> String {
         var result = text
-        while result.last?.isHorizontalWhitespace == true {
+        while result.last?.isLiteralHorizontalWhitespace == true {
             result.removeLast()
         }
         return result
@@ -457,7 +460,7 @@ private extension Character {
         self.isASCIIAlphabetic || self.isASCIIDigit || self == "-" || self == "_" || self == "."
     }
 
-    var isHorizontalWhitespace: Bool {
+    var isLiteralHorizontalWhitespace: Bool {
         self.unicodeScalars.allSatisfy { CharacterSet.whitespaces.contains($0) }
     }
 }

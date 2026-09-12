@@ -3,11 +3,14 @@
 //  Fluid
 //
 //  Single source of truth for default model lists and base URLs per provider.
-//  All views (AISettings, ContentView, CommandMode, RewriteMode) should use this
+//  Voice Engine, AI Providers, and ContentView should use this
 //  instead of maintaining their own hardcoded lists.
 //
 
 import Foundation
+
+// swiftlint:disable function_body_length cyclomatic_complexity type_body_length
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
 
 final class ModelRepository {
     static let shared = ModelRepository()

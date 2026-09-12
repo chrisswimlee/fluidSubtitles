@@ -3,6 +3,9 @@ import Combine
 import QuartzCore
 import SwiftUI
 
+// swiftlint:disable file_length type_body_length function_body_length cyclomatic_complexity
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
+
 @MainActor
 final class DictionaryCorrectionOverlayController {
     static let shared = DictionaryCorrectionOverlayController()

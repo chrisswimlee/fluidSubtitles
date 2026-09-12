@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum AIEnhancementConfigurationSection: String {
+enum AIEnhancementConfigurationSection: String, Hashable {
     case providers
     case advancedPrompts
 

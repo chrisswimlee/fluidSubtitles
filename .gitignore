@@ -220,5 +220,6 @@ sample/
 .codex
 AGENTS.md
 builds/
+dist/
 **/__pycache__/
 *.pyc

@@ -7,19 +7,17 @@ final class PrivateAIProviderPromptFormatTests: XCTestCase {
         let provider = TaskDefaultPrivateAIProvider()
 
         XCTAssertEqual(provider.modelIDs(for: .dictation), ["dictation-model"])
-        XCTAssertEqual(provider.modelIDs(for: .edit), [])
-        XCTAssertEqual(provider.modelIDs(for: .command), [])
     }
 
     func testTaskFilteringDoesNotChangeRemoteProviderDefaults() {
         let repository = ModelRepository.shared
 
         XCTAssertEqual(
-            repository.defaultModels(for: "openai", task: .edit),
+            repository.defaultModels(for: "openai", task: .dictation),
             repository.defaultModels(for: "openai")
         )
         XCTAssertEqual(
-            repository.defaultModels(for: "anthropic", task: .command),
+            repository.defaultModels(for: "anthropic", task: .dictation),
             repository.defaultModels(for: "anthropic")
         )
     }

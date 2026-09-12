@@ -58,7 +58,9 @@ final nonisolated class DebugLogger: @unchecked Sendable {
 
         // Always persist diagnostics so issues can be debugged even if UI debug mode is off.
         FileLogger.shared.append(line: formattedLine)
+        #if DEBUG
         print(formattedLine)
+        #endif
     }
 
     private func formatLogLine(timestamp: String, level: LogLevel, source: String, message: String, pipelineID: String?) -> String {

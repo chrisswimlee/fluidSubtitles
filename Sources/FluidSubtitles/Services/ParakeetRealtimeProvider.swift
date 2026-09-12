@@ -15,6 +15,7 @@ final class ParakeetRealtimeProvider: TranscriptionProvider {
     private let chunkSize: StreamingChunkSize
     private var engine: StreamingEouAsrManager?
     private var streamedSampleCount: Int = 0
+    private var lastReportedEndOfUtterance = false
 
     init(chunkSize: StreamingChunkSize = .ms160) {
         self.chunkSize = chunkSize
@@ -119,6 +120,7 @@ final class ParakeetRealtimeProvider: TranscriptionProvider {
 
         self.engine = engine
         self.streamedSampleCount = 0
+        self.lastReportedEndOfUtterance = false
         self.isReady = true
     }
 
@@ -139,7 +141,7 @@ final class ParakeetRealtimeProvider: TranscriptionProvider {
             self.streamedSampleCount = totalSampleCount
         }
         let partial = await engine.getPartialTranscript()
-        return ASRTranscriptionResult(text: partial, confidence: partial.isEmpty ? 0 : 1)
+        return await self.previewResult(text: partial, engine: engine)
     }
 
     func transcribeFinalDelta(
@@ -155,6 +157,7 @@ final class ParakeetRealtimeProvider: TranscriptionProvider {
         let text = try await engine.finish()
         await engine.reset()
         self.streamedSampleCount = 0
+        self.lastReportedEndOfUtterance = false
         return ASRTranscriptionResult(text: text, confidence: text.isEmpty ? 0 : 1)
     }
 
@@ -166,7 +169,7 @@ final class ParakeetRealtimeProvider: TranscriptionProvider {
             try await engine.processBufferedAudio()
         }
         let partial = await engine.getPartialTranscript()
-        return ASRTranscriptionResult(text: partial, confidence: partial.isEmpty ? 0 : 1)
+        return await self.previewResult(text: partial, engine: engine)
     }
 
     func transcribeFinal(_ samples: [Float]) async throws -> ASRTranscriptionResult {
@@ -180,6 +183,7 @@ final class ParakeetRealtimeProvider: TranscriptionProvider {
         let text = try await engine.finish()
         await engine.reset()
         self.streamedSampleCount = 0
+        self.lastReportedEndOfUtterance = false
         return ASRTranscriptionResult(text: text, confidence: text.isEmpty ? 0 : 1)
     }
 
@@ -204,7 +208,19 @@ final class ParakeetRealtimeProvider: TranscriptionProvider {
         self.engine = nil
         self.isReady = false
         self.streamedSampleCount = 0
+        self.lastReportedEndOfUtterance = false
         DebugLogger.shared.info("ParakeetRealtimeProvider: released in-memory models", source: "ParakeetRealtimeProvider")
+    }
+
+    private func previewResult(text: String, engine: StreamingEouAsrManager) async -> ASRTranscriptionResult {
+        let eou = await engine.eouDetected
+        let risingEOU = eou && !self.lastReportedEndOfUtterance
+        self.lastReportedEndOfUtterance = eou
+        return ASRTranscriptionResult(
+            text: text,
+            confidence: text.isEmpty ? 0 : 1,
+            endOfUtterance: risingEOU
+        )
     }
 
     private func requireEngine() throws -> StreamingEouAsrManager {
@@ -222,6 +238,7 @@ final class ParakeetRealtimeProvider: TranscriptionProvider {
         if samples.count < self.streamedSampleCount {
             await engine.reset()
             self.streamedSampleCount = 0
+            self.lastReportedEndOfUtterance = false
         }
 
         let delta = Array(samples.dropFirst(self.streamedSampleCount))
@@ -315,3 +332,6 @@ final class ParakeetRealtimeProvider: TranscriptionProvider {
     }
 }
 #endif
+// swiftlint:disable function_body_length cyclomatic_complexity type_body_length
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
+

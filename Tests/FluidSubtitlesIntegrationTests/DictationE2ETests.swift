@@ -2,6 +2,9 @@
 import Foundation
 import XCTest
 
+// swiftlint:disable file_length type_body_length function_body_length cyclomatic_complexity
+// Tracked grandfather: dictation E2E suite. New cases belong in a focused test file.
+
 @MainActor
 final class DictationE2ETests: XCTestCase {
     private let enableTranscriptionSoundsKey = "EnableTranscriptionSounds"
@@ -27,12 +30,6 @@ final class DictationE2ETests: XCTestCase {
     private let punctuationDictionaryPrefixKey = "PunctuationDictionaryPrefix"
     private let punctuationDictionaryRulesKey = "PunctuationDictionaryRules"
     private let spokenFormattingActionRulesKey = "SpokenFormattingActionRules"
-    private let commandModeLinkedToGlobalKey = "CommandModeLinkedToGlobal"
-    private let commandModeSelectedProviderIDKey = "CommandModeSelectedProviderID"
-    private let commandModeSelectedModelKey = "CommandModeSelectedModel"
-    private let rewriteModeLinkedToGlobalKey = "RewriteModeLinkedToGlobal"
-    private let rewriteModeSelectedProviderIDKey = "RewriteModeSelectedProviderID"
-    private let rewriteModeSelectedModelKey = "RewriteModeSelectedModel"
     private var privateAISelectedModelIDKey: String {
         PrivateAIProviderFeature.shared.selectedModelDefaultsKey
     }
@@ -1093,7 +1090,7 @@ extension DictationE2ETests {
 
     func testAutomaticDictionaryCorrectionIgnoresPunctuationAndSpacingOnlyEdit() {
         let before = "Use Fluid-Voice today"
-        let after = "Use Fluid Subtitles today"
+        let after = "Use Fluid Voice today"
         let insertedRange = NSRange(location: 0, length: (before as NSString).length)
 
         XCTAssertNil(AutomaticDictionaryCorrectionDetector.candidate(
@@ -1467,48 +1464,6 @@ extension DictationE2ETests {
         }
     }
 
-    func testEditPromptOffUsesBuiltInDefaultAndPausesOverrides() {
-        self.withPromptSettingsRestored {
-            let settings = SettingsStore.shared
-
-            let global = SettingsStore.DictationPromptProfile(
-                name: "Global Edit",
-                prompt: "Global edit prompt",
-                mode: .edit
-            )
-            let mail = SettingsStore.DictationPromptProfile(
-                name: "Mail Edit",
-                prompt: "Mail edit prompt",
-                mode: .edit
-            )
-
-            settings.dictationPromptProfiles = [global, mail]
-            settings.selectedEditPromptID = global.id
-            settings.defaultEditPromptOverride = "Custom default edit prompt"
-            settings.appPromptBindings = [
-                SettingsStore.AppPromptBinding(
-                    mode: .edit,
-                    appBundleID: "com.apple.mail",
-                    appName: "Mail",
-                    promptID: mail.id
-                ),
-            ]
-
-            settings.setPromptOff(true, for: .edit)
-
-            let paused = settings.promptResolution(for: .edit, appBundleID: "com.apple.mail")
-            XCTAssertEqual(paused.source, .builtInDefault)
-            XCTAssertNil(paused.profile)
-            XCTAssertNil(paused.appBinding)
-            XCTAssertEqual(paused.systemPrompt, SettingsStore.defaultSystemPromptText(for: .edit))
-
-            settings.setSelectedPromptID(global.id, for: .edit)
-
-            XCTAssertFalse(settings.isPromptOff(for: .edit))
-            XCTAssertEqual(settings.promptResolution(for: .edit, appBundleID: nil).profile?.id, global.id)
-        }
-    }
-
     func testAppPromptBindings_reconcileInvalidPromptAndLegacyMode() {
         self.withPromptSettingsRestored {
             let settings = SettingsStore.shared
@@ -1535,7 +1490,7 @@ extension DictationE2ETests {
                 return
             }
 
-            XCTAssertEqual(binding.mode, .edit)
+            XCTAssertEqual(binding.mode, .dictate)
             XCTAssertEqual(binding.appBundleID, "com.apple.safari")
             XCTAssertNil(binding.promptID)
         }
@@ -1622,10 +1577,6 @@ extension DictationE2ETests {
                 self.availableModelsByProviderKey,
                 self.selectedModelByProviderKey,
                 self.verifiedProviderFingerprintsKey,
-                self.commandModeSelectedProviderIDKey,
-                self.commandModeSelectedModelKey,
-                self.rewriteModeSelectedProviderIDKey,
-                self.rewriteModeSelectedModelKey,
                 self.dictationPromptConfigurationsKey,
             ]
         ) {
@@ -1636,10 +1587,6 @@ extension DictationE2ETests {
             settings.availableModelsByProvider = ["apple-intelligence": ["System Model"]]
             settings.selectedModelByProvider = ["apple-intelligence": "System Model"]
             settings.verifiedProviderFingerprints = ["apple-intelligence": "apple-intelligence"]
-            settings.commandModeSelectedProviderID = "apple-intelligence-disabled"
-            settings.commandModeSelectedModel = "System Model"
-            settings.rewriteModeSelectedProviderID = "apple-intelligence"
-            settings.rewriteModeSelectedModel = "System Model"
             settings.dictationPromptConfigurations = [
                 "__default__": SettingsStore.DictationPromptConfiguration(
                     shortcut: shortcut,
@@ -1653,10 +1600,6 @@ extension DictationE2ETests {
 
             XCTAssertEqual(settings.selectedProviderID, "")
             XCTAssertNil(settings.selectedModel)
-            XCTAssertEqual(settings.commandModeSelectedProviderID, "")
-            XCTAssertNil(settings.commandModeSelectedModel)
-            XCTAssertEqual(settings.rewriteModeSelectedProviderID, "")
-            XCTAssertNil(settings.rewriteModeSelectedModel)
             XCTAssertNil(settings.availableModelsByProvider["apple-intelligence"])
             XCTAssertNil(settings.selectedModelByProvider["apple-intelligence"])
             XCTAssertNil(settings.verifiedProviderFingerprints["apple-intelligence"])
@@ -1943,51 +1886,6 @@ extension DictationE2ETests {
 
             XCTAssertEqual(route.providerID, "openai")
             XCTAssertEqual(route.model, "gpt-4.1")
-        }
-    }
-
-    func testEditModelResolutionPreservesConfiguredLocalProviderModel() {
-        self.withRestoredDefaults(
-            keys: [
-                self.savedProvidersKey,
-                self.availableModelsByProviderKey,
-                self.selectedModelByProviderKey,
-                self.selectedProviderIDKey,
-                self.rewriteModeLinkedToGlobalKey,
-            ]
-        ) {
-            let settings = SettingsStore.shared
-            settings.rewriteModeLinkedToGlobal = true
-            settings.selectedProviderID = "lmstudio"
-            settings.availableModelsByProvider = ["lmstudio": ["local-edit-model"]]
-            settings.selectedModelByProvider = ["lmstudio": "local-edit-model"]
-
-            XCTAssertEqual(settings.availableModels(for: "lmstudio", task: .edit), ["local-edit-model"])
-            XCTAssertEqual(settings.effectiveRewriteModeProviderID, "lmstudio")
-            XCTAssertEqual(settings.effectiveRewriteModeSelectedModel, "local-edit-model")
-        }
-    }
-
-    func testEditAnalyticsReportsResolvedEditModel() {
-        self.withRestoredDefaults(
-            keys: [
-                self.availableModelsByProviderKey,
-                self.rewriteModeLinkedToGlobalKey,
-                self.rewriteModeSelectedProviderIDKey,
-                self.rewriteModeSelectedModelKey,
-            ]
-        ) {
-            let settings = SettingsStore.shared
-            settings.rewriteModeLinkedToGlobal = false
-            settings.rewriteModeSelectedProviderID = "ollama"
-            settings.availableModelsByProvider = ["ollama": ["edit-model", "other-model"]]
-            settings.rewriteModeSelectedModel = "edit-model"
-
-            XCTAssertEqual(settings.effectiveRewriteModeSelectedModel, "edit-model")
-            XCTAssertEqual(
-                settings.analyticsAIModelDescriptor(for: .edit),
-                AnalyticsModelDescriptor(provider: "ollama", model: "edit-model")
-            )
         }
     }
 
@@ -2304,29 +2202,6 @@ extension DictationE2ETests {
                 PrivateFeatures.privateAIProvider
             )
             XCTAssertFalse(DictationAIPostProcessingGate.isConfigured(for: .primary, appBundleID: nil))
-        }
-    }
-
-    func testPrivateAIProviderDoesNotConfigureCommandMode() {
-        guard PrivateFeatures.privateAIProvider else { return }
-
-        self.withRestoredDefaults(
-            keys: [
-                self.selectedProviderIDKey,
-                self.commandModeLinkedToGlobalKey,
-                self.commandModeSelectedProviderIDKey,
-                self.commandModeSelectedModelKey,
-            ]
-        ) {
-            let settings = SettingsStore.shared
-            settings.selectedProviderID = PrivateAIProviderFeature.shared.providerID
-            settings.commandModeLinkedToGlobal = true
-            settings.commandModeSelectedProviderID = PrivateAIProviderFeature.shared.providerID
-            settings.commandModeSelectedModel = PrivateAIProviderFeature.shared.providerID
-
-            XCTAssertEqual(settings.effectiveCommandModeProviderID, "")
-            XCTAssertTrue(settings.commandModeReadinessIssue?.contains("coming soon") == true)
-            XCTAssertFalse(settings.isCommandModeProviderVerified(PrivateAIProviderFeature.shared.providerID))
         }
     }
 

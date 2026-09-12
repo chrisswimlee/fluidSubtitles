@@ -10,10 +10,10 @@ const PLACEHOLDER_PATTERNS = [
 ];
 
 const VISUAL_PATH_PATTERNS = [
-  /^Sources\/Fluid\/UI\//,
-  /^Sources\/Fluid\/Views\//,
-  /^Sources\/Fluid\/Theme\//,
-  /^Sources\/Fluid\/Assets\.xcassets\//,
+  /^Sources\/FluidSubtitles\/UI\//,
+  /^Sources\/FluidSubtitles\/Views\//,
+  /^Sources\/FluidSubtitles\/Theme\//,
+  /^Sources\/FluidSubtitles\/Assets\.xcassets\//,
   /^\.github\/screenshots\//,
   /(^|\/)([^/]*View|[^/]*Views|Settings|Onboarding|Overlay|MenuBar|Icon|Animation|Animations)[^/]*\.swift$/,
   /\.xcassets\//,
@@ -106,6 +106,7 @@ export function validatePullRequest({ body = "", changedFiles = [] } = {}) {
   const description = section(body, "Description");
   const typeOfChange = section(body, "Type of Change");
   const related = section(body, "Related Issue or Discussion");
+  const changelog = section(body, "Changelog");
   const testing = section(body, "Testing");
   const screenshots = section(body, "Screenshots / Video");
   const visualFiles = findVisualFiles(changedFiles);
@@ -116,6 +117,7 @@ export function validatePullRequest({ body = "", changedFiles = [] } = {}) {
     ["Description", hasNonPlaceholderContent(description)],
     ["Type of Change", hasCheckedCheckbox(typeOfChange)],
     ["Related Issue or Discussion", hasRelatedReference(related)],
+    ["Changelog", hasCheckedCheckbox(changelog)],
     ["Testing", hasTestingEvidence(testing)],
     [
       "Screenshots / Video",

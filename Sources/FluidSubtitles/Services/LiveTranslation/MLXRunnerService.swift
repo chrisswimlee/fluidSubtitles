@@ -66,7 +66,21 @@ final class MLXRunnerService: ObservableObject {
     }
 
     var canServe: Bool {
-        self.status.running && self.lastSuccessfulCallAt != nil
+        self.status.running
+    }
+
+    /// Start the runner if it is enabled and installed, then health-ping it.
+    /// First polish used to require `lastSuccessfulCallAt`, so cleanup never started.
+    func prepareToPolish() async -> Bool {
+        guard SettingsStore.shared.mlxRunnerEnabled else { return false }
+        await self.ensureRunning()
+        if self.status.running {
+            if self.lastSuccessfulCallAt == nil {
+                _ = await self.isHealthy()
+            }
+            return true
+        }
+        return await self.isHealthy()
     }
 
     func markSuccessfulCall() {
@@ -498,22 +512,63 @@ final class MLXRunnerService: ObservableObject {
     private func resolvePython(forSetup: Bool = false) throws -> String {
         let support = AppSupportDirectory.url().appendingPathComponent("MLXRunner", isDirectory: true)
         let venv = support.appendingPathComponent("venv/bin/python3").path
-        let python312 = ["/opt/homebrew/bin/python3.12", "/usr/local/bin/python3.12"]
         if !forSetup, FileManager.default.isExecutableFile(atPath: venv) {
             self.pythonPath = venv
             return venv
         }
-        if let existing = python312.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
+        if let discovered = Self.discoverPython312() {
             if forSetup || !FileManager.default.isExecutableFile(atPath: venv) {
-                return existing
+                return discovered
             }
         }
         if let pythonPath, FileManager.default.isExecutableFile(atPath: pythonPath) {
             return pythonPath
         }
         throw MLXRunnerError(
-            message: "Python 3.12 was not found. Install it with: brew install python@3.12"
+            message: "Python 3.12 was not found. Install it with brew install python@3.12, or set FLUID_PYTHON."
         )
+    }
+
+    static func discoverPython312() -> String? {
+        var candidates: [String] = []
+        if let fluidPython = ProcessInfo.processInfo.environment["FLUID_PYTHON"], !fluidPython.isEmpty {
+            candidates.append(fluidPython)
+        }
+        if let fromPath = Self.whichExecutable("python3.12") {
+            candidates.append(fromPath)
+        }
+        candidates.append(contentsOf: [
+            "/opt/homebrew/bin/python3.12",
+            "/usr/local/bin/python3.12",
+        ])
+        var seen = Set<String>()
+        for path in candidates where seen.insert(path).inserted {
+            if FileManager.default.isExecutableFile(atPath: path) {
+                return path
+            }
+        }
+        return nil
+    }
+
+    private static func whichExecutable(_ name: String) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
+        process.arguments = [name]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return nil
+        }
+        guard process.terminationStatus == 0 else { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let path = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let path, !path.isEmpty else { return nil }
+        return path
     }
 }
 

@@ -1,0 +1,180 @@
+import XCTest
+@testable import FluidSubtitles_Debug
+
+final class LiveTranslationMailboxTests: XCTestCase {
+    func testMailboxIsReadyAfterAHostStartsListening() async {
+        let mailbox = TranslationRequestMailbox()
+        XCTAssertFalse(mailbox.isReady)
+        let serve = Task {
+            _ = await mailbox.next()
+        }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertTrue(mailbox.isReady)
+        mailbox.cancelAll(TranslationEngineError(message: "done"))
+        serve.cancel()
+        XCTAssertFalse(mailbox.isReady)
+    }
+
+    @MainActor
+    func testWarmMailboxIsPreferredOverAPerClauseInstall() {
+        XCTAssertEqual(
+            AppleTranslationEngine.sessionChoice(mailboxReady: true),
+            .warmMailbox
+        )
+        if #available(macOS 26.0, *) {
+            XCTAssertEqual(
+                AppleTranslationEngine.sessionChoice(mailboxReady: false),
+                .installedSessionFallback
+            )
+        } else {
+            XCTAssertEqual(
+                AppleTranslationEngine.sessionChoice(mailboxReady: false),
+                .warmMailbox
+            )
+        }
+    }
+
+    func testSubmitThrowsWhenNoHostIsReady() async {
+        let mailbox = TranslationRequestMailbox()
+        do {
+            _ = try await mailbox.submit("Hello")
+            XCTFail("Expected not-ready error")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("not ready"))
+        }
+    }
+
+    func testSubmitResumesWhenAHostIsListening() async throws {
+        let mailbox = TranslationRequestMailbox()
+        let serve = Task {
+            if let request = await mailbox.next() {
+                request.resume(.success("안녕"))
+            }
+        }
+        try await Task.sleep(nanoseconds: 20_000_000)
+        let translated = try await mailbox.submit("Hello")
+        XCTAssertEqual(translated, "안녕")
+        serve.cancel()
+    }
+
+    func testCancelAllResumesPendingWaiters() async {
+        let mailbox = TranslationRequestMailbox()
+        let serve = Task {
+            if let request = await mailbox.next() {
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                request.resume(.success("too late"))
+            }
+        }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        let waiter = Task {
+            try await mailbox.submit("Hello")
+        }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        mailbox.cancelAll(TranslationEngineError(message: "Language pair changed."))
+        do {
+            _ = try await waiter.value
+            XCTFail("Expected cancel to resume the waiter")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("Language pair changed"))
+        }
+        serve.cancel()
+    }
+
+    func testLiveSubmitReplacesAQueuedLiveRequest() async throws {
+        let mailbox = TranslationRequestMailbox()
+        let seen = RequestLog()
+        let serve = Task {
+            while let request = await mailbox.next() {
+                seen.append(request.text)
+                try? await Task.sleep(nanoseconds: 80_000_000)
+                request.resume(.success("t-\(request.text)"))
+            }
+        }
+        try await Task.sleep(nanoseconds: 20_000_000)
+        let first = Task {
+            try await mailbox.submit("Hello", kind: .live)
+        }
+        try await Task.sleep(nanoseconds: 20_000_000)
+        let second = Task {
+            try await mailbox.submit("Hello world", kind: .live)
+        }
+        try await Task.sleep(nanoseconds: 20_000_000)
+        let latest = try await mailbox.submit("Hello world today", kind: .live)
+        XCTAssertEqual(latest, "t-Hello world today")
+        do {
+            _ = try await second.value
+            XCTFail("Expected the queued live request to be superseded")
+        } catch {
+            XCTAssertTrue((error as? TranslationEngineError)?.isSuperseded == true)
+        }
+        _ = try? await first.value
+        XCTAssertEqual(seen.last, "Hello world today")
+        XCTAssertLessThanOrEqual(seen.count, 2)
+        mailbox.cancelAll(TranslationEngineError(message: "done"))
+        serve.cancel()
+    }
+
+    func testCommitIsNotDroppedByALaterLiveSubmit() async throws {
+        let mailbox = TranslationRequestMailbox()
+        let seen = RequestLog()
+        let serve = Task {
+            while let request = await mailbox.next() {
+                seen.append(request.text)
+                try? await Task.sleep(nanoseconds: 80_000_000)
+                request.resume(.success("t-\(request.text)"))
+            }
+        }
+        try await Task.sleep(nanoseconds: 20_000_000)
+
+        let firstCommit = Task {
+            try await mailbox.submit("First commit", kind: .commit)
+        }
+        try await Task.sleep(nanoseconds: 20_000_000)
+        let queuedCommit = Task {
+            try await mailbox.submit("Second commit", kind: .commit)
+        }
+        try await Task.sleep(nanoseconds: 20_000_000)
+        let live = try await mailbox.submit("Live draft", kind: .live)
+        let firstCommitted = try await firstCommit.value
+        let secondCommitted = try await queuedCommit.value
+
+        XCTAssertEqual(firstCommitted, "t-First commit")
+        XCTAssertEqual(secondCommitted, "t-Second commit")
+        XCTAssertEqual(live, "t-Live draft")
+        XCTAssertTrue(seen.contains("First commit"))
+        XCTAssertTrue(seen.contains("Second commit"))
+        XCTAssertTrue(seen.contains("Live draft"))
+
+        mailbox.cancelAll(TranslationEngineError(message: "done"))
+        serve.cancel()
+    }
+}
+
+private final class RequestLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [String] = []
+
+    func append(_ value: String) {
+        self.lock.lock()
+        self.values.append(value)
+        self.lock.unlock()
+    }
+
+    var last: String? {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        return self.values.last
+    }
+
+    var count: Int {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        return self.values.count
+    }
+
+    func contains(_ value: String) -> Bool {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        return self.values.contains(value)
+    }
+}

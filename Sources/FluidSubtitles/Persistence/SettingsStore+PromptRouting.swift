@@ -24,41 +24,15 @@ extension SettingsStore {
         }
     }
 
-    var editPromptRoutingScope: PromptRoutingScope {
-        get {
-            guard let rawValue = UserDefaults.standard.string(forKey: PromptRoutingKeys.edit),
-                  let scope = PromptRoutingScope(rawValue: rawValue)
-            else {
-                return .allApps
-            }
-            return scope
-        }
-        set {
-            objectWillChange.send()
-            UserDefaults.standard.set(newValue.rawValue, forKey: PromptRoutingKeys.edit)
-        }
+    func promptRoutingScope(for _: PromptMode) -> PromptRoutingScope {
+        self.dictationPromptRoutingScope
     }
 
-    func promptRoutingScope(for mode: PromptMode) -> PromptRoutingScope {
-        switch mode.normalized {
-        case .dictate:
-            return self.dictationPromptRoutingScope
-        case .edit, .write, .rewrite:
-            return self.editPromptRoutingScope
-        }
-    }
-
-    func setPromptRoutingScope(_ scope: PromptRoutingScope, for mode: PromptMode) {
-        switch mode.normalized {
-        case .dictate:
-            self.dictationPromptRoutingScope = scope
-        case .edit, .write, .rewrite:
-            self.editPromptRoutingScope = scope
-        }
+    func setPromptRoutingScope(_ scope: PromptRoutingScope, for _: PromptMode) {
+        self.dictationPromptRoutingScope = scope
     }
 }
 
 private enum PromptRoutingKeys {
     static let dictation = "DictationPromptRoutingScope"
-    static let edit = "EditPromptRoutingScope"
 }

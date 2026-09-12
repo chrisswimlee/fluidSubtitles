@@ -3,6 +3,9 @@ import Combine
 import PromiseKit
 import SwiftUI
 
+// swiftlint:disable function_body_length cyclomatic_complexity type_body_length
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
+
 enum MenuBarNavigationDestination: String {
     case liveTranslation
     case customDictionary
@@ -24,6 +27,7 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
     private var microphoneMenuItem: NSMenuItem?
     private var microphoneSubmenu: NSMenu?
     private var theaterMenuItem: NSMenuItem?
+    private var listenMenuItem: NSMenuItem?
 
     // References to app state
     private weak var asrService: ASRService?
@@ -59,9 +63,6 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
     /// Legacy debounce used by generic processing callers. Successful dictation
     /// completion dispatches output first, then hides the overlay asynchronously.
     private let processingHideDelay: DispatchTimeInterval = .milliseconds(80)
-
-    /// Subscription for forwarding audio levels to expanded command notch
-    private var expandedModeAudioSubscription: AnyCancellable?
 
     override init() {
         super.init()
@@ -207,41 +208,8 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
             self.overlayVisible = true
             self.overlayBench("show_request mode=\(self.currentOverlayMode.rawValue)")
 
-            // If expanded command output is showing, check if we should keep it or close it
-            if NotchOverlayManager.shared.isCommandOutputExpanded {
-                // Only keep expanded notch if this is a command mode recording (follow-up)
-                // For other modes (dictation, rewrite), close it and show regular notch
-                if self.currentOverlayMode == .command, NotchOverlayManager.shared.supportsCommandNotchUI {
-                    // Enable recording visualization in the expanded notch
-                    NotchContentState.shared.setRecordingInExpandedMode(true)
-
-                    // Subscribe to audio levels and forward to expanded notch
-                    self.expandedModeAudioSubscription = asrService.audioLevelPublisher
-                        .receive(on: DispatchQueue.main)
-                        .sink { level in
-                            NotchContentState.shared.updateExpandedModeAudioLevel(level)
-                        }
-
-                    self.pendingShowOperation = nil
-                    return
-                } else {
-                    // Close expanded command notch to transition to regular notch
-                    NotchOverlayManager.shared.hideExpandedCommandOutput()
-                }
-            }
-
             let showItem = DispatchWorkItem { [weak self] in
                 guard let self = self, self.overlayVisible else { return }
-
-                // Double-check expanded notch isn't showing (could have changed during delay)
-                // But only block if we're in command mode
-                if NotchOverlayManager.shared.isCommandOutputExpanded,
-                   self.currentOverlayMode == .command,
-                   NotchOverlayManager.shared.supportsCommandNotchUI
-                {
-                    self.pendingShowOperation = nil
-                    return
-                }
 
                 // Show notch overlay
                 self.overlayBench("show_workitem_execute mode=\(self.currentOverlayMode.rawValue)")
@@ -263,25 +231,8 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
             self.overlayVisible = false
             self.overlayBench("hide_request delayMs=30")
 
-            // If expanded command output is showing, don't hide it - let it stay visible
-            if NotchOverlayManager.shared.isCommandOutputExpanded {
-                // Stop recording visualization in expanded notch
-                NotchContentState.shared.setRecordingInExpandedMode(false)
-                self.expandedModeAudioSubscription?.cancel()
-                self.expandedModeAudioSubscription = nil
-
-                self.pendingHideOperation = nil
-                return
-            }
-
             let hideItem = DispatchWorkItem { [weak self] in
                 guard let self = self, !self.overlayVisible else { return }
-
-                // Don't hide if expanded command output is now showing
-                if NotchOverlayManager.shared.isCommandOutputExpanded {
-                    self.pendingHideOperation = nil
-                    return
-                }
 
                 // Hide notch overlay
                 self.overlayBench("hide_workitem_execute")
@@ -316,19 +267,6 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         self.overlayVisible = true
         self.overlayBench("instant_show_request mode=\(self.currentOverlayMode.rawValue)")
 
-        if NotchOverlayManager.shared.isCommandOutputExpanded {
-            if self.currentOverlayMode == .command, NotchOverlayManager.shared.supportsCommandNotchUI {
-                NotchContentState.shared.setRecordingInExpandedMode(true)
-                self.expandedModeAudioSubscription = asrService.audioLevelPublisher
-                    .receive(on: DispatchQueue.main)
-                    .sink { level in
-                        NotchContentState.shared.updateExpandedModeAudioLevel(level)
-                    }
-                return
-            }
-            NotchOverlayManager.shared.hideExpandedCommandOutput()
-        }
-
         self.overlayBench("show_workitem_execute mode=\(self.currentOverlayMode.rawValue)")
         NotchOverlayManager.shared.show(
             audioLevelPublisher: asrService.audioLevelPublisher,
@@ -356,14 +294,6 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         self.overlayVisible = false
         self.overlayBench("instant_hide_request reason=\(reason)")
 
-        if NotchOverlayManager.shared.isCommandOutputExpanded {
-            NotchContentState.shared.setRecordingInExpandedMode(false)
-            self.expandedModeAudioSubscription?.cancel()
-            self.expandedModeAudioSubscription = nil
-            self.overlayBench("instant_hide_return reason=expanded_command_output")
-            return
-        }
-
         NotchOverlayManager.shared.hide()
         self.overlayBench("instant_hide_return")
     }
@@ -376,8 +306,8 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
 
     func setOverlayMode(_ mode: OverlayMode) {
         self.overlayBench("set_mode mode=\(mode.rawValue)")
-        self.currentOverlayMode = mode
-        NotchOverlayManager.shared.setMode(mode)
+        self.currentOverlayMode = .dictation
+        NotchOverlayManager.shared.setMode(.dictation)
     }
 
     /// Keeps the recording overlay owned by the active pipeline without
@@ -415,25 +345,10 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
             self.isProcessingActive = false
             self.pendingProcessingShowOperation?.cancel()
             self.pendingProcessingShowOperation = nil
-            // When processing ends, schedule the hide (unless expanded output is showing)
             self.overlayVisible = false
-
-            // If expanded command output is showing, don't hide it
-            if NotchOverlayManager.shared.isCommandOutputExpanded {
-                self.pendingHideOperation = nil
-                NotchOverlayManager.shared.setProcessing(processing)
-                self.overlayBench("set_processing_return reason=expanded_command_output")
-                return
-            }
 
             let hideItem = DispatchWorkItem { [weak self] in
                 guard let self = self, !self.overlayVisible else { return }
-
-                // Don't hide if expanded command output is now showing
-                if NotchOverlayManager.shared.isCommandOutputExpanded {
-                    self.pendingHideOperation = nil
-                    return
-                }
 
                 self.overlayBench("processing_hide_workitem_execute delayMs=80")
                 NotchOverlayManager.shared.hide()
@@ -598,22 +513,39 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         openItem.target = self
         menu.addItem(openItem)
 
-        let translationItem = NSMenuItem(
-            title: "Translate",
+        let theaterMenu = NSMenu(title: "Theater")
+        let openHomeItem = NSMenuItem(
+            title: "Open Theater",
             action: #selector(openLiveTranslation),
             keyEquivalent: ""
         )
-        translationItem.target = self
-        menu.addItem(translationItem)
+        openHomeItem.target = self
+        theaterMenu.addItem(openHomeItem)
 
         let theaterItem = NSMenuItem(
-            title: SettingsStore.shared.theaterWindowEnabled ? "Hide Theater" : "Show Theater",
+            title: SettingsStore.shared.theaterWindowEnabled ? "Hide window" : "Show window",
             action: #selector(toggleTheater),
             keyEquivalent: ""
         )
         theaterItem.target = self
-        menu.addItem(theaterItem)
+        theaterMenu.addItem(theaterItem)
         self.theaterMenuItem = theaterItem
+
+        let listenItem = NSMenuItem(
+            title: LiveTranslationController.shared.isSessionActive
+                && LiveTranslationController.shared.listenKind == .captions
+                ? "Stop Listen"
+                : "Listen",
+            action: #selector(toggleCaptionListen),
+            keyEquivalent: ""
+        )
+        listenItem.target = self
+        theaterMenu.addItem(listenItem)
+        self.listenMenuItem = listenItem
+
+        let theaterGroup = NSMenuItem(title: "Theater", action: nil, keyEquivalent: "")
+        theaterGroup.submenu = theaterMenu
+        menu.addItem(theaterGroup)
 
         // Preferences
         let preferencesItem = NSMenuItem(title: "Settings...", action: #selector(openPreferences), keyEquivalent: ",")
@@ -684,13 +616,21 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
 
     private func updateMenuItemsText() {
         // Update status text with hotkey info
-        let hotkeyDisplay = SettingsStore.shared.listeningHotkeyEnabled
-            ? SettingsStore.shared.primaryDictationShortcutDisplayString
+        let isCaptionListening = LiveTranslationController.shared.isSessionActive
+            && LiveTranslationController.shared.listenKind == .captions
+        let listenHotkey = SettingsStore.shared.captionListenHotkeyEnabled
+            ? (SettingsStore.shared.captionListenHotkeyShortcut?.displayString ?? "")
             : ""
-        let hotkeyInfo = hotkeyDisplay.isEmpty ? "" : " (\(hotkeyDisplay))"
-        let statusTitle = self.isRecording ? "Listening…\(hotkeyInfo)" : "Ready\(hotkeyInfo)"
+        let hotkeyInfo = listenHotkey.isEmpty ? "" : " (\(listenHotkey))"
+        let statusTitle: String
+        if isCaptionListening || self.isRecording {
+            statusTitle = "Listening…\(hotkeyInfo)"
+        } else {
+            statusTitle = "Theater ready\(hotkeyInfo)"
+        }
         self.statusMenuItem?.title = statusTitle
-        self.theaterMenuItem?.title = SettingsStore.shared.theaterWindowEnabled ? "Hide Theater" : "Show Theater"
+        self.theaterMenuItem?.title = SettingsStore.shared.theaterWindowEnabled ? "Hide window" : "Show window"
+        self.listenMenuItem?.title = isCaptionListening ? "Stop Listen" : "Listen"
         self.copyLastTranscriptMenuItem?.isEnabled = self.canCopyLastTranscript
         self.microphoneMenuItem?.isEnabled = true
 
@@ -700,7 +640,6 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         if menu === self.menu {
-            AnalyticsService.shared.recordAppActivity()
             self.updateMenuItemsText()
             self.refreshMicrophoneMenu()
         }
@@ -1028,6 +967,11 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
 
     @objc private func toggleTheater() {
         PresenterCaptionController.shared.setVisible(!SettingsStore.shared.theaterWindowEnabled)
+        self.updateMenuItemsText()
+    }
+
+    @objc private func toggleCaptionListen() {
+        LiveTranslationController.shared.toggleCaptionListening()
         self.updateMenuItemsText()
     }
 

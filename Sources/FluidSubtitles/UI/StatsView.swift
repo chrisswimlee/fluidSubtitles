@@ -1,5 +1,8 @@
 import SwiftUI
 
+// swiftlint:disable function_body_length cyclomatic_complexity type_body_length
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
+
 struct StatsView: View {
     @ObservedObject private var historyStore = TranscriptionHistoryStore.shared
     @ObservedObject private var settings = SettingsStore.shared
@@ -156,7 +159,7 @@ struct StatsView: View {
     /// Motivational message that scales with today's activity level.
     private func motivationalMessage(wordsToday: Int, streak: Int) -> String {
         if wordsToday == 0 {
-            return streak > 0 ? "Keep the streak alive — say a few words." : "Ready when you are. Start dictating to save time."
+            return streak > 0 ? "Keep the streak alive — open Theater and Listen." : "Ready when you are. Open Theater and Listen."
         }
 
         if wordsToday < 100 {
@@ -257,7 +260,7 @@ struct StatsView: View {
                         .font(.system(size: 11))
                         .foregroundStyle(self.theme.palette.success)
                 } else {
-                    Text("Start dictating")
+                    Text("Open Theater and Listen")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
@@ -290,7 +293,7 @@ struct StatsView: View {
     // MARK: - Transcriptions Card
 
     private var transcriptionsCard: some View {
-        StatCard(title: "TRANSCRIPTIONS", icon: "doc.text.fill") {
+        StatCard(title: "SESSIONS", icon: "doc.text.fill") {
             VStack(alignment: .leading, spacing: 8) {
                 Text("\(self.historyStore.totalEntryCount)")
                     .font(.system(size: 32, weight: .bold, design: .rounded))
@@ -453,7 +456,7 @@ struct StatsView: View {
 
                     // Transcription milestones
                     self.milestoneRow(
-                        title: "Transcriptions",
+                        title: "Sessions",
                         milestones: self.historyStore.transcriptionMilestones
                     )
 
@@ -581,7 +584,7 @@ struct StatsView: View {
 
                 HStack(spacing: 12) {
                     self.recordItem(
-                        title: "Longest Transcription",
+                        title: "Longest Session",
                         value: "\(self.historyStore.longestTranscriptionWords) words"
                     )
 
@@ -592,7 +595,7 @@ struct StatsView: View {
 
                     self.recordItem(
                         title: "Most in a Day",
-                        value: "\(self.historyStore.mostTranscriptionsInDay) transcriptions"
+                        value: "\(self.historyStore.mostTranscriptionsInDay) sessions"
                     )
                 }
             }
@@ -647,7 +650,7 @@ struct StatsView: View {
                 self.historyStore.clearAllHistory()
             }
         } message: {
-            Text("This will permanently delete all \(self.historyStore.totalEntryCount) transcriptions and reset all statistics. This action cannot be undone.")
+            Text("This will permanently delete all \(self.historyStore.totalEntryCount) sessions and reset all statistics. This action cannot be undone.")
         }
     }
 

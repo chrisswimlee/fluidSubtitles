@@ -21,7 +21,7 @@ struct VoiceEngineSettingsScreen: View {
             settings: self.viewModel.settings,
             theme: self.theme
         )
-        .padding(14)
+        .fluidPageContent()
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
@@ -67,7 +67,7 @@ struct AIEnhancementSettingsScreen: View {
                     shortcutRecordingMessage: self.$shortcutRecordingMessage
                 )
             }
-            .padding(14)
+            .fluidPageContent()
         }
     }
 }

@@ -20,6 +20,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import signal
 import socket
 import subprocess
@@ -35,7 +36,28 @@ MODELS_DIR = STATE_DIR / "Models"
 STATE_PATH = STATE_DIR / "state.json"
 PID_PATH = STATE_DIR / "server.pid"
 VENV = STATE_DIR / "venv"
-PYTHON312 = Path("/opt/homebrew/bin/python3.12")
+
+def resolve_python312() -> Path | None:
+    candidates: list[Path] = []
+    env = os.environ.get("FLUID_PYTHON")
+    if env:
+        candidates.append(Path(env))
+    which = shutil.which("python3.12")
+    if which:
+        candidates.append(Path(which))
+    candidates.extend((Path("/opt/homebrew/bin/python3.12"), Path("/usr/local/bin/python3.12")))
+    seen: set[str] = set()
+    for path in candidates:
+        resolved = str(path)
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if path.is_file() and os.access(path, os.X_OK):
+            return path
+    return None
+
+
+PYTHON312 = resolve_python312() or Path("/opt/homebrew/bin/python3.12")
 LM_STUDIO_MODELS = Path.home() / ".lmstudio/models"
 HF_REPO_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
 SERVER_MARKERS = ("mlx_lm.server", "mlx_vlm.server", "mlx_runner.py serve")
@@ -446,7 +468,7 @@ def ensure_venv_runtime() -> None:
             "ok": False,
             "error": (
                 "MLX is not installed yet. Use Install MLX runtime in the app, or:\n"
-                f"  /opt/homebrew/bin/python3.12 {SCRIPT_DIR / 'mlx_runner.py'} setup"
+                f"  {PYTHON312} {SCRIPT_DIR / 'mlx_runner.py'} setup"
             ),
         }
     )
@@ -458,7 +480,7 @@ def dependency_error(need_vlm: bool = False) -> str | None:
         import huggingface_hub  # noqa: F401
         import mlx_lm  # noqa: F401
     except ImportError:
-        return f"/opt/homebrew/bin/python3.12 {SCRIPT_DIR / 'mlx_runner.py'} setup"
+        return f"{PYTHON312} {SCRIPT_DIR / 'mlx_runner.py'} setup"
     if need_vlm:
         try:
             import mlx_vlm  # noqa: F401
@@ -484,12 +506,13 @@ def server_module(folder: Path) -> str:
 
 
 def cmd_setup(_: argparse.Namespace) -> int:
-    if not PYTHON312.is_file():
-        emit({"ok": False, "error": "Need Homebrew Python 3.12: brew install python@3.12"})
+    python = resolve_python312()
+    if python is None:
+        emit({"ok": False, "error": "Python 3.12 was not found. Install it with brew install python@3.12, or set FLUID_PYTHON."})
         return 1
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     if not venv_python().is_file():
-        subprocess.check_call([str(PYTHON312), "-m", "venv", str(VENV)])
+        subprocess.check_call([str(python), "-m", "venv", str(VENV)])
     subprocess.check_call(
         [str(venv_python()), "-m", "pip", "install", "-U", "pip", "mlx-lm", "mlx-vlm", "huggingface_hub"]
     )
@@ -526,7 +549,7 @@ def cmd_status(_: argparse.Namespace) -> int:
             "pid": None if info is None else int(info["pid"]),
             "running_model": None if info is None else info.get("model"),
             "missing_dependency": dependency_error() if venv_python().is_file() else (
-                f"/opt/homebrew/bin/python3.12 {SCRIPT_DIR / 'mlx_runner.py'} setup"
+                f"{PYTHON312} {SCRIPT_DIR / 'mlx_runner.py'} setup"
             ),
             "runtime_ready": venv_python().is_file() and dependency_error() is None,
             "models_dir": str(MODELS_DIR),

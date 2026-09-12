@@ -4,6 +4,9 @@ import CoreAudioCaptureSupport
 #endif
 import Foundation
 
+// swiftlint:disable file_length type_body_length function_body_length cyclomatic_complexity
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
+
 nonisolated enum DirectCoreAudioDeviceSelection: Equatable {
     case systemDefault
     case preferredUID(String)
@@ -1487,7 +1490,9 @@ final nonisolated class DirectCoreAudioLifecycleController: @unchecked Sendable 
         let line = "[\(level.rawValue)] [DirectCoreAudioLifecycle] " +
             "t=\(String(format: "%.6f", uptime)) \(message)"
         FileLogger.shared.append(line: line)
+        #if DEBUG
         print(line)
+        #endif
     }
 
     private static func elapsedMilliseconds(since startedAt: TimeInterval) -> Int {

@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Combine
 import Foundation
 
@@ -8,10 +9,12 @@ final class LiveTranslationController: ObservableObject {
 
     @Published private(set) var isSessionActive = false
     @Published private(set) var listenKind: TranslationListenKind?
+    @Published private(set) var packAvailability: TranslationPackAvailability = .unknown
     let subscriber = LiveTranslationSubscriber()
     let appleEngine = AppleTranslationEngine.shared
 
     var onStartCaptionListening: (() -> Void)?
+    var onStartInsertListening: (() -> Void)?
     var onStopListening: (() async -> Void)?
     var onInsertCaption: ((String) -> Void)?
 
@@ -27,7 +30,18 @@ final class LiveTranslationController: ObservableObject {
     private init() {
         self.subscriber.objectWillChange
             .sink { [weak self] _ in
-                self?.objectWillChange.send()
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.refreshPresenter()
+                    if self.isSessionActive, self.listenKind != .captions {
+                        self.objectWillChange.send()
+                    }
+                }
+            }
+            .store(in: &self.cancellables)
+        NotificationCenter.default.publisher(for: ProcessInfo.thermalStateDidChangeNotification)
+            .sink { [weak self] _ in
+                self?.subscriber.refreshThermal()
                 self?.refreshPresenter()
             }
             .store(in: &self.cancellables)
@@ -35,41 +49,55 @@ final class LiveTranslationController: ObservableObject {
 
     var overlayText: String {
         guard self.isSessionActive else { return self.subscriber.sourceDraft }
-        let target = self.subscriber.translatedDraft
-        if SettingsStore.shared.translationShowSource, !self.subscriber.sourceDraft.isEmpty {
-            if target.isEmpty { return self.subscriber.sourceDraft }
-            return "\(target)\n\(self.subscriber.sourceDraft)"
+        let target = self.subscriber.liveCaptionText
+        let source = self.subscriber.liveSpokenText
+        if SettingsStore.shared.translationShowSource, !source.isEmpty, target != source {
+            if target.isEmpty { return "\n\(source)" }
+            return "\(target)\n\(source)"
         }
-        return target.isEmpty ? self.subscriber.sourceDraft : target
+        return target.isEmpty ? source : target
     }
 
     func beginSession(kind: TranslationListenKind) {
+        SpokenLanguageResolver.pinWhisperToSpokenSource()
         self.sessionToken += 1
         self.abandonCaptionSession = false
         self.isSessionActive = true
         self.listenKind = kind
         PresenterCaptionController.shared.commitEdits()
         self.subscriber.beginListening()
-        TranslationSessionHostController.install()
-        let source = SpokenLanguageResolver.sourceLanguage()
-        let target = SpokenLanguageResolver.targetLanguage()
-        Task {
-            await self.appleEngine.warm(source: source, target: target)
-        }
-        if kind == .captions {
+        self.warmAppleTranslation()
+        if kind == .captions, !SettingsStore.shared.theaterWindowEnabled {
             PresenterCaptionController.shared.setVisible(true)
         }
-        if SettingsStore.shared.mlxRunnerEnabled {
-            Task {
-                await MLXRunnerService.shared.ensureRunning()
-            }
-        }
+        self.refreshPresenter()
+    }
+
+    func markFirstBuffer() {
+        guard self.isSessionActive else { return }
+        self.subscriber.noteFirstBuffer()
+    }
+
+    func markSpeechStart(hostTime: UInt64) {
+        guard self.isSessionActive else { return }
+        self.subscriber.noteSpeechStart(hostTime: hostTime)
+    }
+
+    func markSilenceHold() {
+        guard self.isSessionActive else { return }
+        self.subscriber.noteSilenceHold()
+    }
+
+    func handleEndOfUtterance() {
+        guard self.isSessionActive else { return }
+        self.subscriber.handleEndOfUtterance()
         self.refreshPresenter()
     }
 
     func handlePartial(_ text: String) {
         guard self.isSessionActive else { return }
         self.subscriber.handlePartial(text)
+        self.refreshPresenter()
         if self.listenKind == .insert {
             NotchOverlayManager.shared.updateTranscriptionText(self.overlayText)
         }
@@ -88,7 +116,8 @@ final class LiveTranslationController: ObservableObject {
             self.abandonCaptionSession = false
             self.isSessionActive = false
             self.listenKind = nil
-            self.subscriber.reset()
+            self.subscriber.endListening()
+            self.persistBoard()
             return ""
         }
         let kind = self.listenKind
@@ -98,7 +127,8 @@ final class LiveTranslationController: ObservableObject {
                 self.abandonCaptionSession = false
                 self.isSessionActive = false
                 self.listenKind = nil
-                self.subscriber.reset()
+                self.subscriber.endListening()
+                self.persistBoard()
             }
             return ""
         }
@@ -120,6 +150,7 @@ final class LiveTranslationController: ObservableObject {
     }
 
     func theaterWasClosed() {
+        self.persistBoard()
         if self.listenKind == .insert {
             PresenterCaptionController.shared.clearDisplay()
             return
@@ -130,7 +161,7 @@ final class LiveTranslationController: ObservableObject {
             self.isSessionActive = false
             self.stopListening()
         }
-        self.subscriber.reset()
+        self.subscriber.endListening()
         PresenterCaptionController.shared.clearDisplay()
     }
 
@@ -142,9 +173,49 @@ final class LiveTranslationController: ObservableObject {
         let settings = SettingsStore.shared
         let currentSource = SpokenLanguageResolver.sourceLanguage(settings: settings)
         let currentTarget = SpokenLanguageResolver.targetLanguage(settings: settings)
+        if currentSource.id == currentTarget.id { return }
         SpokenLanguageResolver.setSourceLanguage(currentTarget, settings: settings)
         settings.translationTargetLanguageID = currentSource.id
-        self.appleEngine.prepare(source: currentTarget, target: currentSource)
+        self.finishLanguageChange()
+    }
+
+    func applySourceLanguage(_ id: String) {
+        guard let language = TranslationLanguageCatalog.language(id: id) else { return }
+        SpokenLanguageResolver.setSourceLanguage(language)
+        self.finishLanguageChange()
+    }
+
+    func applyTargetLanguage(_ id: String) {
+        guard let language = TranslationLanguageCatalog.language(id: id) else { return }
+        SettingsStore.shared.translationTargetLanguageID = language.id
+        self.finishLanguageChange()
+    }
+
+    private func finishLanguageChange() {
+        let source = SpokenLanguageResolver.sourceLanguage()
+        let target = SpokenLanguageResolver.targetLanguage()
+        VoiceEngineLanguageCatalog.ensureCompatibleEngine(forLanguageID: source.id)
+        self.warmAppleTranslation(source: source, target: target)
+        self.subscriber.noteLanguagePairChanged()
+        if let mismatch = SpokenLanguageResolver.voiceEngineMismatchMessage() {
+            self.subscriber.reportFailure(mismatch)
+        }
+        self.refreshPresenter()
+    }
+
+    /// Starts Apple Translation before the first clause: pair change and Listen both hit this.
+    private func warmAppleTranslation(
+        source: TranslationLanguage? = nil,
+        target: TranslationLanguage? = nil
+    ) {
+        let source = source ?? SpokenLanguageResolver.sourceLanguage()
+        let target = target ?? SpokenLanguageResolver.targetLanguage()
+        TranslationSessionHostController.install()
+        self.appleEngine.prepare(source: source, target: target)
+        Task {
+            await self.appleEngine.warm(source: source, target: target)
+            await self.refreshPackAvailability(source: source, target: target)
+        }
     }
 
     func applyEditedDocument(_ text: String) {
@@ -159,8 +230,98 @@ final class LiveTranslationController: ObservableObject {
     func startCaptionListening() {
         PresenterCaptionController.shared.commitEdits()
         PresenterCaptionController.shared.makeKeyForInteraction()
-        SettingsStore.shared.playgroundUsed = true
-        self.onStartCaptionListening?()
+        Task {
+            let ready = await self.ensureReadyToListen()
+            guard ready else { return }
+            self.onStartCaptionListening?()
+        }
+    }
+
+    func startInsertListening() {
+        Task {
+            let ready = await self.ensureReadyToListen()
+            guard ready else { return }
+            self.onStartInsertListening?()
+        }
+    }
+
+    func toggleCaptionListening() {
+        if self.isSessionActive, self.listenKind == .captions {
+            self.stopListening()
+            return
+        }
+        PresenterCaptionController.shared.setVisible(true)
+        self.startCaptionListening()
+    }
+
+    func ensureReadyToListen() async -> Bool {
+        let source = SpokenLanguageResolver.sourceLanguage()
+        let target = SpokenLanguageResolver.targetLanguage()
+        VoiceEngineLanguageCatalog.ensureCompatibleEngine(forLanguageID: source.id)
+        SpokenLanguageResolver.pinWhisperToSpokenSource()
+        if !SpokenLanguageResolver.voiceEngineSupportsSource() {
+            self.subscriber.reportFailure(
+                SpokenLanguageResolver.voiceEngineMismatchMessage()
+                    ?? "Switch Voice Engine to hear \(source.displayName)."
+            )
+            self.refreshPresenter()
+            return false
+        }
+        let model = SettingsStore.shared.selectedSpeechModel
+        if !model.isInstalled {
+            self.subscriber.reportFailure(
+                "Download \(model.displayName) before Listen. Apple Speech works without a download."
+            )
+            self.refreshPresenter()
+            return false
+        }
+        if AppServices.shared.asr.micStatus == .denied
+            || AppServices.shared.asr.micStatus == .restricted
+        {
+            self.subscriber.reportFailure("Allow microphone access in System Settings.")
+            self.refreshPresenter()
+            return false
+        }
+        if source.id == target.id {
+            self.packAvailability = .installed
+            return true
+        }
+        await self.appleEngine.warm(source: source, target: target)
+        let availability = await self.appleEngine.packAvailability(source: source, target: target)
+        self.packAvailability = availability
+        switch availability {
+        case .installed:
+            return true
+        case .supported:
+            self.subscriber.reportFailure("Download the language pack before Listen.")
+            self.refreshPresenter()
+            self.appleEngine.requestLanguagePackDownload()
+            return false
+        case .unsupported:
+            self.subscriber.reportFailure("This pair is not supported by Apple Translation.")
+            self.refreshPresenter()
+            return false
+        case .unknown:
+            self.subscriber.reportFailure("Apple Translation is not ready yet.")
+            self.refreshPresenter()
+            return false
+        }
+    }
+
+    func reportListenFailure(_ message: String) {
+        self.subscriber.reportFailure(message)
+        self.refreshPresenter()
+    }
+
+    func retryFailedTranslation() {
+        self.subscriber.retryFailedTranslation()
+        self.refreshPresenter()
+    }
+
+    func persistBoard() {
+        let snapshot = self.subscriber.snapshot()
+        SettingsStore.shared.theaterBoardSnapshot = snapshot.entries.isEmpty ? nil : snapshot
+        self.subscriber.persistLastLatency()
     }
 
     func stopListening() {
@@ -186,25 +347,62 @@ final class LiveTranslationController: ObservableObject {
         ClipboardService.copyToClipboard(text)
     }
 
+    func refreshPackAvailability(
+        source: TranslationLanguage? = nil,
+        target: TranslationLanguage? = nil
+    ) async {
+        let source = source ?? SpokenLanguageResolver.sourceLanguage()
+        let target = target ?? SpokenLanguageResolver.targetLanguage()
+        if source.id == target.id {
+            self.packAvailability = .installed
+            return
+        }
+        self.packAvailability = await self.appleEngine.packAvailability(source: source, target: target)
+    }
+
     func restoreTheaterIfNeeded() {
         TranslationSessionHostController.install()
-        SettingsStore.shared.theaterWindowEnabled = false
+        let wasEnabled = SettingsStore.shared.theaterWindowEnabled
+        if wasEnabled {
+            SettingsStore.shared.theaterWindowEnabled = false
+        }
+        self.subscriber.recountArchive()
+        if let snapshot = SettingsStore.shared.theaterBoardSnapshot {
+            self.subscriber.restore(snapshot)
+        }
         PresenterCaptionController.shared.orderOutIfClosed()
+        Task { await self.refreshPackAvailability() }
+    }
+
+    func restoreBoardIfNeeded() {
+        self.subscriber.recountArchive()
+        if self.subscriber.committedLines.isEmpty,
+           let snapshot = SettingsStore.shared.theaterBoardSnapshot
+        {
+            self.subscriber.restore(snapshot)
+        }
     }
 
     private func refreshPresenter() {
         guard SettingsStore.shared.theaterWindowEnabled else { return }
-        let lastCommitted = self.subscriber.committedLines.last ?? ""
-        let draft = self.subscriber.translatedDraft
+        var status = self.subscriber.statusText
+        if status.isEmpty, let window = self.subscriber.lineWindowStatus {
+            status = window
+        }
         PresenterCaptionController.shared.update(
-            source: self.subscriber.sourceDraft,
-            draft: draft == lastCommitted ? "" : draft,
+            source: self.subscriber.liveSpokenText,
+            draft: self.subscriber.liveCaptionText,
             committed: self.subscriber.committedLines,
             committedIDs: self.subscriber.committedLineIDs,
             committedSources: self.subscriber.committedSourceLines,
+            pendingSources: self.subscriber.pendingSpokenLines,
             pairLabel: SpokenLanguageResolver.pairLabel(),
-            status: self.subscriber.statusText,
-            isListening: self.isSessionActive
+            status: status,
+            isListening: self.isSessionActive,
+            canRetryTranslation: self.subscriber.canRetryTranslation,
+            approachingLineLimit: self.subscriber.isApproachingLineLimit,
+            latencyReadout: self.subscriber.lastLatencySample.displayText,
+            compactLatencyReadout: self.subscriber.lastLatencySample.compactText
         )
     }
 }

@@ -6,6 +6,9 @@ import Foundation
 import Speech
 #endif
 
+// swiftlint:disable function_body_length cyclomatic_complexity type_body_length
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
+
 // MARK: - Apple Speech Analyzer Provider (macOS 26+)
 
 /// A TranscriptionProvider that uses Apple's new SpeechAnalyzer API (macOS 26+).

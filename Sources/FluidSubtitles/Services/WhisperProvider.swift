@@ -1,6 +1,9 @@
 import Foundation
 import TranscribeCpp
 
+// swiftlint:disable function_body_length cyclomatic_complexity type_body_length
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
+
 /// TranscriptionProvider implementation using transcribe.cpp for Whisper GGUF models.
 final class WhisperProvider: TranscriptionProvider {
     let name = "Whisper (Universal)"
@@ -321,7 +324,7 @@ final class WhisperProvider: TranscriptionProvider {
             )
         }
 
-        let languageCode = self.languageCodeOverride ?? SettingsStore.shared.selectedWhisperLanguageCode
+        let languageCode = self.resolvedLanguageCode()
         let transcript = try await session.run(samples, options: Self.runOptions(languageCode: languageCode))
         let fullText = transcript.text.trimmingCharacters(in: .whitespacesAndNewlines)
         return ASRTranscriptionResult(text: fullText, confidence: 1.0)
@@ -329,6 +332,17 @@ final class WhisperProvider: TranscriptionProvider {
 
     static func runOptions(languageCode: String?) -> RunOptions {
         RunOptions(timestamps: .segment, language: languageCode)
+    }
+
+    private func resolvedLanguageCode() -> String? {
+        if let languageCodeOverride {
+            return languageCodeOverride
+        }
+        let settings = SettingsStore.shared
+        return SpokenLanguageHints.whisperLanguageCode(
+            stored: settings.selectedWhisperLanguageCode,
+            alsoHearOthers: settings.theaterAlsoHearOtherLanguages
+        )
     }
 
     func modelsExistOnDisk() -> Bool {

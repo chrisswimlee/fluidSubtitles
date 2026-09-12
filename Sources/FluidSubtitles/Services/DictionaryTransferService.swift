@@ -252,8 +252,7 @@ final class DictionaryTransferService {
 
     func decode(_ data: Data) throws -> DictionaryTransferDocument {
         do {
-            let document = try JSONDecoder().decode(DictionaryTransferDocument.self, from: data)
-            return Self.normalizedDocument(document)
+            return Self.normalizedDocument(try LectureTermPack.document(from: data))
         } catch {
             throw DictionaryTransferServiceError.invalidJSON
         }

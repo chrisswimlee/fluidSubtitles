@@ -12,6 +12,7 @@
 	<array>
 		<string>com.apple.loginitems</string>
 	</array>
+	<!-- CTranscribe.framework (TranscribeCpp / Whisper). MLX/Python are a separate Process. -->
 	<key>com.apple.security.cs.disable-library-validation</key>
 	<true/>
 </dict>

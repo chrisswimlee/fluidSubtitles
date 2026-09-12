@@ -9,6 +9,9 @@ import AppKit
 import Combine
 import Foundation
 
+// swiftlint:disable file_length type_body_length function_body_length cyclomatic_complexity
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
+
 nonisolated struct AudioBudgetMeasurementGate: Equatable, Sendable {
     let revision: UInt64
     let budgetBytes: Int64
@@ -24,6 +27,34 @@ struct CaptionHistoryPair: Codable, Equatable, Sendable {
     let source: String
     let translated: String
     let wasPolished: Bool
+    let committedAt: Date?
+
+    init(source: String, translated: String, wasPolished: Bool, committedAt: Date? = nil) {
+        self.source = source
+        self.translated = translated
+        self.wasPolished = wasPolished
+        self.committedAt = committedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.source = try container.decode(String.self, forKey: .source)
+        self.translated = try container.decode(String.self, forKey: .translated)
+        self.wasPolished = try container.decodeIfPresent(Bool.self, forKey: .wasPolished) ?? false
+        self.committedAt = try container.decodeIfPresent(Date.self, forKey: .committedAt)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.source, forKey: .source)
+        try container.encode(self.translated, forKey: .translated)
+        try container.encode(self.wasPolished, forKey: .wasPolished)
+        try container.encodeIfPresent(self.committedAt, forKey: .committedAt)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case source, translated, wasPolished, committedAt
+    }
 }
 
 struct TranscriptionHistoryEntry: Codable, Identifiable, Equatable, Sendable {

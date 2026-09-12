@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// swiftlint:disable function_body_length cyclomatic_complexity type_body_length
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
+
 extension VoiceEngineSettingsView {
     // MARK: - Speech Recognition Card
 
@@ -21,16 +24,11 @@ extension VoiceEngineSettingsView {
 
         return ThemedCard(hoverEffect: false) {
             VStack(alignment: .leading, spacing: 14) {
-                // Header
-                HStack(spacing: 10) {
-                    Image(systemName: "waveform")
-                        .font(.title2)
-                        .foregroundStyle(self.theme.palette.accent)
-                    Text("Voice Engine")
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                    Spacer()
-                }
+                FluidPageHeader(
+                    systemImage: "waveform",
+                    title: "Voice Engine",
+                    subtitle: "Speech model for the language you speak. Apple Speech is enough to try."
+                )
 
                 // Stats Panel - Dynamic bars that update based on selected model
                 self.modelStatsPanel
@@ -156,7 +154,6 @@ extension VoiceEngineSettingsView {
                     }
                 }
             }
-            .padding(14)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -588,12 +585,12 @@ extension VoiceEngineSettingsView {
     }
 
     private var selectedWhisperLanguageName: String {
-        guard let languageCode = self.settings.selectedWhisperLanguageCode,
-              let language = VoiceEngineLanguageCatalog.whisperLanguage(forCode: languageCode)
-        else {
-            return "Automatic"
+        if let languageCode = self.settings.selectedWhisperLanguageCode,
+           let language = VoiceEngineLanguageCatalog.whisperLanguage(forCode: languageCode)
+        {
+            return language.displayName
         }
-        return language.displayName
+        return SpokenLanguageResolver.sourceLanguage().displayName
     }
 
     private var filteredWhisperLanguages: [VoiceEngineLanguage] {
@@ -625,24 +622,6 @@ extension VoiceEngineSettingsView {
 
             ScrollView(.vertical, showsIndicators: true) {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    if self.normalizedWhisperLanguageSearchText.isEmpty ||
-                        "automatic".contains(self.normalizedWhisperLanguageSearchText)
-                    {
-                        Button {
-                            self.settings.selectedWhisperLanguageCode = nil
-                            self.isShowingWhisperLanguagePicker = false
-                        } label: {
-                            self.whisperLanguagePickerRow(
-                                title: "Automatic",
-                                isSelected: self.settings.selectedWhisperLanguageCode == nil
-                            )
-                        }
-                        .buttonStyle(.plain)
-
-                        Divider()
-                            .padding(.vertical, 4)
-                    }
-
                     ForEach(self.filteredWhisperLanguages) { language in
                         let languageCode = VoiceEngineLanguageCatalog.whisperLanguageCode(for: language.id)
                         Button {

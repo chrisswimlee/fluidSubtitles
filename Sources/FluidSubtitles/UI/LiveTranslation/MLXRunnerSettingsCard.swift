@@ -7,10 +7,10 @@ struct MLXRunnerSettingsCard: View {
     @State private var pastedSpec = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Local MLX cleaner")
-                .font(.headline)
-            Text("Point this at an MLX model already in LM Studio, any built MLX folder on this Mac, or download a catalog model. It only polishes finished Korean, English, and Thai captions.")
+        ThemedCard(style: .standard, hoverEffect: false) {
+            VStack(alignment: .leading, spacing: 12) {
+            FluidSectionHeader(title: "Local MLX cleaner")
+            Text("Optional. A running MLX model can translate the first print of a caption. It does not change a line already on Theater.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -103,9 +103,8 @@ struct MLXRunnerSettingsCard: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
             }
+            }
         }
-        .padding(16)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
         .task {
             await self.runner.refresh()
         }

@@ -107,26 +107,6 @@ final class CustomDictionaryManualEntryTests: XCTestCase {
         XCTAssertEqual(decoded.replacements.first?.to, "fluidSubtitles")
     }
 
-    func testLocalAPIAcceptsWhitespaceReplacementAndRejectsEmpty() async throws {
-        let body = Data(#"{"mode":"replace","entries":[{"triggers":["new line"],"replacement":"\n"},{"triggers":["empty"],"replacement":""}]}"#.utf8)
-        let request = LocalAPI.Request(
-            method: "POST",
-            path: "/v1/dictionary/replacements",
-            query: [:],
-            headers: ["content-type": "application/json"],
-            body: body
-        )
-
-        try await self.withRestoredDictionaryAsync {
-            let response = await DictionaryAPIController().handle(request)
-
-            XCTAssertEqual(response.status, 200)
-            XCTAssertEqual(SettingsStore.shared.customDictionaryEntries.count, 1)
-            XCTAssertEqual(SettingsStore.shared.customDictionaryEntries.first?.triggers, ["new line"])
-            XCTAssertEqual(SettingsStore.shared.customDictionaryEntries.first?.replacement, "\n")
-        }
-    }
-
     private func withRestoredDictionary(_ entries: [SettingsStore.CustomDictionaryEntry], run: () -> Void) {
         let original = SettingsStore.shared.customDictionaryEntries
         defer {
@@ -136,14 +116,5 @@ final class CustomDictionaryManualEntryTests: XCTestCase {
         SettingsStore.shared.customDictionaryEntries = entries
         ASRService.invalidateDictionaryCache()
         run()
-    }
-
-    private func withRestoredDictionaryAsync(run: () async throws -> Void) async throws {
-        let original = SettingsStore.shared.customDictionaryEntries
-        defer {
-            SettingsStore.shared.customDictionaryEntries = original
-            ASRService.invalidateDictionaryCache()
-        }
-        try await run()
     }
 }

@@ -93,13 +93,102 @@ enum SpokenLanguageResolver {
     }
 
     static func sourceLanguage(settings: SettingsStore = .shared) -> TranslationLanguage {
-        if let fromRecognizer = TranslationLanguageCatalog.language(
-            id: self.spokenLanguageID(settings: settings)
-        ) {
-            return fromRecognizer
+        if let stored = TranslationLanguageCatalog.language(id: settings.translationSourceLanguageID) {
+            return stored
         }
-        return TranslationLanguageCatalog.language(id: settings.translationSourceLanguageID)
+        return TranslationLanguageCatalog.language(id: self.spokenLanguageID(settings: settings))
             ?? TranslationLanguageCatalog.english
+    }
+
+    static func voiceEngineSupportsSource(settings: SettingsStore = .shared) -> Bool {
+        let source = self.sourceLanguage(settings: settings)
+        guard VoiceEngineLanguageCatalog.supports(settings.selectedSpeechModel, languageID: source.id) else {
+            return false
+        }
+        let spoken = TranslationLanguageCatalog.language(id: self.spokenLanguageID(settings: settings))
+        return spoken?.id == source.id
+    }
+
+    static func voiceEngineMismatchMessage(settings: SettingsStore = .shared) -> String? {
+        let source = self.sourceLanguage(settings: settings)
+        let spoken = TranslationLanguageCatalog.language(id: self.spokenLanguageID(settings: settings))
+
+        if source.id == TranslationLanguageCatalog.thai.id,
+           self.shouldWarnThaiNemotron(settings: settings, spoken: spoken)
+        {
+            return TranslationLanguageCatalog.thaiNemotronExperimentalWarning
+        }
+
+        guard !self.voiceEngineSupportsSource(settings: settings) else { return nil }
+
+        if source.id == TranslationLanguageCatalog.korean.id {
+            return self.koreanMismatchMessage(model: settings.selectedSpeechModel, spoken: spoken)
+        }
+
+        switch settings.selectedSpeechModel {
+        case .parakeetRealtime, .parakeetTDTv2:
+            return "Parakeet Flash and TDT v2 only hear English. Theater will switch to Apple Speech or Whisper for \(source.displayName)."
+        case .parakeetTDT:
+            return "Parakeet TDT v3 does not hear Korean or Thai. Theater will switch to Apple Speech or Whisper for \(source.displayName)."
+        default:
+            if source.id == TranslationLanguageCatalog.thai.id {
+                let heard = spoken?.displayName ?? "another language"
+                return "The current Voice Engine is set to hear \(heard), not Thai. Apple Speech or Whisper is the better Theater default."
+            }
+            let heard = spoken?.displayName ?? "another language"
+            return "The current Voice Engine is set to hear \(heard), not \(source.displayName)."
+        }
+    }
+
+    /// Caption under Theater pickers. Hidden when a mismatch is already showing.
+    static func theaterEngineHint(settings: SettingsStore = .shared) -> String? {
+        guard self.voiceEngineMismatchMessage(settings: settings) == nil else { return nil }
+        return TranslationLanguageCatalog.theaterEngineHint(forSource: self.sourceLanguage(settings: settings))
+    }
+
+    static func stageEngineSummary(settings: SettingsStore = .shared) -> String {
+        if let mismatch = self.voiceEngineMismatchMessage(settings: settings) {
+            return mismatch
+        }
+        let source = self.sourceLanguage(settings: settings)
+        let model = settings.selectedSpeechModel.displayName
+        return "Hearing \(source.displayName) with \(model)."
+    }
+
+    private static func isNemotronModel(_ model: SettingsStore.SpeechModel) -> Bool {
+        switch model {
+        case .nemotronOffline, .nemotronStreaming, .nemotronStreaming320:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func shouldWarnThaiNemotron(
+        settings: SettingsStore,
+        spoken: TranslationLanguage?
+    ) -> Bool {
+        guard self.isNemotronModel(settings.selectedSpeechModel) else { return false }
+        let language = settings.selectedNemotronLanguage
+        let isExperimentalThai = language.rawValue.caseInsensitiveCompare("th-TH") == .orderedSame
+            || language.displayName.localizedCaseInsensitiveContains("experimental")
+        let spokenIsNotThai = spoken?.id != TranslationLanguageCatalog.thai.id
+        return isExperimentalThai || spokenIsNotThai
+    }
+
+    private static func koreanMismatchMessage(
+        model: SettingsStore.SpeechModel,
+        spoken: TranslationLanguage?
+    ) -> String {
+        switch model {
+        case .parakeetRealtime, .parakeetTDTv2:
+            return "Parakeet Flash and TDT v2 only hear English. Switch to Apple Speech, Cohere, or Whisper for Korean."
+        case .parakeetTDT:
+            return "Parakeet TDT v3 does not hear Korean. Switch to Apple Speech, Cohere, or Whisper."
+        default:
+            let heard = spoken?.displayName ?? "English"
+            return "The current Voice Engine is set to hear \(heard), not Korean. Switch to Apple Speech, Cohere, or Whisper."
+        }
     }
 
     static func targetLanguage(settings: SettingsStore = .shared) -> TranslationLanguage {
@@ -111,22 +200,41 @@ enum SpokenLanguageResolver {
         settings.translationSourceLanguageID = language.id
         settings.onboardingSelectedLanguageID = language.id
         VoiceEngineLanguageCatalog.applyPreferredRoute(forLanguageID: language.id, to: settings)
-        if settings.translationTargetLanguageID == language.id {
-            settings.translationTargetLanguageID = TranslationLanguageCatalog.defaultTarget(forSource: language).id
-        }
+        Self.pinWhisperToSpokenSource(settings: settings)
+    }
+
+    /// Theater Listen refuses Whisper automatic detection. Auto-detect can
+    /// flip language mid-talk or silently translate a bilingual clause.
+    /// Q&A extras keep auto-detect so English, Korean, and Thai questions can land.
+    static func pinWhisperToSpokenSource(settings: SettingsStore = .shared) {
+        guard settings.selectedSpeechModel.isWhisperModel else { return }
+        if settings.theaterAlsoHearOtherLanguages { return }
+        let sourceID = self.sourceLanguage(settings: settings).id
+        guard let code = VoiceEngineLanguageCatalog.whisperLanguageCode(for: sourceID) else { return }
+        settings.selectedWhisperLanguageCode = code
+    }
+
+    static func isSameLanguagePair(settings: SettingsStore = .shared) -> Bool {
+        self.sourceLanguage(settings: settings).id == self.targetLanguage(settings: settings).id
     }
 
     static func pairLabel(settings: SettingsStore = .shared) -> String {
-        "\(self.sourceLanguage(settings: settings).displayName) → \(self.targetLanguage(settings: settings).displayName)"
+        let source = self.sourceLanguage(settings: settings)
+        let target = self.targetLanguage(settings: settings)
+        if source.id == target.id {
+            return "\(source.displayName) captions"
+        }
+        return "\(source.displayName) → \(target.displayName)"
     }
 }
 
 enum LiveTranslationTiming {
-    /// English default after a finished-looking clause. Language-aware helpers override this.
-    static let completeSettleNanoseconds: UInt64 = 700_000_000
-    /// English default after no new words on an open thought.
-    static let openSettleNanoseconds: UInt64 = 1_100_000_000
-    static let commitStabilityNanoseconds: UInt64 = Self.openSettleNanoseconds
+    /// English confirm after a finished ending.
+    static let completeSettleNanoseconds: UInt64 = 1_000_000_000
+    /// English open-thought silence before a forced cut.
+    static let openSettleNanoseconds: UInt64 = 3_500_000_000
+    /// Brief hold after end-of-utterance so the last ASR tick can land.
+    static let eouHoldNanoseconds: UInt64 = 400_000_000
     static let minPauseFinalizeCharacters = 22
     static let minPauseFinalizeWords = 4
     /// Thai needs a real clause, not a few syllables.
@@ -134,20 +242,33 @@ enum LiveTranslationTiming {
     /// Korean/Japanese: only force a pause-cut on a long run-on.
     static let minPauseFinalizeCharactersVerbFinal = 48
     static let maxDraftCharacters = 240
+    /// Pause-finalize only this much so a long unpunctuated talk is not one dump.
+    static let maxLineWords = 12
+    static let maxLineCharacters = 80
     static let contextSentenceCount = 4
-    /// About an hour of lecture clauses at a speaking pace.
+    /// Lines shown on Theater at once. The session archive keeps the rest.
+    static let visibleTheaterLines = 3
+    /// Visible Theater window. Overflow goes to the session archive on disk.
     static let maxCommittedLines = 200
-    static let polishTimeoutNanoseconds: UInt64 = 2_000_000_000
-    static let polishMaxTokens = 64
-    static let polishTemperature = 0.1
-    static let polishPriorCaptionCount = 2
+    /// After this much silence, skip ASR ticks and start a new e2e measurement.
+    static let silenceHoldNanoseconds: UInt64 = 400_000_000
+    static let silenceHoldSeconds: TimeInterval = 0.4
+    static let polishPriorCaptionCount = 4
+    static let polishTemperature = 0.2
+    static let polishMaxTokens = 256
+    static let polishTimeoutNanoseconds: UInt64 = 8_000_000_000
+    /// Local commit MT must lose to Apple if it is slower than a clause.
+    static let commitTranslationTimeoutNanoseconds: UInt64 = 4_000_000_000
+    /// After this many local attempts, an 80% echo rate disables local MT for the listen.
+    static let localEchoFailMinimumAttempts = 5
+    static let localEchoFailRatio = 0.80
 
     static func completeSettleNanoseconds(languageID: String) -> UInt64 {
         switch TranslationClauseSegmenter.languageCode(from: languageID) {
         case "ko", "ja":
-            return 1_200_000_000
+            return 2_000_000_000
         case "th":
-            return 1_000_000_000
+            return 1_500_000_000
         default:
             return Self.completeSettleNanoseconds
         }
@@ -156,20 +277,11 @@ enum LiveTranslationTiming {
     static func openSettleNanoseconds(languageID: String) -> UInt64 {
         switch TranslationClauseSegmenter.languageCode(from: languageID) {
         case "ko", "ja":
-            return 1_800_000_000
+            return 6_000_000_000
         case "th":
-            return 1_500_000_000
+            return 4_000_000_000
         default:
             return Self.openSettleNanoseconds
-        }
-    }
-
-    static func contextCount(languageID: String) -> Int {
-        switch TranslationClauseSegmenter.languageCode(from: languageID) {
-        case "ko", "ja":
-            return 4
-        default:
-            return Self.contextSentenceCount
         }
     }
 }

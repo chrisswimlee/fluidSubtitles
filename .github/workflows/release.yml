@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 45
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
+        with:
+          xcode-version: "26.4"
+
+      - name: Import Developer ID certificate
+        env:
+          DEVELOPER_ID_P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEVELOPER_ID_P12_BASE64:-}" ] || [ -z "${DEVELOPER_ID_P12_PASSWORD:-}" ]; then
+            echo "Developer ID .p12 secrets are required. Refusing to publish an unsigned zip." >&2
+            exit 1
+          fi
+          KEYCHAIN_PATH="${RUNNER_TEMP}/fluidsubtitles-release.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          echo "$DEVELOPER_ID_P12_BASE64" | base64 --decode > "${RUNNER_TEMP}/developer-id.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "${RUNNER_TEMP}/developer-id.p12" -k "$KEYCHAIN_PATH" \
+            -P "$DEVELOPER_ID_P12_PASSWORD" -A -T /usr/bin/codesign -T /usr/bin/security
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          rm -f "${RUNNER_TEMP}/developer-id.p12"
+
+      - name: Build Release zip
+        env:
+          FLUIDSUBTITLES_DEVELOPMENT_TEAM: ${{ secrets.FLUIDSUBTITLES_DEVELOPMENT_TEAM }}
+          FLUIDSUBTITLES_CODESIGN_IDENTITY: ${{ secrets.FLUIDSUBTITLES_CODESIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          REQUIRE_NOTARIZATION: "1"
+        run: ./build.sh release
+
+      - name: Verify signature, Gatekeeper, and notarization
+        run: |
+          set -euo pipefail
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Info.plist)"
+          zip="dist/fluidsubtitles-${version}.zip"
+          app="$(find dist -maxdepth 2 -name 'fluidSubtitles.app' -print -quit)"
+          if [ ! -d "${app:-}" ]; then
+            rm -rf "${RUNNER_TEMP}/release-verify"
+            mkdir -p "${RUNNER_TEMP}/release-verify"
+            ditto -x -k "$zip" "${RUNNER_TEMP}/release-verify"
+            app="$(find "${RUNNER_TEMP}/release-verify" -maxdepth 2 -name 'fluidSubtitles.app' -print -quit)"
+          fi
+          if [ ! -d "${app:-}" ]; then
+            echo "Release app was not found for verification." >&2
+            exit 1
+          fi
+          codesign --verify --deep --strict "$app"
+          spctl --assess --type execute --verbose "$app"
+          stapler validate "$app"
+
+      - name: Upload GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Info.plist)"
+          zip="dist/fluidsubtitles-${version}.zip"
+          if [ ! -f "${zip}" ]; then
+            echo "Expected release zip at ${zip}" >&2
+            exit 1
+          fi
+          (cd dist && shasum -a 256 "$(basename "$zip")" > SHA256SUMS)
+          notes="$(python3 scripts/extract-changelog.py "${GITHUB_REF_NAME}")"
+          if [ -z "$notes" ]; then
+            echo "CHANGELOG.md has no notes for ${GITHUB_REF_NAME}." >&2
+            exit 1
+          fi
+          gh release create "${GITHUB_REF_NAME}" "${zip}" "dist/SHA256SUMS" \
+            --title "fluidSubtitles ${version}" \
+            --notes "$notes"

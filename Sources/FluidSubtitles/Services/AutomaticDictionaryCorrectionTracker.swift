@@ -2,6 +2,9 @@ import AppKit
 import ApplicationServices
 import Foundation
 
+// swiftlint:disable function_body_length cyclomatic_complexity type_body_length
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
+
 struct AutomaticDictionaryCorrectionCandidate: Equatable, Identifiable {
     let id = UUID()
     let heardText: String

@@ -14,10 +14,12 @@ jobs:
     name: Mark and close stale issues and PRs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/stale@v10
+      - uses: actions/stale@5f858e3efba33a5ca4407a664cc011ad407f2008 # v10.1.0
         with:
-          days-before-stale: 5
-          days-before-close: 2
+          days-before-issue-stale: 30
+          days-before-issue-close: 14
+          days-before-pr-stale: 45
+          days-before-pr-close: 14
           start-date: "2026-07-08T00:00:00Z"
 
           stale-issue-label: stale
@@ -25,22 +27,22 @@ jobs:
 
           stale-issue-message: >
             This issue has been marked stale because it has had no activity for
-            5 days. It will be closed in 2 days if there is no further activity.
+            30 days. It will be closed in 14 days if there is no further activity.
             Add the `keep-open` or `pinned` label to prevent automatic closure.
           stale-pr-message: >
             This pull request has been marked stale because it has had no activity
-            for 5 days. It will be closed in 2 days if there is no further activity.
+            for 45 days. It will be closed in 14 days if there is no further activity.
             Add the `keep-open` or `pinned` label to prevent automatic closure.
 
           close-issue-message: >
-            Closing this issue because it remained inactive for 2 days after
+            Closing this issue because it remained inactive for 14 days after
             being marked stale.
           close-pr-message: >
-            Closing this pull request because it remained inactive for 2 days
+            Closing this pull request because it remained inactive for 14 days
             after being marked stale.
 
-          exempt-issue-labels: keep-open,pinned,needs reproduction,awaiting response
-          exempt-pr-labels: keep-open,pinned,needs PR template,needs screenshots
+          exempt-issue-labels: keep-open,pinned,needs reproduction,awaiting response,security,good first issue,help wanted
+          exempt-pr-labels: keep-open,pinned,needs PR template,needs screenshots,security
           exempt-draft-pr: true
           remove-stale-when-updated: true
           close-issue-reason: not_planned

@@ -32,7 +32,9 @@ Use a bug issue only when you can provide:
 
 Feature issues show guidance to start with Discussions first, but this is advisory for now. Maintainers may still redirect broad or unclear feature ideas to Discussions during triage.
 
-Incomplete bug reports may be labeled `needs reproduction`. If the missing reproduction details are not provided after 14 days, the issue may be closed.
+Incomplete bug reports may be labeled `needs reproduction`. If the missing reproduction details are not provided after 14 days, the issue-intake workflow may close them.
+
+Issues and PRs with no activity are marked stale after 30 days (issues) or 45 days (PRs) and closed 14 days later. Add `keep-open`, `pinned`, `security`, `good first issue`, or `help wanted` to skip that.
 
 ## Pull Requests
 
@@ -47,6 +49,10 @@ Pull requests should be tied to an accepted issue, Discussion, or roadmap item. 
 If a PR has no UI or visual behavior changes, check the "No UI/visual changes" box in the template. The PR Policy workflow still requires screenshots or video when changed files touch visual surfaces.
 
 PRs that do not follow the template will be blocked by the `PR Policy` check. If required information is still missing after 7 days, the PR may be closed so maintainers can keep review queues focused.
+
+Add a `[Unreleased]` bullet to [CHANGELOG.md](CHANGELOG.md) for user-facing changes. Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before changing Theater or the speech engine. Report vulnerabilities only through [SECURITY.md](SECURITY.md).
+
+Optional caption cleanup uses a local MLX runner. Install Python 3.12 (`brew install python@3.12` or any `python3.12` on `PATH`), then set `FLUID_PYTHON` if it is not on `PATH`.
 
 ## Local setup
 
@@ -68,6 +74,16 @@ Format and lint before you push:
 ./scripts/format-and-lint.sh
 ```
 
+Run tests:
+
+```bash
+xcodebuild test -project fluidSubtitles.xcodeproj -scheme fluidSubtitles \
+  -destination 'platform=macOS,arch=arm64' \
+  -skip-testing:FluidSubtitlesUITests
+```
+
+`FluidSubtitlesUITests` is the Theater smoke. It needs macOS UI automation permission, so CI runs it with ad-hoc signing and local machines can skip it.
+
 ## Repository Settings
 
 Maintainers should enable GitHub Discussions with these categories:
@@ -77,3 +93,5 @@ Maintainers should enable GitHub Discussions with these categories:
 - General
 
 Maintainers should require the existing build/test check and the `PR Policy` check before merging to `main`.
+
+Create a GitHub Environment named `release` with required reviewers. The release workflow fails closed unless Developer ID and notarization secrets are present.

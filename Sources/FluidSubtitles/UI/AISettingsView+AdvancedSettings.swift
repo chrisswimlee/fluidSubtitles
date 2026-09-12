@@ -8,6 +8,9 @@
 import AppKit
 import SwiftUI
 
+// swiftlint:disable file_length type_body_length function_body_length cyclomatic_complexity
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
+
 private struct PromptCardAssignments {
     let isDefault: Bool
     let isReady: Bool
@@ -240,11 +243,11 @@ extension AIEnhancementSettingsView {
     private func promptCardTitleBlock(
         title: String,
         subtitle: String,
-        mode: SettingsStore.PromptMode,
+        mode _: SettingsStore.PromptMode,
         isSelected: Bool,
         assignments: PromptCardAssignments?,
         notice: String?,
-        tone: Color
+        tone _: Color
     ) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -256,9 +259,7 @@ extension AIEnhancementSettingsView {
 
                 self.promptStatusTags(
                     assignments: assignments,
-                    isSelected: isSelected,
-                    mode: mode,
-                    tone: tone
+                    isSelected: isSelected
                 )
             }
 
@@ -376,22 +377,10 @@ extension AIEnhancementSettingsView {
     @ViewBuilder
     private func promptStatusTags(
         assignments: PromptCardAssignments?,
-        isSelected: Bool,
-        mode: SettingsStore.PromptMode,
-        tone: Color
+        isSelected: Bool
     ) -> some View {
         if assignments == nil, isSelected {
             Text("Selected")
-                .font(.caption2)
-                .fontWeight(.semibold)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(Color.fluidGreen.opacity(0.2)))
-                .foregroundStyle(Color.fluidGreen)
-        }
-
-        if mode.normalized == .edit {
-            Text("Context: Auto")
                 .font(.caption2)
                 .fontWeight(.semibold)
                 .padding(.horizontal, 8)
@@ -1124,18 +1113,14 @@ extension AIEnhancementSettingsView {
 
             Spacer(minLength: 12)
 
-            if mode.normalized == .edit {
-                self.editModeInlineModelControls
-            } else {
-                Button {
-                    self.viewModel.openNewPromptEditor(prefillMode: .dictate)
-                } label: {
-                    Label("Add Prompt", systemImage: "plus")
-                        .font(.system(size: 12, weight: .semibold))
-                        .frame(minWidth: AISettingsLayout.actionMinWidth, minHeight: AISettingsLayout.controlHeight)
-                }
-                .fluidCompactButton(isReady: true, foreground: Color.fluidGreen, borderColor: Color.fluidGreen.opacity(0.5))
+            Button {
+                self.viewModel.openNewPromptEditor(prefillMode: .dictate)
+            } label: {
+                Label("Add Prompt", systemImage: "plus")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(minWidth: AISettingsLayout.actionMinWidth, minHeight: AISettingsLayout.controlHeight)
             }
+            .fluidCompactButton(isReady: true, foreground: Color.fluidGreen, borderColor: Color.fluidGreen.opacity(0.5))
         }
         .frame(minHeight: AISettingsLayout.controlHeight)
         .padding(.top, 2)
@@ -1207,88 +1192,6 @@ extension AIEnhancementSettingsView {
                         .stroke(self.theme.palette.cardBorder, lineWidth: 1)
                 )
         )
-    }
-
-    private var editModeInlineModelControls: some View {
-        let verified = self.editModeVerifiedProviders
-
-        return HStack(alignment: .center, spacing: 10) {
-            Text("Edit model")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(self.theme.palette.secondaryText)
-
-            if verified.isEmpty {
-                HStack(spacing: 8) {
-                    Image(systemName: "info.circle")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                    Text("No verified AI provider")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            } else {
-                let providerID = self.activeEditModeProviderID
-                let models = self.editModeModels(for: providerID)
-                Group {
-                    Toggle("Sync", isOn: self.editModeLinkedToGlobalBinding)
-                        .toggleStyle(.checkbox)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .onChange(of: self.settings.rewriteModeLinkedToGlobal) { _, linked in
-                            if linked {
-                                self.syncEditModeToGlobalSelection()
-                            } else {
-                                self.normalizeEditModeProviderSelection()
-                            }
-                        }
-
-                    Text("Provider")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    Picker("", selection: self.editModeProviderBinding) {
-                        ForEach(verified) { provider in
-                            Text(provider.name).tag(provider.id)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .frame(width: AISettingsLayout.promptInlinePickerWidth)
-                    .disabled(self.settings.rewriteModeLinkedToGlobal)
-
-                    Text("Model")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    SearchableModelPicker(
-                        models: models,
-                        selectedModel: self.editModeModelBinding(for: providerID),
-                        onRefresh: {
-                            guard !self.isPrivateAIProviderID(providerID) else { return }
-                            await self.viewModel.fetchModels(for: providerID)
-                        },
-                        isRefreshing: self.viewModel.refreshingProviderID == providerID,
-                        refreshEnabled: !self.settings.rewriteModeLinkedToGlobal && self.canFetchModels(for: providerID),
-                        selectionEnabled: !self.settings.rewriteModeLinkedToGlobal && !models.isEmpty,
-                        controlWidth: AISettingsLayout.promptInlineModelWidth,
-                        controlHeight: 26
-                    )
-                    .disabled(self.settings.rewriteModeLinkedToGlobal)
-                }
-                .opacity(self.settings.rewriteModeLinkedToGlobal ? 0.65 : 1)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .trailing)
-        .onAppear {
-            self.ensureDefaultEditModeSyncState()
-            if self.settings.rewriteModeLinkedToGlobal {
-                self.syncEditModeToGlobalSelection()
-            } else if !verified.isEmpty {
-                self.normalizeEditModeProviderSelection()
-            }
-        }
     }
 
     @ViewBuilder
@@ -1476,128 +1379,10 @@ extension AIEnhancementSettingsView {
         }
     }
 
-    private var editModeVerifiedProviders: [AIEnhancementSettingsViewModel.ProviderItemData] {
-        self.viewModel.cachedVerifiedProviderItems
-            .sorted { lhs, rhs in
-                lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
-            }
-    }
-
-    private var editModeSelectedProviderID: String {
-        let current = self.settings.rewriteModeSelectedProviderID
-        if self.editModeVerifiedProviders.contains(where: { $0.id == current }) {
-            return current
-        }
-        return self.editModeVerifiedProviders.first?.id ?? current
-    }
-
-    private var activeEditModeProviderID: String {
-        if self.settings.rewriteModeLinkedToGlobal {
-            return self.settings.selectedProviderID
-        }
-        return self.editModeSelectedProviderID
-    }
-
-    private var editModeLinkedToGlobalBinding: Binding<Bool> {
-        Binding(
-            get: { self.settings.rewriteModeLinkedToGlobal },
-            set: { self.settings.rewriteModeLinkedToGlobal = $0 }
-        )
-    }
-
-    private var editModeProviderBinding: Binding<String> {
-        Binding(
-            get: { self.activeEditModeProviderID },
-            set: { newProviderID in
-                guard !self.settings.rewriteModeLinkedToGlobal else { return }
-                self.settings.rewriteModeSelectedProviderID = newProviderID
-                let models = self.editModeModels(for: newProviderID)
-                let current = self.settings.rewriteModeSelectedModel ?? ""
-                if !models.contains(current) {
-                    self.settings.rewriteModeSelectedModel = models.first
-                }
-            }
-        )
-    }
-
-    private func editModeModelBinding(for providerID: String) -> Binding<String> {
-        Binding(
-            get: {
-                let models = self.editModeModels(for: providerID)
-                if self.settings.rewriteModeLinkedToGlobal {
-                    let key = self.viewModel.providerKey(for: providerID)
-                    let preferred = self.settings.selectedModelByProvider[key]
-                        ?? self.settings.selectedModel
-                    return ModelRepository.eligibleModel(preferred: preferred, from: models) ?? ""
-                }
-                return ModelRepository.eligibleModel(
-                    preferred: self.settings.rewriteModeSelectedModel,
-                    from: models
-                ) ?? ""
-            },
-            set: { newModel in
-                guard !self.settings.rewriteModeLinkedToGlobal else { return }
-                self.settings.rewriteModeSelectedModel = newModel
-            }
-        )
-    }
-
-    private func normalizeEditModeProviderSelection() {
-        guard let first = self.editModeVerifiedProviders.first else { return }
-        let current = self.settings.rewriteModeSelectedProviderID
-        if !self.editModeVerifiedProviders.contains(where: { $0.id == current }) {
-            self.settings.rewriteModeSelectedProviderID = first.id
-        }
-
-        let providerID = self.settings.rewriteModeSelectedProviderID
-        let models = self.editModeModels(for: providerID)
-        let currentModel = self.settings.rewriteModeSelectedModel ?? ""
-        if !models.contains(currentModel) {
-            self.settings.rewriteModeSelectedModel = models.first
-        }
-    }
-
-    private func syncEditModeToGlobalSelection() {
-        let global = self.settings.selectedProviderID
-        guard !global.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            self.settings.rewriteModeSelectedProviderID = ""
-            self.settings.rewriteModeSelectedModel = nil
-            return
-        }
-
-        self.settings.rewriteModeSelectedProviderID = global
-
-        if self.isPrivateAIProviderID(global) {
-            self.settings.rewriteModeSelectedModel = self.editModeModels(for: global).first
-            return
-        }
-
-        let key = self.viewModel.providerKey(for: global)
-        let model = self.settings.selectedModelByProvider[key]
-            ?? self.settings.selectedModel
-            ?? self.viewModel.models(for: global).first
-        self.settings.rewriteModeSelectedModel = model
-    }
-
-    private func editModeModels(for providerID: String) -> [String] {
-        if self.isPrivateAIProviderID(providerID) {
-            return ModelRepository.shared.defaultModels(for: providerID, task: .edit)
-        }
-        return self.viewModel.models(for: providerID)
-    }
-
     private func isPrivateAIProviderID(_ providerID: String) -> Bool {
         PrivateFeatures.privateAIProvider &&
             providerID.trimmingCharacters(in: .whitespacesAndNewlines)
             == PrivateAIProviderFeature.shared.providerID
-    }
-
-    private func ensureDefaultEditModeSyncState() {
-        // If no persisted value exists yet, default Sync to ON.
-        if UserDefaults.standard.object(forKey: "RewriteModeLinkedToGlobal") == nil {
-            self.settings.rewriteModeLinkedToGlobal = true
-            self.syncEditModeToGlobalSelection()
-        }
     }
 
     private func canFetchModels(for providerID: String) -> Bool {
@@ -1616,13 +1401,8 @@ extension AIEnhancementSettingsView {
         return isLocal ? !trimmedBaseURL.isEmpty : (hasAPIKey && !trimmedBaseURL.isEmpty)
     }
 
-    private func promptSectionDescription(for mode: SettingsStore.PromptMode) -> String {
-        switch mode {
-        case .dictate:
-            return "Each prompt can have its own provider, model, and optional shortcut."
-        case .edit, .write, .rewrite:
-            return "Uses selected text as context (when text is selected) - Edit or rewrite selected text - answer questions, summarize, convert to bullets etc."
-        }
+    private func promptSectionDescription(for _: SettingsStore.PromptMode) -> String {
+        "Each prompt can have its own provider, model, and optional shortcut."
     }
 
     private func modeAccentColor(_ mode: SettingsStore.PromptMode) -> Color {

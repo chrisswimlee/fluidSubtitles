@@ -5,6 +5,8 @@ import CoreAudio
 import Foundation
 import XCTest
 
+// swiftlint:disable file_length type_body_length function_body_length cyclomatic_complexity
+// Tracked grandfather: hotkey suite. New cases belong in a focused test file.
 final class HotkeyShortcutTests: XCTestCase {
     private let legacyHotkeyShortcutKey = "HotkeyShortcutKey"
     private let primaryDictationShortcutsKey = "PrimaryDictationShortcuts"
@@ -26,10 +28,6 @@ final class HotkeyShortcutTests: XCTestCase {
             promptAssignments: [(key: "__default__", shortcut: HotkeyShortcut(keyCode: 55, modifierFlags: [], modifierKeyCodes: [55]))],
             secondaryPromptMode: HotkeyShortcut(keyCode: 60, modifierFlags: []),
             secondaryPromptModeEnabled: false,
-            command: nil,
-            commandEnabled: false,
-            edit: HotkeyShortcut(keyCode: 15, modifierFlags: [.option]),
-            editEnabled: true,
             cancel: HotkeyShortcut(keyCode: 53, modifierFlags: []),
             pasteLast: HotkeyShortcut(mouseButton: 0, modifierFlags: [.command]),
             pasteLastEnabled: true,
@@ -40,8 +38,6 @@ final class HotkeyShortcutTests: XCTestCase {
         XCTAssertTrue(summary.contains("primary[0]=Right ⌥ [keyCode=61"), summary)
         XCTAssertTrue(summary.contains("prompt[__default__]=Left ⌘ [keyCode=55"), summary)
         XCTAssertTrue(summary.contains("secondaryPromptMode=Right ⇧ [keyCode=60 flags=0] enabled=false"), summary)
-        XCTAssertTrue(summary.contains("command=none enabled=false"), summary)
-        XCTAssertTrue(summary.contains("edit=⌥ + R [keyCode=15"), summary)
         XCTAssertTrue(summary.contains("cancel=Escape [keyCode=53"), summary)
         XCTAssertTrue(summary.contains("pasteLast=⌘ + Left Click [button=0"), summary)
     }
@@ -242,6 +238,12 @@ final class HotkeyShortcutTests: XCTestCase {
             isEnabled: true,
             useDictionaryTrainingPath: false,
             hasRecognizedStreamingPreview: false
+        ))
+        XCTAssertFalse(ASRService.shouldAssessShortAudioSilence(
+            isEnabled: true,
+            useDictionaryTrainingPath: false,
+            hasRecognizedStreamingPreview: false,
+            keepShortUtterances: true
         ))
     }
 

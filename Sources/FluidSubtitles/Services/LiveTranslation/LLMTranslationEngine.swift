@@ -1,14 +1,33 @@
 import Foundation
 
-/// Optional polish on a **finished** lecture line via the local MLX runner or LM Studio.
-/// Never used while a clause is still open. Never on the live caption path.
+/// Counts local-MT echoes for one Listen. After most lines echo, skip local
+/// and keep Apple Translation as the fallback.
+struct LocalTranslationEchoTally: Equatable {
+    var attempts = 0
+    var echoes = 0
+
+    var shouldSkipLocal: Bool {
+        guard self.attempts >= LiveTranslationTiming.localEchoFailMinimumAttempts else { return false }
+        return Double(self.echoes) / Double(self.attempts) >= LiveTranslationTiming.localEchoFailRatio
+    }
+
+    mutating func record(echoed: Bool) {
+        self.attempts += 1
+        if echoed { self.echoes += 1 }
+    }
+}
+
+/// Local MLX / LM Studio caption translation. Commit uses it only when the
+/// runner is already up. It never rewrites a line already on the board.
 @MainActor
 final class LLMTranslationEngine: TranslationEngine {
     let name = "Local MLX (finished lines)"
+    private(set) var echoTally = LocalTranslationEchoTally()
+    private var didLogEchoSkip = false
 
     func isAvailable(settings: SettingsStore = .shared) -> Bool {
         if settings.mlxRunnerEnabled {
-            return MLXRunnerService.shared.canServe
+            return true
         }
         guard settings.llmTranslationPolishEnabled else { return false }
         let route = DictationProviderRoute.resolve(settings: settings)
@@ -16,15 +35,168 @@ final class LLMTranslationEngine: TranslationEngine {
         return Self.isLocalEndpoint(route.baseURL) && !route.model.isEmpty
     }
 
+    /// Do not start MLX on the first caption. Only use it when it is already up.
+    func isReadyForCommitTranslation(settings: SettingsStore = .shared) -> Bool {
+        if self.echoTally.shouldSkipLocal {
+            if !self.didLogEchoSkip {
+                self.didLogEchoSkip = true
+                DebugLogger.shared.debug(
+                    "Local commit skipped: \(self.echoTally.echoes)/\(self.echoTally.attempts) lines echoed",
+                    source: "LLMTranslationEngine"
+                )
+            }
+            return false
+        }
+        if settings.mlxRunnerEnabled, MLXRunnerService.shared.status.running {
+            return true
+        }
+        guard settings.llmTranslationPolishEnabled else { return false }
+        let route = DictationProviderRoute.resolve(settings: settings)
+        if route.usesPrivateAI { return false }
+        return Self.isLocalEndpoint(route.baseURL) && !route.model.isEmpty
+    }
+
+    func resetListenEchoTally() {
+        self.echoTally = LocalTranslationEchoTally()
+        self.didLogEchoSkip = false
+    }
+
+    func noteListenEcho(_ echoed: Bool) {
+        self.echoTally.record(echoed: echoed)
+    }
+
     func translate(_ text: String, source: TranslationLanguage, target: TranslationLanguage) async throws -> String {
-        try await self.polish(
-            sourceText: text,
-            draft: text,
+        try await self.translateCommit(
+            text,
             priorSource: [],
-            priorCaptions: [],
             source: source,
             target: target
         )
+    }
+
+    /// First-print translation when the local MLX runner is on. Falls back to
+    /// Apple Translation if this throws or the line is rejected.
+    func translateCommit(
+        _ text: String,
+        priorSource: [String],
+        source: TranslationLanguage,
+        target: TranslationLanguage
+    ) async throws -> String {
+        let settings = SettingsStore.shared
+        guard self.isAvailable(settings: settings) else {
+            throw TranslationEngineError(message: "Local caption translation is off.")
+        }
+        if settings.mlxRunnerEnabled {
+            let ready = await MLXRunnerService.shared.prepareToPolish()
+            guard ready else {
+                throw TranslationEngineError(message: "Local MLX runner is not running.")
+            }
+        }
+        let route = self.resolveRoute(settings: settings)
+        var config = LLMClient.Config(
+            messages: LLMTranslationPrompt.translateMessages(
+                sourceText: text,
+                priorSource: priorSource,
+                sourceLanguage: source.displayName,
+                targetLanguage: target.displayName
+            ).map { $0.mapValues { $0 as Any } },
+            model: route.model,
+            baseURL: route.baseURL,
+            apiKey: route.apiKey,
+            streaming: false,
+            temperature: LiveTranslationTiming.polishTemperature,
+            maxTokens: LiveTranslationTiming.polishMaxTokens
+        )
+        config.maxRetries = 0
+        config.timeoutSeconds = Double(LiveTranslationTiming.commitTranslationTimeoutNanoseconds) / 1_000_000_000
+        let response = try await LLMClient.shared.call(config)
+        let cleaned = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch Self.commitVerdict(cleaned, sourceText: text, target: target) {
+        case .accept(let caption):
+            self.noteListenEcho(false)
+            MLXRunnerService.shared.markSuccessfulCall()
+            return caption
+        case .echo:
+            self.noteListenEcho(true)
+            throw TranslationEngineError.localEchoed
+        case .malformed:
+            throw TranslationEngineError.localRejected
+        }
+    }
+
+    enum CommitVerdict: Equatable {
+        case accept(String)
+        case echo
+        case malformed
+    }
+
+    static func acceptedCommitTranslation(
+        _ candidate: String,
+        sourceText: String,
+        target: TranslationLanguage
+    ) -> String? {
+        if case .accept(let caption) = Self.commitVerdict(candidate, sourceText: sourceText, target: target) {
+            return caption
+        }
+        return nil
+    }
+
+    static func commitVerdict(
+        _ candidate: String,
+        sourceText: String,
+        target: TranslationLanguage
+    ) -> CommitVerdict {
+        let raw = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw.isEmpty || raw.contains(where: \.isNewline) { return .malformed }
+        if Self.looksLikeEngineError(raw) { return .malformed }
+        let cleaned = Self.strippingCaptionPrefix(raw)
+        if cleaned.isEmpty { return .malformed }
+        if Self.looksLikeEngineError(cleaned) { return .malformed }
+        if Self.looksLikeEcho(cleaned, sourceText: sourceText) { return .echo }
+        if !Self.matchesTargetScript(cleaned, target: target) { return .malformed }
+        let sourceCount = max(sourceText.trimmingCharacters(in: .whitespacesAndNewlines).count, 1)
+        if cleaned.count > sourceCount * 4 { return .malformed }
+        return .accept(cleaned)
+    }
+
+    /// Empty, echoed, or provider-error text must never become a Theater line.
+    static func captionSafeForBoard(_ candidate: String, sourceText: String) -> String? {
+        let cleaned = Self.strippingCaptionPrefix(candidate.trimmingCharacters(in: .whitespacesAndNewlines))
+        if cleaned.isEmpty { return nil }
+        if Self.looksLikeEngineError(cleaned) { return nil }
+        if Self.looksLikeEcho(cleaned, sourceText: sourceText) { return nil }
+        return cleaned
+    }
+
+    static func looksLikeEcho(_ candidate: String, sourceText: String) -> Bool {
+        if TranslationClauseSegmenter.isSameClause(candidate, sourceText) { return true }
+        let left = Self.echoKey(candidate)
+        let right = Self.echoKey(sourceText)
+        return !left.isEmpty && left == right
+    }
+
+    static func looksLikeEngineError(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let folded = trimmed.folding(
+            options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+            locale: .current
+        )
+        if folded.hasPrefix("error:") || folded.hasPrefix("error -") || folded.hasPrefix("error—") {
+            return true
+        }
+        if folded.hasPrefix("exception:") || folded.hasPrefix("failed:") { return true }
+        return Self.engineErrorKeys.contains(Self.echoKey(trimmed))
+    }
+
+    static func strippingCaptionPrefix(_ text: String) -> String {
+        var current = Self.strippingWrappingQuotes(text.trimmingCharacters(in: .whitespacesAndNewlines))
+        for _ in 0..<2 {
+            let next = Self.stripOneLabelPrefix(current)
+            if next == current { break }
+            current = Self.strippingWrappingQuotes(next)
+        }
+        return current
     }
 
     func polish(
@@ -38,6 +210,12 @@ final class LLMTranslationEngine: TranslationEngine {
         let settings = SettingsStore.shared
         guard self.isAvailable(settings: settings) else {
             throw TranslationEngineError(message: "Local caption polish is off or no local chat provider is configured.")
+        }
+        if settings.mlxRunnerEnabled {
+            let ready = await MLXRunnerService.shared.prepareToPolish()
+            guard ready else {
+                throw TranslationEngineError(message: "Local MLX runner is not running.")
+            }
         }
 
         let route = self.resolveRoute(settings: settings)
@@ -78,15 +256,24 @@ final class LLMTranslationEngine: TranslationEngine {
     static func acceptedPolished(
         _ candidate: String,
         draft: String,
-        target: TranslationLanguage
+        target: TranslationLanguage,
+        priorSource: [String] = [],
+        priorCaptions: [String] = []
     ) -> String? {
-        let polished = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+        let polished = Self.strippingCaptionPrefix(candidate.trimmingCharacters(in: .whitespacesAndNewlines))
         if polished.isEmpty { return nil }
         if polished.contains(where: \.isNewline) { return nil }
+        if Self.looksLikeEngineError(polished) { return nil }
         let draftCount = max(draft.trimmingCharacters(in: .whitespacesAndNewlines).count, 1)
         let ratio = Double(polished.count) / Double(draftCount)
         if ratio < 0.5 || ratio > 1.6 { return nil }
         if !Self.matchesTargetScript(polished, target: target) { return nil }
+        let priors = (priorSource + priorCaptions)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.count >= 8 }
+        if priors.contains(where: { polished.localizedCaseInsensitiveContains($0) }) {
+            return nil
+        }
         return polished
     }
 
@@ -104,6 +291,78 @@ final class LLMTranslationEngine: TranslationEngine {
         default:
             return true
         }
+    }
+
+    private static let engineErrorKeys: [String] = [
+        "quota exceeded",
+        "rate limit",
+        "rate limit exceeded",
+        "invalid api key",
+        "invalid api",
+        "unauthorized",
+        "connection refused",
+        "econnrefused",
+        "this pair is not supported by apple translation",
+        "apple translation is not ready yet",
+        "local caption translation was rejected",
+        "local caption translation echoed the source",
+        "local mlx runner is not running",
+    ]
+
+    private static let captionLabels: Set<String> = [
+        "original", "translation", "translated", "source", "caption",
+        "output", "input", "english", "korean", "thai",
+        "原文", "訳文", "翻訳", "译文", "翻译",
+        "원문", "번역", "번역문",
+        "แปล",
+    ]
+
+    private static func echoKey(_ text: String) -> String {
+        let folded = text.folding(
+            options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+            locale: .current
+        )
+        let kept = folded.compactMap { character -> Character? in
+            if character.isLetter || character.isNumber { return character }
+            if character.isWhitespace { return " " }
+            return nil
+        }
+        return String(kept)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func stripOneLabelPrefix(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(
+            in: CharacterSet(charactersIn: "*#_").union(.whitespacesAndNewlines)
+        )
+        guard let separator = trimmed.firstIndex(where: { $0 == ":" || $0 == "：" }) else {
+            return trimmed
+        }
+        let label = String(trimmed[..<separator])
+            .trimmingCharacters(in: CharacterSet(charactersIn: "*#_ ").union(.whitespacesAndNewlines))
+        let foldedLabel = Self.echoKey(label)
+        guard Self.captionLabels.contains(where: { Self.echoKey($0) == foldedLabel }),
+              !foldedLabel.isEmpty
+        else {
+            return trimmed
+        }
+        let after = trimmed[trimmed.index(after: separator)...]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return after.isEmpty ? trimmed : after
+    }
+
+    private static func strippingWrappingQuotes(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 2 else { return trimmed }
+        let pairs: [(Character, Character)] = [
+            ("\"", "\""), ("“", "”"), ("'", "'"), ("「", "」"), ("『", "』"),
+        ]
+        for (open, close) in pairs where trimmed.first == open && trimmed.last == close {
+            return String(trimmed.dropFirst().dropLast())
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return trimmed
     }
 
     private func resolveRoute(settings: SettingsStore) -> (model: String, baseURL: String, apiKey: String) {
@@ -133,6 +392,37 @@ final class LLMTranslationEngine: TranslationEngine {
 }
 
 enum LLMTranslationPrompt {
+    static func translateMessages(
+        sourceText: String,
+        priorSource: [String],
+        sourceLanguage: String,
+        targetLanguage: String
+    ) -> [[String: String]] {
+        [
+            [
+                "role": "system",
+                "content": """
+                Translate one finished spoken sentence for a live lecture caption.
+                Source language: \(sourceLanguage). Caption language: \(targetLanguage).
+                Use the previous source sentences only to resolve pronouns and omitted subjects.
+                Keep names and glossary tokens unchanged.
+                Do not add quotes, notes, or romanization.
+                Output only the caption.
+                """,
+            ],
+            [
+                "role": "user",
+                "content": """
+                Previous source sentences:
+                \(Self.numberedBlock(priorSource))
+
+                Current source:
+                \(sourceText)
+                """,
+            ],
+        ]
+    }
+
     static func polishMessages(
         sourceText: String,
         draft: String,

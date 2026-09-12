@@ -3,6 +3,9 @@ import Foundation
 import Speech
 #endif
 
+// swiftlint:disable function_body_length cyclomatic_complexity type_body_length
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
+
 struct VoiceEngineLanguage: Identifiable, Equatable {
     let id: String
     let displayName: String
@@ -46,13 +49,9 @@ struct VoiceEngineLanguageRoute: Identifiable, Equatable {
         "\(self.language.id)-\(self.model.rawValue)-\(self.binding.id)"
     }
 
+    /// Language-aware badge. UI can keep reading `route.badgeText`.
     var badgeText: String? {
-        switch self.model {
-        case .parakeetTDT, .parakeetTDTv2:
-            return "Recommended"
-        default:
-            return nil
-        }
+        VoiceEngineLanguageCatalog.badgeText(for: self)
     }
 }
 
@@ -147,9 +146,6 @@ enum VoiceEngineLanguageCatalog {
         settings.onboardingSelectedLanguageID = route.language.id
         if let translationLanguage = TranslationLanguageCatalog.language(id: route.language.id) {
             settings.translationSourceLanguageID = translationLanguage.id
-            if settings.translationTargetLanguageID == translationLanguage.id {
-                settings.translationTargetLanguageID = TranslationLanguageCatalog.defaultTarget(forSource: translationLanguage).id
-            }
         }
         settings.selectedSpeechModel = route.model
 
@@ -168,29 +164,59 @@ enum VoiceEngineLanguageCatalog {
     }
 
     static func applyPreferredRoute(forLanguageID languageID: String, to settings: SettingsStore = .shared) {
-        guard let language = Self.language(id: languageID) else { return }
+        _ = Self.ensureCompatibleEngine(forLanguageID: languageID, settings: settings)
+    }
+
+    /// Recommended on the first preferred model for this language.
+    /// Thai Nemotron keeps the quieter Experimental label already used in Settings.
+    static func badgeText(for route: VoiceEngineLanguageRoute) -> String? {
+        if Self.isFirstPreferredRoute(route) {
+            return "Recommended"
+        }
+        if route.language.id == "th", Self.isNemotron(route.model) {
+            return "Experimental"
+        }
+        return nil
+    }
+
+    /// True when this Voice Engine can hear the product language, not merely
+    /// when its leftover locale string happens to match.
+    static func supports(_ model: SettingsStore.SpeechModel, languageID: String) -> Bool {
+        Self.routes(forLanguageID: languageID).contains { $0.model == model }
+    }
+
+    /// Keep a compatible engine, or switch to the best installed one for this
+    /// language. English-only Parakeet models are never kept for Korean or Thai.
+    /// Thai Nemotron is treated as a weak match and yields to Apple Speech / Whisper.
+    @discardableResult
+    static func ensureCompatibleEngine(
+        forLanguageID languageID: String,
+        settings: SettingsStore = .shared
+    ) -> VoiceEngineLanguageRoute? {
+        guard let language = Self.language(id: languageID) else { return nil }
         let routes = Self.routes(for: language)
-        let preferred = routes.first(where: { $0.model == settings.selectedSpeechModel })
-            ?? Self.preferredLocalRoute(from: routes)
-            ?? routes.first
+        let preferred = Self.preferredLocalRoute(from: routes) ?? routes.first
+        if let current = routes.first(where: { $0.model == settings.selectedSpeechModel }),
+           current.model.isInstalled,
+           !Self.isWeakMatch(current, preferred: preferred)
+        {
+            Self.apply(current, to: settings)
+            return current
+        }
         if let preferred {
             Self.apply(preferred, to: settings)
         }
+        return preferred
     }
 
     private static func preferredLocalRoute(from routes: [VoiceEngineLanguageRoute]) -> VoiceEngineLanguageRoute? {
-        let order: [SettingsStore.SpeechModel] = [
-            .appleSpeechAnalyzer,
-            .appleSpeech,
-            .whisperSmall,
-            .whisperLargeTurbo,
-            .parakeetTDTv2,
-            .parakeetTDT,
-            .parakeetRealtime,
-            .nemotronStreaming,
-            .nemotronOffline,
-            .cohereTranscribeSixBit,
-        ]
+        guard let languageID = routes.first?.language.id else { return nil }
+        let order = Self.preferredModelOrder(forLanguageID: languageID)
+        for model in order {
+            if let route = routes.first(where: { $0.model == model && model.isInstalled }) {
+                return route
+            }
+        }
         for model in order {
             if let route = routes.first(where: { $0.model == model }) {
                 return route
@@ -199,19 +225,111 @@ enum VoiceEngineLanguageCatalog {
         return nil
     }
 
+    /// en: Parakeet Flash, then TDT v2, then Apple Speech Analyzer, then the rest.
+    /// ko: Apple Speech Analyzer, Apple Speech, Cohere, Whisper, Nemotron. Never Parakeet.
+    /// th: Apple Speech Analyzer, Apple Speech, Whisper, Nemotron last. Never Parakeet or Cohere.
+    private static func preferredModelOrder(forLanguageID languageID: String) -> [SettingsStore.SpeechModel] {
+        switch languageID {
+        case "en":
+            return [
+                .parakeetRealtime,
+                .parakeetTDTv2,
+                .appleSpeechAnalyzer,
+                .appleSpeech,
+                .whisperSmall,
+                .whisperLargeTurbo,
+                .parakeetTDT,
+                .nemotronStreaming,
+                .nemotronOffline,
+                .cohereTranscribeSixBit,
+            ]
+        case "ko":
+            return [
+                .appleSpeechAnalyzer,
+                .appleSpeech,
+                .cohereTranscribeSixBit,
+                .whisperLargeTurbo,
+                .whisperLarge,
+                .whisperSmall,
+                .nemotronStreaming,
+                .nemotronOffline,
+            ]
+        case "th":
+            return [
+                .appleSpeechAnalyzer,
+                .appleSpeech,
+                .whisperLargeTurbo,
+                .whisperLarge,
+                .whisperSmall,
+                .nemotronStreaming,
+                .nemotronOffline,
+            ]
+        default:
+            return [
+                .appleSpeechAnalyzer,
+                .appleSpeech,
+                .whisperSmall,
+                .whisperLargeTurbo,
+                .parakeetTDTv2,
+                .parakeetTDT,
+                .parakeetRealtime,
+                .nemotronStreaming,
+                .nemotronOffline,
+                .cohereTranscribeSixBit,
+            ]
+        }
+    }
+
+    /// Thai + any Nemotron is weak when Apple Speech or Whisper can take over.
+    /// English Whisper / Cohere / Nemotron stay put even if Parakeet Flash or
+    /// TDT v2 is in the route list — do not yank a user's chosen engine.
+    private static func isWeakMatch(
+        _ route: VoiceEngineLanguageRoute,
+        preferred: VoiceEngineLanguageRoute?
+    ) -> Bool {
+        guard route.language.id == "th", Self.isNemotron(route.model) else {
+            return false
+        }
+        guard let preferred, !Self.isNemotron(preferred.model) else {
+            return false
+        }
+        return true
+    }
+
+    private static func isFirstPreferredRoute(_ route: VoiceEngineLanguageRoute) -> Bool {
+        let candidateModels = Set(Self.routeCandidates(for: route.language).map(\.model))
+            .intersection(SettingsStore.SpeechModel.availableModels)
+        guard let first = Self.preferredModelOrder(forLanguageID: route.language.id)
+            .first(where: { candidateModels.contains($0) })
+        else {
+            return false
+        }
+        return first == route.model
+    }
+
+    private static func isNemotron(_ model: SettingsStore.SpeechModel) -> Bool {
+        switch model {
+        case .nemotronOffline, .nemotronStreaming, .nemotronStreaming320:
+            return true
+        default:
+            return false
+        }
+    }
+
     private static func routeCandidates(for language: VoiceEngineLanguage) -> [VoiceEngineLanguageRoute] {
         var routes: [VoiceEngineLanguageRoute] = []
 
+        // Product Parakeet routes are English-only (Flash, TDT v2, and TDT v3).
         if language.id == "en" {
-            routes.append(Self.route(language, .parakeetTDTv2, .automatic))
             routes.append(Self.route(language, .parakeetRealtime, .automatic))
+            routes.append(Self.route(language, .parakeetTDTv2, .automatic))
+            if Self.parakeetV3LanguageIDs.contains(language.id) {
+                routes.append(Self.route(language, .parakeetTDT, .automatic))
+            }
         }
 
-        if Self.parakeetV3LanguageIDs.contains(language.id) {
-            routes.append(Self.route(language, .parakeetTDT, .automatic))
-        }
-
-        if let cohereLanguage = Self.cohereLanguage(for: language.id) {
+        // Cohere has no Thai model.
+        if language.id != "th", let cohereLanguage = Self.cohereLanguage(for: language.id) {
             routes.append(Self.route(language, .cohereTranscribeSixBit, .cohere(cohereLanguage)))
         }
 
@@ -234,7 +352,12 @@ enum VoiceEngineLanguageCatalog {
             routes.append(Self.route(language, .appleSpeech, .appleSpeech(localeIdentifier: appleSpeechLegacyLocale)))
         }
 
-        return routes
+        let order = Self.preferredModelOrder(forLanguageID: language.id)
+        return routes.sorted { lhs, rhs in
+            let left = order.firstIndex(of: lhs.model) ?? order.count
+            let right = order.firstIndex(of: rhs.model) ?? order.count
+            return left < right
+        }
     }
 
     private static func route(

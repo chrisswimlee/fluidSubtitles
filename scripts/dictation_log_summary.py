@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Read-only, standard-library summary of recent FluidVoice dictation timings.
+"""Read-only, standard-library summary of recent dictation timings.
 
 Usage: python3 scripts/dictation_log_summary.py --last 5 [--details] [--json]
-Reads Fluid.log.1 then Fluid.log. Explicit paths are accepted with --log PATH.
+Reads fluidSubtitles.log.1 then fluidSubtitles.log. Explicit paths are accepted with --log PATH.
 No recording, playback, app activation, or file writes are performed.
 """
 
@@ -445,10 +445,10 @@ def main():
     args = parser.parse_args()
     if args.last < 1:
         parser.error("--last must be positive")
-    base = Path.home() / "Library/Logs/Fluid/Fluid.log"
-    paths = args.log if args.log else [p for p in (base.with_name("Fluid.log.1"), base) if p.exists()]
+    base = Path.home() / "Library/Logs/fluidSubtitles/fluidSubtitles.log"
+    paths = args.log if args.log else [p for p in (base.with_name("fluidSubtitles.log.1"), base) if p.exists()]
     if not paths:
-        parser.error("no FluidVoice logs found; supply --log PATH")
+        parser.error("no fluidSubtitles logs found; supply --log PATH")
     try:
         # Read-only snapshots. The next invocation picks up any newly appended tail.
         lines = [line for path in paths for line in path.read_text(errors="replace").splitlines()]

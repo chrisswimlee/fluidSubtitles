@@ -14,6 +14,9 @@ protocol MediaPlaybackControlling {
 extension MediaController: MediaPlaybackControlling {}
 #endif
 
+// swiftlint:disable function_body_length cyclomatic_complexity type_body_length
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
+
 /// Service that wraps MediaRemoteAdapter's MediaController to provide
 /// controlled pause/resume functionality during transcription.
 ///

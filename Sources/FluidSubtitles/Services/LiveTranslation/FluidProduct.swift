@@ -5,7 +5,7 @@ enum FluidProduct {
     static let displayName = "fluidSubtitles"
     static let shortName = "Subtitles"
     static let bundleIdentifier = "com.fluidsubtitles.app"
-    static let tagline = "Live subtitles among Korean, English, and Thai."
+    static let tagline = "Captions after each sentence. Korean, English, and Thai."
     static let manifesto = "Language is no longer a barrier."
 
     static let supportFolderName = "fluidSubtitles"
@@ -62,4 +62,8 @@ enum FluidProduct {
         guard let repository = self.updateRepository else { return nil }
         return URL(string: "https://github.com/\(repository.owner)/\(repository.repo)/issues/new/choose")
     }
+
+    /// Developer ID team IDs allowed to install updates, in addition to the running app’s team.
+    /// Keep this empty until a published Developer ID identity is known; empty and ad-hoc teams are rejected.
+    static let allowedUpdateTeamIDs: Set<String> = []
 }

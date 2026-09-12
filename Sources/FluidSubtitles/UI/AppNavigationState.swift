@@ -13,23 +13,35 @@ enum SidebarItem: Hashable {
     case voiceEngine
     case aiEnhancements
     case cleanupStyles
-    case meetingTools
     case customDictionary
     case stats
     case history
     case changelog
     case feedback
-    case commandMode
-    case rewriteMode
+
+    var accessibilityIdentifier: String {
+        switch self {
+        case .liveTranslation: return "sidebar.theater"
+        case .welcome: return "sidebar.welcome"
+        case .voiceEngine: return "sidebar.voiceEngine"
+        case .aiEnhancements: return "sidebar.aiProviders"
+        case .cleanupStyles: return "sidebar.cleanupStyles"
+        case .customDictionary: return "sidebar.customDictionary"
+        case .stats: return "sidebar.stats"
+        case .history: return "sidebar.history"
+        case .changelog: return "sidebar.changelog"
+        case .feedback: return "sidebar.feedback"
+        }
+    }
 }
 
 enum SettingsSection: String, CaseIterable, Identifiable, Hashable {
     case translation
     case general
     case dictation
+    case aiProviders
     case notifications
     case audio
-    case overlay
     case dataAndDiagnostics
     case experimental
 
@@ -39,12 +51,12 @@ enum SettingsSection: String, CaseIterable, Identifiable, Hashable {
 
     var title: String {
         switch self {
-        case .translation: return "Translate"
+        case .translation: return "Theater"
         case .general: return "General"
         case .dictation: return "Dictation"
+        case .aiProviders: return "AI Providers"
         case .notifications: return "Notifications"
         case .audio: return "Audio"
-        case .overlay: return "Overlay"
         case .dataAndDiagnostics: return "Data & Diagnostics"
         case .experimental: return "Experimental"
         }
@@ -52,12 +64,12 @@ enum SettingsSection: String, CaseIterable, Identifiable, Hashable {
 
     var systemImage: String {
         switch self {
-        case .translation: return "globe"
+        case .translation: return "rectangle.on.rectangle"
         case .general: return "gearshape"
         case .dictation: return "keyboard"
+        case .aiProviders: return "cpu"
         case .notifications: return "bell"
         case .audio: return "speaker.wave.2"
-        case .overlay: return "rectangle.on.rectangle"
         case .dataAndDiagnostics: return "wrench.and.screwdriver"
         case .experimental: return "flask"
         }

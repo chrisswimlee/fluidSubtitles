@@ -15,7 +15,11 @@
 		7C91B0012F42AA0100C0DEF0 /* HotkeyShortcutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C91B0022F42AA0100C0DEF0 /* HotkeyShortcutTests.swift */; };
 		FTGL00000000000000000002 /* LiveTranslationGlossaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FTGL00000000000000000001 /* LiveTranslationGlossaryTests.swift */; };
 		FTCL00000000000000000002 /* LiveTranslationClauseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FTCL00000000000000000001 /* LiveTranslationClauseTests.swift */; };
-		FTMX00000000000000000002 /* MLXRunnerCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FTMX00000000000000000001 /* MLXRunnerCatalogTests.swift */; };
+		FTMB00000000000000000002 /* LiveTranslationMailboxTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FTMB00000000000000000001 /* LiveTranslationMailboxTests.swift */; };
+		FTSB00000000000000000002 /* LiveTranslationSubscriberTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FTSB00000000000000000001 /* LiveTranslationSubscriberTests.swift */; };
+		FTLT00000000000000000002 /* LiveTranslationLatencyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FTLT00000000000000000001 /* LiveTranslationLatencyTests.swift */; };
+		FTQT00000000000000000002 /* LiveTranslationQualityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FTQT00000000000000000001 /* LiveTranslationQualityTests.swift */; };
+		FTAR00000000000000000002 /* LiveTranslationArchiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FTAR00000000000000000001 /* LiveTranslationArchiveTests.swift */; };
 		C0DE89000000000000000002 /* SettingsNavigationStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE89000000000000000001 /* SettingsNavigationStateTests.swift */; };
 		7CDB0A2D2F3C4D5600FB7CAD /* DictationE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CDB0A292F3C4D5600FB7CAD /* DictationE2ETests.swift */; };
 		B52000000000000000000002 /* PrivateAIDictationTokenBudgetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52000000000000000000001 /* PrivateAIDictationTokenBudgetTests.swift */; };
@@ -23,29 +27,36 @@
 		7CDB0A2E2F3C4D5600FB7CAD /* AudioFixtureLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CDB0A2A2F3C4D5600FB7CAD /* AudioFixtureLoader.swift */; };
 		86CAA2D4EF18433096185602 /* LLMClientRequestBodyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 343B29013F4441D6A797D12D /* LLMClientRequestBodyTests.swift */; };
 		272BFB5CB271489892CAE50C /* TemperatureSupportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 980330F3CE464336ADCE3E23 /* TemperatureSupportTests.swift */; };
-		A11A00000000000000000002 /* AnalyticsDatabaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A00000000000000000001 /* AnalyticsDatabaseTests.swift */; };
 		A62300000000000000000002 /* AudioBufferConverterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A62300000000000000000001 /* AudioBufferConverterTests.swift */; };
 		RAM00000000000000000002 /* LiveAudioRetentionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RAM00000000000000000001 /* LiveAudioRetentionTests.swift */; };
-		D1A600000000000000000202 /* SpeakerTurnMergingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A600000000000000000201 /* SpeakerTurnMergingTests.swift */; };
 		F1BD00000000000000000002 /* StripThinkingTagsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1BD00000000000000000001 /* StripThinkingTagsTests.swift */; };
 		C0DE63600000000000000002 /* AudioEngineRetirementDrainTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE63600000000000000001 /* AudioEngineRetirementDrainTests.swift */; };
 		DA7100020000000000000002 /* DirectAudioReliabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA7100010000000000000001 /* DirectAudioReliabilityTests.swift */; };
 		7CFA1D0B2F500000C0DEF001 /* TypingServiceTransientPasteboardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CFA1D0B2F500000C0DEF002 /* TypingServiceTransientPasteboardTests.swift */; };
 		803000000000000000000002 /* MediaPlaybackServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 803000000000000000000001 /* MediaPlaybackServiceTests.swift */; };
-		0B05F11E000000000000A002 /* SupportedFileExtensionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B05F11E000000000000A001 /* SupportedFileExtensionsTests.swift */; };
 		803000000000000000000003 /* MediaRemoteAdapter in Frameworks */ = {isa = PBXBuildFile; productRef = 803000000000000000000004 /* MediaRemoteAdapter */; };
 		B51800000000000000000002 /* SpokenSendTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51800000000000000000001 /* SpokenSendTests.swift */; };
 		B51900000000000000000002 /* PrivateAIProviderPromptFormatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51900000000000000000001 /* PrivateAIProviderPromptFormatTests.swift */; };
 		C0DE63700000000000000002 /* WhisperLanguageSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE63700000000000000001 /* WhisperLanguageSelectionTests.swift */; };
+		SUPS00000000000000000002 /* SimpleUpdaterSignatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SUPS00000000000000000001 /* SimpleUpdaterSignatureTests.swift */; };
+		FTMX00000000000000000002 /* MLXRunnerCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FTMX00000000000000000001 /* MLXRunnerCatalogTests.swift */; };
 		CACEC0010000000000000002 /* KeychainServiceCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CACEC0010000000000000001 /* KeychainServiceCacheTests.swift */; };
 		7CDB0A2F2F3C4D5600FB7CAD /* dictation_fixture.wav in Resources */ = {isa = PBXBuildFile; fileRef = 7CDB0A2B2F3C4D5600FB7CAD /* dictation_fixture.wav */; };
 		7CDB0A302F3C4D5600FB7CAD /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7CDB0A2C2F3C4D5600FB7CAD /* XCTest.framework */; };
 		7CE006BD2E80EBE600DDCCD6 /* AppUpdater in Frameworks */ = {isa = PBXBuildFile; productRef = 7CE006BC2E80EBE600DDCCD6 /* AppUpdater */; };
 		86CAA2D4EF18433096185602 /* LLMClientRequestBodyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 343B29013F4441D6A797D12D /* LLMClientRequestBodyTests.swift */; };
+		UIT10000000000000000008 /* TheaterSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = UIT10000000000000000001 /* TheaterSmokeTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
 		7CDB0A322F3C4D5600FB7CAD /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7C078D872E3B339200FB7CAC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7C078D8E2E3B339200FB7CAC;
+			remoteInfo = fluidSubtitles;
+		};
+		UIT1000000000000000000A /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 7C078D872E3B339200FB7CAC /* Project object */;
 			proxyType = 1;
@@ -73,10 +84,8 @@
 		XC0C00000000000000000002 /* Local.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text; path = Local.xcconfig.example; sourceTree = "<group>"; };
 		343B29013F4441D6A797D12D /* LLMClientRequestBodyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMClientRequestBodyTests.swift; sourceTree = "<group>"; };
 		980330F3CE464336ADCE3E23 /* TemperatureSupportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemperatureSupportTests.swift; sourceTree = "<group>"; };
-		A11A00000000000000000001 /* AnalyticsDatabaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsDatabaseTests.swift; sourceTree = "<group>"; };
 		A62300000000000000000001 /* AudioBufferConverterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioBufferConverterTests.swift; sourceTree = "<group>"; };
 		RAM00000000000000000001 /* LiveAudioRetentionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveAudioRetentionTests.swift; sourceTree = "<group>"; };
-		D1A600000000000000000201 /* SpeakerTurnMergingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerTurnMergingTests.swift; sourceTree = "<group>"; };
 		F1BD00000000000000000001 /* StripThinkingTagsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StripThinkingTagsTests.swift; sourceTree = "<group>"; };
 		C0DE63600000000000000001 /* AudioEngineRetirementDrainTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioEngineRetirementDrainTests.swift; sourceTree = "<group>"; };
 		DA7100010000000000000001 /* DirectAudioReliabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectAudioReliabilityTests.swift; sourceTree = "<group>"; };
@@ -85,18 +94,26 @@
 		B52000000000000000000001 /* PrivateAIDictationTokenBudgetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivateAIDictationTokenBudgetTests.swift; sourceTree = "<group>"; };
 		C0DE63700000000000000001 /* WhisperLanguageSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperLanguageSelectionTests.swift; sourceTree = "<group>"; };
 		CACEC0010000000000000001 /* KeychainServiceCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainServiceCacheTests.swift; sourceTree = "<group>"; };
+		SUPS00000000000000000001 /* SimpleUpdaterSignatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimpleUpdaterSignatureTests.swift; sourceTree = "<group>"; };
+		FTMX00000000000000000001 /* MLXRunnerCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXRunnerCatalogTests.swift; sourceTree = "<group>"; };
+
 		7C078D8F2E3B339200FB7CAC /* fluidSubtitles Debug.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "fluidSubtitles Debug.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		7C91B0022F42AA0100C0DEF0 /* HotkeyShortcutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyShortcutTests.swift; sourceTree = "<group>"; };
 		FTGL00000000000000000001 /* LiveTranslationGlossaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranslationGlossaryTests.swift; sourceTree = "<group>"; };
 		FTCL00000000000000000001 /* LiveTranslationClauseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranslationClauseTests.swift; sourceTree = "<group>"; };
-		FTMX00000000000000000001 /* MLXRunnerCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXRunnerCatalogTests.swift; sourceTree = "<group>"; };
+		FTMB00000000000000000001 /* LiveTranslationMailboxTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranslationMailboxTests.swift; sourceTree = "<group>"; };
+		FTSB00000000000000000001 /* LiveTranslationSubscriberTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranslationSubscriberTests.swift; sourceTree = "<group>"; };
+		FTLT00000000000000000001 /* LiveTranslationLatencyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranslationLatencyTests.swift; sourceTree = "<group>"; };
+		FTQT00000000000000000001 /* LiveTranslationQualityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranslationQualityTests.swift; sourceTree = "<group>"; };
+		FTAR00000000000000000001 /* LiveTranslationArchiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranslationArchiveTests.swift; sourceTree = "<group>"; };
 		C0DE89000000000000000001 /* SettingsNavigationStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsNavigationStateTests.swift; sourceTree = "<group>"; };
 		7CDB0A202F3C4D5600FB7CAD /* FluidSubtitlesIntegrationTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FluidSubtitlesIntegrationTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		UIT10000000000000000001 /* TheaterSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TheaterSmokeTests.swift; sourceTree = "<group>"; };
+		UIT10000000000000000002 /* FluidSubtitlesUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FluidSubtitlesUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7CDB0A292F3C4D5600FB7CAD /* DictationE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationE2ETests.swift; sourceTree = "<group>"; };
 		CD1C7A0000000000000000B1 /* CustomDictionaryManualEntryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomDictionaryManualEntryTests.swift; sourceTree = "<group>"; };
 		7CFA1D0B2F500000C0DEF002 /* TypingServiceTransientPasteboardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingServiceTransientPasteboardTests.swift; sourceTree = "<group>"; };
 		803000000000000000000001 /* MediaPlaybackServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaPlaybackServiceTests.swift; sourceTree = "<group>"; };
-		0B05F11E000000000000A001 /* SupportedFileExtensionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportedFileExtensionsTests.swift; sourceTree = "<group>"; };
 		7CDB0A2A2F3C4D5600FB7CAD /* AudioFixtureLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioFixtureLoader.swift; sourceTree = "<group>"; };
 		7CDB0A2B2F3C4D5600FB7CAD /* dictation_fixture.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = dictation_fixture.wav; sourceTree = "<group>"; };
 		7CDB0A2C2F3C4D5600FB7CAD /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Platforms/MacOSX.platform/Developer/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
@@ -132,6 +149,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		UIT10000000000000000006 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -159,6 +183,7 @@
 			children = (
 				7C078D8F2E3B339200FB7CAC /* fluidSubtitles Debug.app */,
 				7CDB0A202F3C4D5600FB7CAD /* FluidSubtitlesIntegrationTests.xctest */,
+				UIT10000000000000000002 /* FluidSubtitlesUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -167,6 +192,7 @@
 			isa = PBXGroup;
 			children = (
 				7CDB0A252F3C4D5600FB7CAD /* FluidSubtitlesIntegrationTests */,
+				UIT10000000000000000003 /* FluidSubtitlesUITests */,
 			);
 			path = Tests;
 			sourceTree = "<group>";
@@ -181,14 +207,16 @@
 				7C91B0022F42AA0100C0DEF0 /* HotkeyShortcutTests.swift */,
 				FTGL00000000000000000001 /* LiveTranslationGlossaryTests.swift */,
 				FTCL00000000000000000001 /* LiveTranslationClauseTests.swift */,
-				FTMX00000000000000000001 /* MLXRunnerCatalogTests.swift */,
+				FTMB00000000000000000001 /* LiveTranslationMailboxTests.swift */,
+				FTSB00000000000000000001 /* LiveTranslationSubscriberTests.swift */,
+				FTLT00000000000000000001 /* LiveTranslationLatencyTests.swift */,
+				FTQT00000000000000000001 /* LiveTranslationQualityTests.swift */,
+				FTAR00000000000000000001 /* LiveTranslationArchiveTests.swift */,
 				C0DE89000000000000000001 /* SettingsNavigationStateTests.swift */,
 				343B29013F4441D6A797D12D /* LLMClientRequestBodyTests.swift */,
 				980330F3CE464336ADCE3E23 /* TemperatureSupportTests.swift */,
-				A11A00000000000000000001 /* AnalyticsDatabaseTests.swift */,
 				A62300000000000000000001 /* AudioBufferConverterTests.swift */,
 				RAM00000000000000000001 /* LiveAudioRetentionTests.swift */,
-				D1A600000000000000000201 /* SpeakerTurnMergingTests.swift */,
 				F1BD00000000000000000001 /* StripThinkingTagsTests.swift */,
 				C0DE63600000000000000001 /* AudioEngineRetirementDrainTests.swift */,
 				DA7100010000000000000001 /* DirectAudioReliabilityTests.swift */,
@@ -199,7 +227,8 @@
 				B52000000000000000000001 /* PrivateAIDictationTokenBudgetTests.swift */,
 				C0DE63700000000000000001 /* WhisperLanguageSelectionTests.swift */,
 				CACEC0010000000000000001 /* KeychainServiceCacheTests.swift */,
-				0B05F11E000000000000A001 /* SupportedFileExtensionsTests.swift */,
+				SUPS00000000000000000001 /* SimpleUpdaterSignatureTests.swift */,
+				FTMX00000000000000000001 /* MLXRunnerCatalogTests.swift */,
 			);
 			path = FluidSubtitlesIntegrationTests;
 			sourceTree = "<group>";
@@ -226,6 +255,14 @@
 				7CDB0A2C2F3C4D5600FB7CAD /* XCTest.framework */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		UIT10000000000000000003 /* FluidSubtitlesUITests */ = {
+			isa = PBXGroup;
+			children = (
+				UIT10000000000000000001 /* TheaterSmokeTests.swift */,
+			);
+			path = FluidSubtitlesUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -280,6 +317,24 @@
 			productReference = 7CDB0A202F3C4D5600FB7CAD /* FluidSubtitlesIntegrationTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		UIT10000000000000000004 /* FluidSubtitlesUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = UIT1000000000000000000D /* Build configuration list for PBXNativeTarget "FluidSubtitlesUITests" */;
+			buildPhases = (
+				UIT10000000000000000005 /* Sources */,
+				UIT10000000000000000006 /* Frameworks */,
+				UIT10000000000000000007 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				UIT10000000000000000009 /* PBXTargetDependency */,
+			);
+			name = FluidSubtitlesUITests;
+			productName = FluidSubtitlesUITests;
+			productReference = UIT10000000000000000002 /* FluidSubtitlesUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -295,6 +350,10 @@
 					};
 					7CDB0A1F2F3C4D5600FB7CAD = {
 						CreatedOnToolsVersion = 26.0;
+					};
+					UIT10000000000000000004 = {
+						CreatedOnToolsVersion = 26.0;
+						TestTargetID = 7C078D8E2E3B339200FB7CAC;
 					};
 				};
 			};
@@ -321,6 +380,7 @@
 			targets = (
 				7C078D8E2E3B339200FB7CAC /* fluid */,
 				7CDB0A1F2F3C4D5600FB7CAD /* FluidSubtitlesIntegrationTests */,
+				UIT10000000000000000004 /* FluidSubtitlesUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -338,6 +398,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				7CDB0A2F2F3C4D5600FB7CAD /* dictation_fixture.wav in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		UIT10000000000000000007 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -362,14 +429,16 @@
 				7C91B0012F42AA0100C0DEF0 /* HotkeyShortcutTests.swift in Sources */,
 				FTGL00000000000000000002 /* LiveTranslationGlossaryTests.swift in Sources */,
 				FTCL00000000000000000002 /* LiveTranslationClauseTests.swift in Sources */,
-				FTMX00000000000000000002 /* MLXRunnerCatalogTests.swift in Sources */,
+				FTMB00000000000000000002 /* LiveTranslationMailboxTests.swift in Sources */,
+				FTSB00000000000000000002 /* LiveTranslationSubscriberTests.swift in Sources */,
+				FTLT00000000000000000002 /* LiveTranslationLatencyTests.swift in Sources */,
+				FTQT00000000000000000002 /* LiveTranslationQualityTests.swift in Sources */,
+				FTAR00000000000000000002 /* LiveTranslationArchiveTests.swift in Sources */,
 				C0DE89000000000000000002 /* SettingsNavigationStateTests.swift in Sources */,
 				86CAA2D4EF18433096185602 /* LLMClientRequestBodyTests.swift in Sources */,
 				272BFB5CB271489892CAE50C /* TemperatureSupportTests.swift in Sources */,
-				A11A00000000000000000002 /* AnalyticsDatabaseTests.swift in Sources */,
 				A62300000000000000000002 /* AudioBufferConverterTests.swift in Sources */,
 				RAM00000000000000000002 /* LiveAudioRetentionTests.swift in Sources */,
-				D1A600000000000000000202 /* SpeakerTurnMergingTests.swift in Sources */,
 				F1BD00000000000000000002 /* StripThinkingTagsTests.swift in Sources */,
 				C0DE63600000000000000002 /* AudioEngineRetirementDrainTests.swift in Sources */,
 				DA7100020000000000000002 /* DirectAudioReliabilityTests.swift in Sources */,
@@ -379,7 +448,16 @@
 				B51900000000000000000002 /* PrivateAIProviderPromptFormatTests.swift in Sources */,
 				C0DE63700000000000000002 /* WhisperLanguageSelectionTests.swift in Sources */,
 				CACEC0010000000000000002 /* KeychainServiceCacheTests.swift in Sources */,
-				0B05F11E000000000000A002 /* SupportedFileExtensionsTests.swift in Sources */,
+				SUPS00000000000000000002 /* SimpleUpdaterSignatureTests.swift in Sources */,
+				FTMX00000000000000000002 /* MLXRunnerCatalogTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		UIT10000000000000000005 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				UIT10000000000000000008 /* TheaterSmokeTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -390,6 +468,11 @@
 			isa = PBXTargetDependency;
 			target = 7C078D8E2E3B339200FB7CAC /* fluid */;
 			targetProxy = 7CDB0A322F3C4D5600FB7CAD /* PBXContainerItemProxy */;
+		};
+		UIT10000000000000000009 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7C078D8E2E3B339200FB7CAC /* fluid */;
+			targetProxy = UIT1000000000000000000A /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -530,22 +613,22 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 22;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_CODE_COVERAGE = NO;
 				ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER = readwrite;
 				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
-				ENABLE_RESOURCE_ACCESS_BLUETOOTH = YES;
-				ENABLE_RESOURCE_ACCESS_CALENDARS = YES;
-				ENABLE_RESOURCE_ACCESS_CAMERA = YES;
-				ENABLE_RESOURCE_ACCESS_CONTACTS = YES;
-				ENABLE_RESOURCE_ACCESS_LOCATION = YES;
-				ENABLE_RESOURCE_ACCESS_PRINTING = YES;
-				ENABLE_RESOURCE_ACCESS_USB = YES;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Info.plist;
@@ -557,7 +640,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 1.5.1;
+				MARKETING_VERSION = 1.6.10;
 				PRODUCT_BUNDLE_IDENTIFIER = com.fluidsubtitles.app.debug;
 				PRODUCT_MODULE_NAME = FluidSubtitles_Debug;
 				PRODUCT_NAME = "fluidSubtitles Debug";
@@ -587,22 +670,22 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 22;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_CODE_COVERAGE = NO;
 				ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER = readwrite;
 				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
-				ENABLE_RESOURCE_ACCESS_BLUETOOTH = YES;
-				ENABLE_RESOURCE_ACCESS_CALENDARS = YES;
-				ENABLE_RESOURCE_ACCESS_CAMERA = YES;
-				ENABLE_RESOURCE_ACCESS_CONTACTS = YES;
-				ENABLE_RESOURCE_ACCESS_LOCATION = YES;
-				ENABLE_RESOURCE_ACCESS_PRINTING = YES;
-				ENABLE_RESOURCE_ACCESS_USB = YES;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Info.plist;
@@ -614,7 +697,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 1.5.1;
+				MARKETING_VERSION = 1.6.10;
 				PRODUCT_BUNDLE_IDENTIFIER = com.fluidsubtitles.app;
 				PRODUCT_MODULE_NAME = FluidSubtitles;
 				PRODUCT_NAME = fluidSubtitles;
@@ -682,6 +765,37 @@
 			};
 			name = Release;
 		};
+		UIT1000000000000000000B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = XC0C00000000000000000001 /* Shared.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fluidsubtitles.FluidSubtitlesUITests;
+				PRODUCT_NAME = FluidSubtitlesUITests;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = fluidSubtitles;
+			};
+			name = Debug;
+		};
+		UIT1000000000000000000C /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = XC0C00000000000000000001 /* Shared.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fluidsubtitles.FluidSubtitlesUITests;
+				PRODUCT_NAME = FluidSubtitlesUITests;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = fluidSubtitles;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -708,6 +822,15 @@
 			buildConfigurations = (
 				7CDB0A342F3C4D5600FB7CAD /* Debug */,
 				7CDB0A352F3C4D5600FB7CAD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		UIT1000000000000000000D /* Build configuration list for PBXNativeTarget "FluidSubtitlesUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				UIT1000000000000000000B /* Debug */,
+				UIT1000000000000000000C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

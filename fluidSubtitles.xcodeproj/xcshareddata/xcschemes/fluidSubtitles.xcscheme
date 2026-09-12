@@ -40,6 +40,16 @@
                ReferencedContainer = "container:fluidSubtitles.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "UIT10000000000000000004"
+               BuildableName = "FluidSubtitlesUITests.xctest"
+               BlueprintName = "FluidSubtitlesUITests"
+               ReferencedContainer = "container:fluidSubtitles.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

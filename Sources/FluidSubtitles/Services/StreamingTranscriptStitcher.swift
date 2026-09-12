@@ -42,6 +42,37 @@ enum StreamingTranscriptStitcher {
         return (retained, .retainedWindow)
     }
 
+    /// Live Theater only needs the last half-minute of speech, matching the PCM
+    /// ring. Dictation Stop still stitches the full listen.
+    static let maximumLiveCharacters = 2_400
+
+    static func boundLiveTranscript(_ text: String) -> String {
+        let trimmed = Self.normalizedSpacing(text)
+        guard trimmed.count > Self.maximumLiveCharacters else { return trimmed }
+
+        let tailStart = trimmed.index(trimmed.endIndex, offsetBy: -Self.maximumLiveCharacters)
+        var cut = tailStart
+        let previous: Character = tailStart > trimmed.startIndex
+            ? trimmed[trimmed.index(before: tailStart)]
+            : " "
+        let startsMidSentence = !previous.isWhitespace && !".!?。！？…".contains(previous)
+        if startsMidSentence {
+            if let boundary = trimmed[tailStart...].firstIndex(where: { ".!?。！？…".contains($0) }) {
+                cut = trimmed.index(after: boundary)
+            } else if let space = trimmed[tailStart...].firstIndex(where: { $0.isWhitespace }) {
+                cut = trimmed.index(after: space)
+            }
+        }
+        while cut < trimmed.endIndex, trimmed[cut].isWhitespace {
+            cut = trimmed.index(after: cut)
+        }
+        let bounded = String(trimmed[cut...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        if bounded.isEmpty || bounded.count > Self.maximumLiveCharacters {
+            return String(trimmed.suffix(Self.maximumLiveCharacters))
+        }
+        return bounded
+    }
+
     enum Kind: Equatable {
         case incrementalDelta
         case retainedWindow

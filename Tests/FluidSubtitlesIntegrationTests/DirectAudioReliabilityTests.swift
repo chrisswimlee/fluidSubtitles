@@ -4,6 +4,9 @@ import CoreAudio
 import Foundation
 import XCTest
 
+// swiftlint:disable file_length type_body_length function_body_length cyclomatic_complexity
+// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
+
 final class DirectAudioReliabilityTests: XCTestCase {
     func testPipelineCorrelationIsInheritedAndRestoredAcrossConcurrentRequests() async {
         let original = DebugLogger.pipelineID
@@ -54,7 +57,7 @@ final class DirectAudioReliabilityTests: XCTestCase {
         preview.flush()
         await Task.yield()
 
-        XCTAssertEqual(publishedText, ["fluidSubtitles benchmark"])
+        XCTAssertEqual(publishedText, ["connectingCaptions benchmark"])
     }
 
     @MainActor
