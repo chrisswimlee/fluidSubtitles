@@ -43,8 +43,11 @@ final class AppleSpeechAnalyzerProvider: TranscriptionProvider {
 
     func prepare(progressHandler: ((ModelPreparationProgress) -> Void)?) async throws {
         try Task.checkCancellation()
-        let locale = self.selectedSpeechLocale()
+        let supportedLocales = await SpeechTranscriber.supportedLocales
+        try Task.checkCancellation()
+        let locale = try self.resolveSupportedLocale(from: supportedLocales)
         let localeID = self.normalizedIdentifier(for: locale)
+        self.persistResolvedLocaleIfNeeded(localeID)
 
         // 1. Create a transcriber to check locale support and download if needed
         let transcriber = SpeechTranscriber(
@@ -54,23 +57,14 @@ final class AppleSpeechAnalyzerProvider: TranscriptionProvider {
             attributeOptions: []
         )
 
-        // 2. Check if locale is supported
-        let supportedLocales = await SpeechTranscriber.supportedLocales
-        try Task.checkCancellation()
-        let isSupported = supportedLocales.map { self.normalizedIdentifier(for: $0) }.contains(localeID)
-
-        guard isSupported else {
-            throw NSError(
-                domain: "AppleSpeechAnalyzerProvider",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Current locale is not supported by SpeechAnalyzer"]
-            )
-        }
-
         // 3. Check if model is installed, download if needed
         let installedLocales = await SpeechTranscriber.installedLocales
         try Task.checkCancellation()
-        let isInstalled = installedLocales.map { self.normalizedIdentifier(for: $0) }.contains(localeID)
+        let isInstalled = installedLocales.contains {
+            self.normalizedIdentifier(for: $0).caseInsensitiveCompare(localeID) == .orderedSame
+                || VoiceEngineLanguageCatalog.languagePrefix(self.normalizedIdentifier(for: $0))
+                    == VoiceEngineLanguageCatalog.languagePrefix(localeID)
+        }
 
         if !isInstalled {
             DebugLogger.shared.info("Downloading speech model for locale: \(localeID)", source: "AppleSpeechAnalyzerProvider")
@@ -156,9 +150,18 @@ final class AppleSpeechAnalyzerProvider: TranscriptionProvider {
     ///
     /// - Returns: `true` if the current locale's speech model is installed on disk, `false` otherwise.
     func refreshModelsExistOnDiskAsync() async -> Bool {
+        let supportedLocales = await SpeechTranscriber.supportedLocales
         let installedLocales = await SpeechTranscriber.installedLocales
-        let localeID = self.normalizedIdentifier(for: self.selectedSpeechLocale())
-        let isInstalled = installedLocales.map { self.normalizedIdentifier(for: $0) }.contains(localeID)
+        let localeID: String
+        if let resolved = try? self.resolveSupportedLocale(from: supportedLocales) {
+            localeID = self.normalizedIdentifier(for: resolved)
+        } else {
+            localeID = self.normalizedIdentifier(for: self.selectedSpeechLocale())
+        }
+        let isInstalled = installedLocales.contains {
+            VoiceEngineLanguageCatalog.languagePrefix(self.normalizedIdentifier(for: $0))
+                == VoiceEngineLanguageCatalog.languagePrefix(localeID)
+        }
 
         self._cacheQueue.sync { self._modelsInstalledCache = isInstalled }
 
@@ -275,8 +278,44 @@ final class AppleSpeechAnalyzerProvider: TranscriptionProvider {
         SettingsStore.shared.selectedAppleSpeechLocale
     }
 
+    private func resolveSupportedLocale(from supportedLocales: [Locale]) throws -> Locale {
+        let languageID = SpokenLanguageResolver.sourceLanguage().id
+        let preferredID = self.normalizedIdentifier(for: self.selectedSpeechLocale())
+        let supportedIDs = supportedLocales.map { self.normalizedIdentifier(for: $0) }
+        guard let resolvedID = VoiceEngineLanguageCatalog.resolveAppleSpeechAnalyzerLocale(
+            preferredIdentifier: preferredID,
+            languageID: languageID,
+            supportedIdentifiers: supportedIDs
+        ) else {
+            let name = TranslationLanguageCatalog.language(id: languageID)?.displayName ?? languageID
+            throw NSError(
+                domain: "AppleSpeechAnalyzerProvider",
+                code: 1,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Speech Analyzer does not include \(name) on this Mac. Use Whisper or Apple Speech.",
+                ]
+            )
+        }
+        return supportedLocales.first {
+            self.normalizedIdentifier(for: $0).caseInsensitiveCompare(resolvedID) == .orderedSame
+        } ?? Locale(identifier: resolvedID)
+    }
+
+    private func persistResolvedLocaleIfNeeded(_ localeID: String) {
+        let current = VoiceEngineLanguageCatalog.normalizeLocaleID(
+            SettingsStore.shared.selectedAppleSpeechLocaleIdentifier
+        )
+        guard current.caseInsensitiveCompare(localeID) != .orderedSame else { return }
+        SettingsStore.shared.selectedAppleSpeechLocaleIdentifier = localeID
+    }
+
     private func normalizedIdentifier(for locale: Locale) -> String {
-        locale.identifier(.bcp47).replacingOccurrences(of: "_", with: "-")
+        let bcp47 = locale.identifier(.bcp47).replacingOccurrences(of: "_", with: "-")
+        if !bcp47.isEmpty {
+            return VoiceEngineLanguageCatalog.normalizeLocaleID(bcp47)
+        }
+        return VoiceEngineLanguageCatalog.normalizeLocaleID(locale.identifier)
     }
 
     /// Converts raw [Float] samples (16kHz mono) to AVAudioPCMBuffer

@@ -58,6 +58,7 @@ struct OnboardingFlowView: View {
     @State var landingGlowCenter = UnitPoint(x: 0.5, y: 0.18)
     @State var lastLandingGlowLocation = CGPoint(x: -1000, y: -1000)
     @State var languagePackAvailability = ""
+    @State var languagePackIsInstalled = false
     let landingGlowMovementThreshold: CGFloat = 24
 
     enum OnboardingFooterButton {
@@ -117,7 +118,7 @@ struct OnboardingFlowView: View {
             case .permissions:
                 return "Microphone is required. Accessibility is only if you want a translation typed into other apps."
             case .playground:
-                return "Open Theater, press Listen, and say a sentence."
+                return TheaterReadiness.openTheaterPressListen
             }
         }
     }
@@ -208,7 +209,28 @@ struct OnboardingFlowView: View {
     }
 
     var recommendedModelReasonText: String {
-        "Recommended for \(self.selectedOnboardingLanguage.displayName). You can see more options if needed."
+        if self.selectedOnboardingLanguage.id == "en" {
+            return "Apple Speech is enough to try. Faster English engines are under Show other models."
+        }
+        return "Apple Speech is enough to try \(self.selectedOnboardingLanguage.displayName). Other Voice Engines are under Show other models."
+    }
+
+    var isOnboardingTranslationPackReady: Bool {
+        SpokenLanguageResolver.isSameLanguagePair() || self.languagePackIsInstalled
+    }
+
+    var canOpenOnboardingTheater: Bool {
+        TheaterAvailability.isSupported && self.isOnboardingTranslationPackReady
+    }
+
+    var playgroundCaptionHint: String {
+        if !TheaterAvailability.isSupported {
+            return TheaterAvailability.unsupportedCopy
+        }
+        if !self.isOnboardingTranslationPackReady {
+            return "Download the language pack, then Open Theater."
+        }
+        return "\(TheaterReadiness.pressListen) Continue after a line appears."
     }
 
     var isRecommendedModelDownloaded: Bool {
@@ -254,7 +276,8 @@ struct OnboardingFlowView: View {
     }
 
     var isPlaygroundReady: Bool {
-        self.settings.onboardingPlaygroundValidated || self.settings.onboardingPlaygroundSkipped
+        if !TheaterAvailability.isSupported { return true }
+        return self.settings.onboardingPlaygroundValidated || self.settings.onboardingPlaygroundSkipped
     }
 
     var onboardingShortcutDisplay: String {
@@ -533,6 +556,11 @@ struct OnboardingFlowView: View {
         if requestDownload {
             AppleTranslationEngine.shared.requestLanguagePackDownload()
         }
+        let status = await AppleTranslationEngine.shared.packAvailability(
+            source: source,
+            target: target
+        )
+        self.languagePackIsInstalled = status.isReady
         self.languagePackAvailability = await AppleTranslationEngine.shared.checkAvailability(
             source: source,
             target: target

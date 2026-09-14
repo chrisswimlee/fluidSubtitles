@@ -170,11 +170,14 @@ struct SettingsView: View {
                     systemImage: self.selectedSection.systemImage,
                     title: self.selectedSection.title,
                     subtitle: self.selectedSection == .translation
-                        ? "Window, shortcuts, and an optional local cleaner."
+                        ? FluidProduct.tagline
                         : nil
                 ) {
                     if self.selectedSection == .translation {
-                        OpenTheaterButton()
+                        HStack(spacing: 8) {
+                            OpenTheaterButton()
+                            TheaterListenButton()
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -210,9 +213,7 @@ struct SettingsView: View {
                 // Startup Card
                 ThemedCard(style: .standard) {
                     VStack(alignment: .leading, spacing: 14) {
-                        Label("Startup", systemImage: "power")
-                            .font(.headline)
-                            .foregroundStyle(.primary)
+                        FluidSectionHeader(title: "Startup", systemImage: "power")
 
                         VStack(spacing: 16) {
                             // Launch at startup
@@ -567,9 +568,7 @@ struct SettingsView: View {
                     // Only surface microphone permission when the user needs to act.
                     ThemedCard(style: .standard) {
                         VStack(alignment: .leading, spacing: 14) {
-                            Label("Microphone Permission", systemImage: "mic.fill")
-                                .font(.headline)
-                                .foregroundStyle(.primary)
+                            FluidSectionHeader(title: "Microphone Permission", systemImage: "mic.fill")
 
                             VStack(alignment: .leading, spacing: 12) {
                                 HStack(spacing: 10) {
@@ -634,9 +633,7 @@ struct SettingsView: View {
                 ThemedCard(style: .standard) {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack(spacing: 8) {
-                            Label("Global Hotkey", systemImage: "keyboard")
-                                .font(.headline)
-                                .foregroundStyle(.primary)
+                            FluidSectionHeader(title: "Global Hotkey", systemImage: "keyboard")
 
                             Spacer()
 
@@ -987,9 +984,7 @@ struct SettingsView: View {
 
                 ThemedCard(style: .standard) {
                     VStack(alignment: .leading, spacing: 14) {
-                        Label("Text Formatting", systemImage: "textformat")
-                            .font(.headline)
-                            .foregroundStyle(.primary)
+                        FluidSectionHeader(title: "Text Formatting", systemImage: "textformat")
 
                         VStack(spacing: 16) {
                             self.settingsToggleRow(
@@ -1087,9 +1082,7 @@ struct SettingsView: View {
                 ThemedCard(style: .standard) {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack {
-                            Label("Audio Devices", systemImage: "speaker.wave.2.fill")
-                                .font(.headline)
-                                .foregroundStyle(.primary)
+                            FluidSectionHeader(title: "Audio Devices", systemImage: "speaker.wave.2.fill")
 
                             Spacer()
 
@@ -1423,9 +1416,7 @@ struct SettingsView: View {
                 // Debug Settings Card
                 ThemedCard(style: .standard) {
                     VStack(alignment: .leading, spacing: 14) {
-                        Label("Debug Settings", systemImage: "ladybug.fill")
-                            .font(.headline)
-                            .foregroundStyle(.primary)
+                        FluidSectionHeader(title: "Debug Settings", systemImage: "ladybug.fill")
 
                         VStack(alignment: .leading, spacing: 8) {
                             self.settingsToggleRow(

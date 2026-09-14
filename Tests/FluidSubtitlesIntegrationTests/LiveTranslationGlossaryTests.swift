@@ -73,19 +73,49 @@ final class LiveTranslationGlossaryTests: XCTestCase {
         )
     }
 
-    func testDefaultTargetAvoidsTheSpokenLanguage() {
+    func testDefaultTargetMatchesTheSpokenLanguage() {
         XCTAssertEqual(
             TranslationLanguageCatalog.defaultTarget(forSource: TranslationLanguageCatalog.english).id,
-            "ko"
+            "en"
         )
         XCTAssertEqual(
             TranslationLanguageCatalog.defaultTarget(forSource: TranslationLanguageCatalog.korean).id,
-            "en"
+            "ko"
         )
         XCTAssertEqual(
             TranslationLanguageCatalog.defaultTarget(forSource: TranslationLanguageCatalog.thai).id,
-            "en"
+            "th"
         )
+    }
+
+    func testEnglishPreferredVoiceEngineIsAppleSpeech() throws {
+        let english = try XCTUnwrap(VoiceEngineLanguageCatalog.language(id: "en"))
+        let routes = VoiceEngineLanguageCatalog.routes(for: english)
+        let first = try XCTUnwrap(routes.first)
+        XCTAssertTrue(
+            first.model == .appleSpeechAnalyzer || first.model == .appleSpeech,
+            "First-run English should be Apple Speech, not Parakeet. Got \(first.model)"
+        )
+        XCTAssertNotEqual(first.model, .parakeetRealtime)
+
+        let recommended = routes.filter { $0.badgeText == "Recommended" }
+        XCTAssertEqual(recommended.count, 1)
+        XCTAssertTrue(
+            recommended.first?.model == .appleSpeechAnalyzer
+                || recommended.first?.model == .appleSpeech
+        )
+        if let flash = routes.first(where: { $0.model == .parakeetRealtime }) {
+            XCTAssertEqual(flash.badgeText, "Faster English")
+        }
+    }
+
+    func testDefaultSpeechModelIsAppleSpeech() {
+        let model = SettingsStore.SpeechModel.defaultModel
+        XCTAssertTrue(
+            model == .appleSpeechAnalyzer || model == .appleSpeech || model == .whisperBase,
+            "First launch should not persist Parakeet TDT. Got \(model)"
+        )
+        XCTAssertNotEqual(model, .parakeetTDT)
     }
 
     func testSourceLanguageFollowsTheVoiceEngine() {
@@ -120,7 +150,7 @@ final class LiveTranslationGlossaryTests: XCTestCase {
         XCTAssertTrue(VoiceEngineLanguageCatalog.supports(.parakeetRealtime, languageID: "en"))
     }
 
-    func testSetSourceLanguageLeavesEnglishOnlyEnginesForKorean() {
+    func testSetSourceLanguageKeepsTheSelectedVoiceEngine() {
         let settings = SettingsStore.shared
         let originalModel = settings.selectedSpeechModel
         let originalSource = settings.translationSourceLanguageID
@@ -137,12 +167,11 @@ final class LiveTranslationGlossaryTests: XCTestCase {
 
         settings.selectedSpeechModel = .parakeetRealtime
         SpokenLanguageResolver.setSourceLanguage(TranslationLanguageCatalog.korean, settings: settings)
-        XCTAssertNotEqual(settings.selectedSpeechModel, .parakeetRealtime)
-        XCTAssertNotEqual(settings.selectedSpeechModel, .parakeetTDTv2)
-        XCTAssertTrue(VoiceEngineLanguageCatalog.supports(settings.selectedSpeechModel, languageID: "ko"))
-        XCTAssertTrue(SpokenLanguageResolver.voiceEngineSupportsSource(settings: settings))
-        XCTAssertTrue(
-            SpokenLanguageResolver.stageEngineSummary(settings: settings).contains("Korean")
+        XCTAssertEqual(settings.selectedSpeechModel, .parakeetRealtime)
+        XCTAssertFalse(SpokenLanguageResolver.voiceEngineSupportsSource(settings: settings))
+        XCTAssertEqual(
+            SpokenLanguageResolver.voiceEngineMismatchMessage(settings: settings),
+            "Parakeet Flash and TDT v2 only hear English. Switch to Apple Speech, Cohere, or Whisper for Korean."
         )
     }
 
@@ -256,7 +285,7 @@ final class LiveTranslationGlossaryTests: XCTestCase {
     }
 
     @MainActor
-    func testListenAutoSwitchesKoreanOffEnglishOnlyEngines() async {
+    func testListenKeepsSelectedEngineAndRefusesKoreanOnParakeet() async {
         let settings = SettingsStore.shared
         let originalModel = settings.selectedSpeechModel
         let originalSource = settings.translationSourceLanguageID
@@ -271,9 +300,11 @@ final class LiveTranslationGlossaryTests: XCTestCase {
         settings.translationTargetLanguageID = "en"
         XCTAssertFalse(SpokenLanguageResolver.voiceEngineSupportsSource())
         let ready = await LiveTranslationController.shared.ensureReadyToListen()
-        XCTAssertTrue(ready)
-        XCTAssertNotEqual(settings.selectedSpeechModel, .parakeetRealtime)
-        XCTAssertTrue(VoiceEngineLanguageCatalog.supports(settings.selectedSpeechModel, languageID: "ko"))
+        XCTAssertFalse(ready)
+        XCTAssertEqual(settings.selectedSpeechModel, .parakeetRealtime)
+        XCTAssertTrue(
+            LiveTranslationController.shared.subscriber.statusText.contains("only hear English")
+        )
     }
 
     @MainActor
@@ -519,7 +550,7 @@ final class LiveTranslationGlossaryTests: XCTestCase {
         XCTAssertFalse(SpokenLanguageResolver.voiceEngineSupportsSource(settings: settings))
         XCTAssertEqual(
             SpokenLanguageResolver.voiceEngineMismatchMessage(settings: settings),
-            "Parakeet Flash and TDT v2 only hear English. Theater will switch to Apple Speech or Whisper for Thai."
+            "Parakeet Flash and TDT v2 only hear English. Switch Voice Engine to Apple Speech or Whisper for Thai."
         )
         XCTAssertNil(SpokenLanguageResolver.theaterEngineHint(settings: settings))
     }

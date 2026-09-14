@@ -21,6 +21,9 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
     private var lastPair: String = ""
     private var supportedLanguages: [Locale.Language] = []
 
+    var isMailboxReady: Bool { self.mailbox.isReady }
+    var hasQueuedOrInFlightCommit: Bool { self.mailbox.hasQueuedOrInFlightCommit }
+
     func prepare(source: TranslationLanguage, target: TranslationLanguage) {
         guard source.id != target.id else {
             self.tearDownSession(reason: "Language pair changed.")
@@ -74,6 +77,9 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
         self.prepare(source: source, target: target)
         await self.waitUntilMailboxReady()
 
+        if kind == .live, self.mailbox.hasQueuedOrInFlightCommit {
+            throw TranslationEngineError(message: "Commit is in flight.")
+        }
         switch Self.sessionChoice(mailboxReady: self.mailbox.isReady) {
         case .warmMailbox:
             return try await self.mailbox.submit(trimmed, kind: kind)
@@ -390,6 +396,7 @@ enum TranslationSessionHostController {
 final class TranslationRequestMailbox: @unchecked Sendable {
     struct Request {
         let text: String
+        let kind: TranslationRequestKind
         fileprivate let box: ResumeBox
 
         var isCancelled: Bool { self.box.isFinished }
@@ -412,6 +419,13 @@ final class TranslationRequestMailbox: @unchecked Sendable {
         return self.isServing || self.waiter != nil
     }
 
+    /// Live prefetch must not start while a commit is waiting or running.
+    var hasQueuedOrInFlightCommit: Bool {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        return !self.commits.isEmpty || self.inFlight?.kind == .commit
+    }
+
     func next() async -> Request? {
         await withCheckedContinuation { continuation in
             self.lock.lock()
@@ -430,7 +444,7 @@ final class TranslationRequestMailbox: @unchecked Sendable {
     func submit(_ text: String, kind: TranslationRequestKind = .commit) async throws -> String {
         try await withCheckedThrowingContinuation { continuation in
             let box = ResumeBox(continuation)
-            let request = Request(text: text, box: box)
+            let request = Request(text: text, kind: kind, box: box)
             var superseded: ResumeBox?
             var waiter: CheckedContinuation<Request?, Never>?
             var dequeued: Request?
@@ -486,12 +500,12 @@ final class TranslationRequestMailbox: @unchecked Sendable {
     }
 
     private func dequeueLocked() -> Request? {
+        if !self.commits.isEmpty {
+            return self.commits.removeFirst()
+        }
         if let live = self.live {
             self.live = nil
             return live
-        }
-        if !self.commits.isEmpty {
-            return self.commits.removeFirst()
         }
         return nil
     }

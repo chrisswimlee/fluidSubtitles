@@ -2,22 +2,122 @@ import Foundation
 
 /// Overflow from the 200-line Theater window. JSONL on disk so a 3-hour talk
 /// does not grow the in-memory SwiftUI board or UserDefaults snapshot.
+/// Writes run on a dedicated serial queue with a batched flush so clause
+/// commits do not fsync on the MainActor.
 final class LectureCaptionArchive: @unchecked Sendable {
+    static let flushLineThreshold = 16
+    static let flushDelay: TimeInterval = 0.35
+
     private let url: URL
     private let fileManager: FileManager
-    private let lock = NSLock()
-    private(set) var overflowCount = 0
+    private let queue: DispatchQueue
+    private static let queueKey = DispatchSpecificKey<UInt8>()
+    private var pending: [LectureCaptionEntry] = []
+    private var flushedCount = 0
+    private var flushWorkItem: DispatchWorkItem?
 
     init(url: URL? = nil, fileManager: FileManager = .default) {
         self.fileManager = fileManager
         self.url = url ?? AppSupportDirectory.url(fileManager: fileManager)
             .appendingPathComponent("TheaterSession.jsonl")
+        let queue = DispatchQueue(label: "com.fluidsubtitles.theater.archive")
+        queue.setSpecific(key: Self.queueKey, value: 1)
+        self.queue = queue
     }
 
+    /// Flushed lines plus anything still in the write buffer.
+    var overflowCount: Int {
+        self.sync { self.flushedCount + self.pending.count }
+    }
+
+    /// Buffer overflow lines and return immediately. Disk write + fsync happen
+    /// on the archive queue after a short batch or an explicit barrier.
+    func enqueue(_ entries: [LectureCaptionEntry]) {
+        guard !entries.isEmpty else { return }
+        self.sync {
+            self.pending.append(contentsOf: entries)
+            if self.pending.count >= Self.flushLineThreshold {
+                self.scheduleFlushLocked(deadline: .now())
+            } else {
+                self.scheduleFlushLocked(deadline: .now() + Self.flushDelay)
+            }
+        }
+    }
+
+    /// Enqueue and flush before returning. Used by tests and restore barriers.
     func append(_ entries: [LectureCaptionEntry]) {
         guard !entries.isEmpty else { return }
-        self.lock.lock()
-        defer { self.lock.unlock() }
+        self.sync {
+            self.pending.append(contentsOf: entries)
+            self.flushLocked()
+        }
+    }
+
+    func flush() {
+        self.sync { self.flushLocked() }
+    }
+
+    func loadAll() -> [LectureCaptionEntry] {
+        self.sync {
+            self.flushLocked()
+            guard let data = try? Data(contentsOf: self.url), !data.isEmpty else {
+                self.flushedCount = 0
+                return []
+            }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            var entries: [LectureCaptionEntry] = []
+            entries.reserveCapacity(self.flushedCount)
+            for line in data.split(separator: 0x0A, omittingEmptySubsequences: true) {
+                if let entry = try? decoder.decode(LectureCaptionEntry.self, from: Data(line)) {
+                    entries.append(entry)
+                }
+            }
+            self.flushedCount = entries.count
+            return entries
+        }
+    }
+
+    func reset() {
+        self.sync {
+            self.flushWorkItem?.cancel()
+            self.flushWorkItem = nil
+            self.pending.removeAll()
+            try? self.fileManager.removeItem(at: self.url)
+            self.flushedCount = 0
+        }
+    }
+
+    /// Count overflow lines without decoding captions into RAM.
+    func recount() {
+        self.sync {
+            self.flushLocked()
+            self.flushedCount = Self.lineCount(at: self.url, fileManager: self.fileManager)
+        }
+    }
+
+    private func sync<T>(_ body: () -> T) -> T {
+        if DispatchQueue.getSpecific(key: Self.queueKey) != nil {
+            return body()
+        }
+        return self.queue.sync(execute: body)
+    }
+
+    private func scheduleFlushLocked(deadline: DispatchTime) {
+        self.flushWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.flushLocked()
+        }
+        self.flushWorkItem = work
+        self.queue.asyncAfter(deadline: deadline, execute: work)
+    }
+
+    private func flushLocked() {
+        self.flushWorkItem?.cancel()
+        self.flushWorkItem = nil
+        let entries = self.pending
+        self.pending.removeAll()
+        guard !entries.isEmpty else { return }
         do {
             try self.fileManager.createDirectory(
                 at: self.url.deletingLastPathComponent(),
@@ -35,46 +135,16 @@ final class LectureCaptionArchive: @unchecked Sendable {
                 let data = try encoder.encode(entry)
                 try handle.write(contentsOf: data)
                 try handle.write(contentsOf: Data([0x0A]))
-                self.overflowCount += 1
+                self.flushedCount += 1
             }
             try handle.synchronize()
         } catch {
+            self.pending.insert(contentsOf: entries, at: 0)
             DebugLogger.shared.error(
                 "Theater archive append failed: \(error.localizedDescription)",
                 source: "LiveTranslation"
             )
         }
-    }
-
-    func loadAll() -> [LectureCaptionEntry] {
-        self.lock.lock()
-        defer { self.lock.unlock() }
-        guard let data = try? Data(contentsOf: self.url), !data.isEmpty else { return [] }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        var entries: [LectureCaptionEntry] = []
-        entries.reserveCapacity(self.overflowCount)
-        for line in data.split(separator: 0x0A, omittingEmptySubsequences: true) {
-            if let entry = try? decoder.decode(LectureCaptionEntry.self, from: Data(line)) {
-                entries.append(entry)
-            }
-        }
-        self.overflowCount = entries.count
-        return entries
-    }
-
-    func reset() {
-        self.lock.lock()
-        defer { self.lock.unlock() }
-        try? self.fileManager.removeItem(at: self.url)
-        self.overflowCount = 0
-    }
-
-    /// Count overflow lines without decoding captions into RAM.
-    func recount() {
-        self.lock.lock()
-        defer { self.lock.unlock() }
-        self.overflowCount = Self.lineCount(at: self.url, fileManager: self.fileManager)
     }
 
     private static func lineCount(at url: URL, fileManager: FileManager) -> Int {

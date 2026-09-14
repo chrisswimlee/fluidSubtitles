@@ -264,6 +264,7 @@ final class LLMTranslationEngine: TranslationEngine {
         if polished.isEmpty { return nil }
         if polished.contains(where: \.isNewline) { return nil }
         if Self.looksLikeEngineError(polished) { return nil }
+        if CaptionJunkGate.shouldDrop(polished) { return nil }
         let draftCount = max(draft.trimmingCharacters(in: .whitespacesAndNewlines).count, 1)
         let ratio = Double(polished.count) / Double(draftCount)
         if ratio < 0.5 || ratio > 1.6 { return nil }

@@ -5,11 +5,19 @@ Trust for a venue tech is Gatekeeper silence, not a longer onboarding screen.
 ## Ship
 
 1. Put your 10-character Developer ID team in gitignored `xcconfig/Local.xcconfig`. Do not commit `DEVELOPMENT_TEAM` in the pbxproj.
-2. After you have a published Developer ID, add that team ID to `FluidProduct.allowedUpdateTeamIDs` so Sparkle/GitHub updates accept it.
+2. After you have a published Developer ID, add that team ID to `FluidProduct.allowedUpdateTeamIDs` so GitHub updates accept it. Leave the set empty until that identity is known; empty and ad-hoc teams are rejected, so in-app updates do nothing until you fill it. Hosted CI cannot notarize without the `release` environment secrets, and it cannot prove Watch.
 3. Archive, notarize, staple. GitHub Release jobs already fail closed when credentials are missing.
 4. `scripts/check-team-id.sh` must stay green.
 
 Ad-hoc, `not set`, and empty team IDs are rejected by `UpdateSignaturePolicy`.
+
+## First public Release
+
+1. Make `chrisswimlee/fluidSubtitles` public so `SimpleUpdater` can see GitHub Releases.
+2. Run `./build.sh release` with Developer ID and notarization credentials. That writes `dist/fluidsubtitles-{version}.zip`.
+3. Put the published team ID in `FluidProduct.allowedUpdateTeamIDs`. Until that set is non-empty, every in-app update is rejected.
+4. Tag `v*` and attach the zip (or let `.github/workflows/release.yml` do it once the `release` environment secrets exist).
+5. Hosted CI still cannot prove Watch. Keep [WATCH_PROOF.md](WATCH_PROOF.md) next to the release notes.
 
 ## Library validation
 

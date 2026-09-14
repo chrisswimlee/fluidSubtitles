@@ -124,7 +124,7 @@ extension ContentView {
     ) {
         DebugLogger.shared.debug("Begin dictation recording for slot \(slot.rawValue)", source: "ContentView")
         self.appBench("begin_recording slot=\(slot.rawValue) mode=\(mode.rawValue)")
-        SpokenLanguageResolver.pinWhisperToSpokenSource()
+        SpokenLanguageResolver.pinSpokenEngineToSource()
         if self.isOnboardingVoicePlaygroundStepActive {
             self.asr.finalText = ""
             self.settings.onboardingPlaygroundValidated = false
@@ -232,7 +232,8 @@ extension ContentView {
     }
 
     var onboardingPlaygroundReady: Bool {
-        self.settings.onboardingPlaygroundValidated || self.settings.onboardingPlaygroundSkipped
+        if !TheaterAvailability.isSupported { return true }
+        return self.settings.onboardingPlaygroundValidated || self.settings.onboardingPlaygroundSkipped
     }
 
     @MainActor

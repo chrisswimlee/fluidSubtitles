@@ -585,15 +585,6 @@ final class SettingsStore: ObservableObject {
         }
     }
 
-    /// Legacy kill switch. Translation sessions are gated by LiveTranslationController.isSessionActive.
-    var liveTranslationEnabled: Bool {
-        get { self.defaults.object(forKey: Keys.liveTranslationEnabled) as? Bool ?? false }
-        set {
-            objectWillChange.send()
-            self.defaults.set(newValue, forKey: Keys.liveTranslationEnabled)
-        }
-    }
-
     /// Dictation shortcut. Types what you said. Does not translate.
     var listeningHotkeyEnabled: Bool {
         get { self.defaults.object(forKey: Keys.listeningHotkeyEnabled) as? Bool ?? false }
@@ -1166,6 +1157,7 @@ final class SettingsStore: ObservableObject {
         self.snoozedUpdateVersion = nil
     }
 
+    /// Legacy FluidVoice key. Now means the user has tried voice (Theater or dictation).
     var playgroundUsed: Bool {
         get { self.defaults.bool(forKey: Keys.playgroundUsed) }
         set { self.defaults.set(newValue, forKey: Keys.playgroundUsed) }
@@ -1205,14 +1197,6 @@ final class SettingsStore: ObservableObject {
             objectWillChange.send()
             let clamped = max(0, min(4, newValue))
             self.defaults.set(clamped, forKey: Keys.onboardingCurrentStep)
-        }
-    }
-
-    var onboardingAISkipped: Bool {
-        get { self.defaults.bool(forKey: Keys.onboardingAISkipped) }
-        set {
-            objectWillChange.send()
-            self.defaults.set(newValue, forKey: Keys.onboardingAISkipped)
         }
     }
 
@@ -1256,14 +1240,15 @@ final class SettingsStore: ObservableObject {
             if let stored, !stored.isEmpty {
                 return stored
             }
-            return Locale.current.identifier.replacingOccurrences(of: "_", with: "-")
+            let sourceID = TranslationLanguageCatalog.language(id: self.translationSourceLanguageID)?.id
+                ?? TranslationLanguageCatalog.english.id
+            return VoiceEngineLanguageCatalog.preferredAppleSpeechAnalyzerLocale(forLanguageID: sourceID)
         }
         set {
             objectWillChange.send()
-            let normalized = newValue
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .replacingOccurrences(of: "_", with: "-")
-            self.defaults.set(normalized.isEmpty ? "en-US" : normalized, forKey: Keys.selectedAppleSpeechLocaleIdentifier)
+            let normalized = VoiceEngineLanguageCatalog.normalizeLocaleID(newValue)
+            let fallback = VoiceEngineLanguageCatalog.preferredAppleSpeechAnalyzerLocale(forLanguageID: "en")
+            self.defaults.set(normalized.isEmpty ? fallback : normalized, forKey: Keys.selectedAppleSpeechLocaleIdentifier)
         }
     }
 
@@ -1290,14 +1275,12 @@ final class SettingsStore: ObservableObject {
         if shouldShowForThisInstall {
             self.defaults.set(false, forKey: Keys.onboardingCompleted)
             self.defaults.set(0, forKey: Keys.onboardingCurrentStep)
-            self.defaults.set(false, forKey: Keys.onboardingAISkipped)
             self.defaults.set(false, forKey: Keys.onboardingPlaygroundValidated)
             self.defaults.set(false, forKey: Keys.onboardingPlaygroundSkipped)
             self.defaults.set("en", forKey: Keys.onboardingSelectedLanguageID)
         } else {
             self.defaults.set(true, forKey: Keys.onboardingCompleted)
             self.defaults.set(0, forKey: Keys.onboardingCurrentStep)
-            self.defaults.set(false, forKey: Keys.onboardingAISkipped)
             self.defaults.set(false, forKey: Keys.onboardingPlaygroundValidated)
             self.defaults.set(false, forKey: Keys.onboardingPlaygroundSkipped)
             self.defaults.set("en", forKey: Keys.onboardingSelectedLanguageID)
@@ -1310,7 +1293,6 @@ final class SettingsStore: ObservableObject {
         self.defaults.set(true, forKey: Keys.manualOnboardingResetRequested)
         self.defaults.set(Date(), forKey: Keys.manualOnboardingResetRequestedAt)
         self.defaults.set(0, forKey: Keys.onboardingCurrentStep)
-        self.defaults.set(false, forKey: Keys.onboardingAISkipped)
         self.defaults.set(false, forKey: Keys.onboardingPlaygroundValidated)
         self.defaults.set(false, forKey: Keys.onboardingPlaygroundSkipped)
         self.defaults.set("en", forKey: Keys.onboardingSelectedLanguageID)
@@ -1338,7 +1320,6 @@ final class SettingsStore: ObservableObject {
         self.defaults.set(false, forKey: Keys.manualOnboardingResetRequested)
         self.defaults.removeObject(forKey: Keys.manualOnboardingResetRequestedAt)
         self.defaults.set(0, forKey: Keys.onboardingCurrentStep)
-        self.defaults.set(false, forKey: Keys.onboardingAISkipped)
         self.defaults.set(false, forKey: Keys.onboardingPlaygroundValidated)
         self.defaults.set(false, forKey: Keys.onboardingPlaygroundSkipped)
     }

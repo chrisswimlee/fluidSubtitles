@@ -127,9 +127,9 @@ enum SpokenLanguageResolver {
 
         switch settings.selectedSpeechModel {
         case .parakeetRealtime, .parakeetTDTv2:
-            return "Parakeet Flash and TDT v2 only hear English. Theater will switch to Apple Speech or Whisper for \(source.displayName)."
+            return "Parakeet Flash and TDT v2 only hear English. Switch Voice Engine to Apple Speech or Whisper for \(source.displayName)."
         case .parakeetTDT:
-            return "Parakeet TDT v3 does not hear Korean or Thai. Theater will switch to Apple Speech or Whisper for \(source.displayName)."
+            return "Parakeet TDT v3 does not hear Korean or Thai. Switch Voice Engine to Apple Speech or Whisper for \(source.displayName)."
         default:
             if source.id == TranslationLanguageCatalog.thai.id {
                 let heard = spoken?.displayName ?? "another language"
@@ -199,8 +199,12 @@ enum SpokenLanguageResolver {
     static func setSourceLanguage(_ language: TranslationLanguage, settings: SettingsStore = .shared) {
         settings.translationSourceLanguageID = language.id
         settings.onboardingSelectedLanguageID = language.id
-        VoiceEngineLanguageCatalog.applyPreferredRoute(forLanguageID: language.id, to: settings)
+        Self.pinSpokenEngineToSource(settings: settings)
+    }
+
+    static func pinSpokenEngineToSource(settings: SettingsStore = .shared) {
         Self.pinWhisperToSpokenSource(settings: settings)
+        Self.pinAppleSpeechToSpokenSource(settings: settings)
     }
 
     /// Theater Listen refuses Whisper automatic detection. Auto-detect can
@@ -212,6 +216,19 @@ enum SpokenLanguageResolver {
         let sourceID = self.sourceLanguage(settings: settings).id
         guard let code = VoiceEngineLanguageCatalog.whisperLanguageCode(for: sourceID) else { return }
         settings.selectedWhisperLanguageCode = code
+    }
+
+    /// Speech Analyzer rejects the Mac locale when it is not Korean, English, or Thai.
+    static func pinAppleSpeechToSpokenSource(settings: SettingsStore = .shared) {
+        switch settings.selectedSpeechModel {
+        case .appleSpeech, .appleSpeechAnalyzer:
+            break
+        default:
+            return
+        }
+        let sourceID = self.sourceLanguage(settings: settings).id
+        settings.selectedAppleSpeechLocaleIdentifier =
+            VoiceEngineLanguageCatalog.preferredAppleSpeechAnalyzerLocale(forLanguageID: sourceID)
     }
 
     static func isSameLanguagePair(settings: SettingsStore = .shared) -> Bool {
@@ -242,6 +259,9 @@ enum LiveTranslationTiming {
     /// Korean/Japanese: only force a pause-cut on a long run-on.
     static let minPauseFinalizeCharactersVerbFinal = 48
     static let maxDraftCharacters = 240
+    /// Start printing a run-on before it becomes a whole paragraph.
+    static let followAlongWords = 8
+    static let followAlongCharacters = 36
     /// Pause-finalize only this much so a long unpunctuated talk is not one dump.
     static let maxLineWords = 12
     static let maxLineCharacters = 80

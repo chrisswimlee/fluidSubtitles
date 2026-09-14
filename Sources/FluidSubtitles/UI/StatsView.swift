@@ -159,7 +159,9 @@ struct StatsView: View {
     /// Motivational message that scales with today's activity level.
     private func motivationalMessage(wordsToday: Int, streak: Int) -> String {
         if wordsToday == 0 {
-            return streak > 0 ? "Keep the streak alive — open Theater and Listen." : "Ready when you are. Open Theater and Listen."
+            return streak > 0
+                ? "Keep the streak alive — \(TheaterReadiness.openTheaterAndListen)."
+                : "Ready when you are. \(TheaterReadiness.openTheaterAndListen)."
         }
 
         if wordsToday < 100 {
@@ -260,7 +262,7 @@ struct StatsView: View {
                         .font(.system(size: 11))
                         .foregroundStyle(self.theme.palette.success)
                 } else {
-                    Text("Open Theater and Listen")
+                    Text(TheaterReadiness.openTheaterAndListen)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }

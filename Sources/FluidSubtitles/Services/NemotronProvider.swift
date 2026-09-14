@@ -34,7 +34,6 @@ final class NemotronProvider: TranscriptionProvider {
     var name: String { self.mode.displayName }
     var isAvailable: Bool { true }
     private(set) var isReady: Bool = false
-    var prefersNativeFileTranscription: Bool { true }
     var streamingPreviewMode: StreamingPreviewMode {
         self.mode == .offline ? .trailingWindow : .incrementalDelta
     }
@@ -342,59 +341,6 @@ final class NemotronProvider: TranscriptionProvider {
         return ASRTranscriptionResult(text: text, confidence: text.isEmpty ? 0 : 1)
     }
 
-    func transcribeFile(at fileURL: URL) async throws -> ASRTranscriptionResult {
-        guard self.manager != nil else {
-            throw Self.makeError("Nemotron provider is not ready.")
-        }
-
-        let audioFile = try AVAudioFile(forReading: fileURL)
-        let sourceFormat = audioFile.processingFormat
-        let targetSampleRate = 16_000.0
-        let resampleRatio = targetSampleRate / sourceFormat.sampleRate
-        let sourceFramesPerRead = AVAudioFrameCount(
-            max(1, Double(self.regularChunkSamples) / resampleRatio)
-        )
-        var currentFrame: AVAudioFramePosition = 0
-        var pendingSamples: [Float] = []
-        var transcriptions: [String] = []
-
-        while currentFrame < audioFile.length {
-            let remainingFrames = AVAudioFrameCount(audioFile.length - currentFrame)
-            let framesToRead = min(sourceFramesPerRead, remainingFrames)
-            guard let buffer = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: framesToRead) else {
-                throw Self.makeError("Failed to allocate file audio buffer.")
-            }
-
-            audioFile.framePosition = currentFrame
-            try audioFile.read(into: buffer, frameCount: framesToRead)
-            try pendingSamples.append(contentsOf: AudioBufferConverter.monoSamples(
-                from: buffer,
-                targetSampleRate: targetSampleRate
-            ))
-            while pendingSamples.count > self.maxTranscriptionSamples {
-                let end = self.chunkEnd(in: pendingSamples, offset: 0)
-                let text = try await self.transcribeSinglePass(Array(pendingSamples[..<end]))
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                if text.isEmpty == false {
-                    transcriptions.append(text)
-                }
-                pendingSamples.removeFirst(end)
-            }
-            currentFrame += AVAudioFramePosition(framesToRead)
-        }
-
-        if pendingSamples.count >= Int(targetSampleRate) {
-            let result = try await self.transcribeBatched(pendingSamples)
-            let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if text.isEmpty == false {
-                transcriptions.append(text)
-            }
-        }
-
-        let text = transcriptions.joined(separator: " ")
-        return ASRTranscriptionResult(text: text, confidence: text.isEmpty ? 0 : 1)
-    }
-
     func clearCache() async throws {
         if let manager = self.manager {
             await self.stopComponentProfilingIfNeeded(on: manager)
@@ -693,7 +639,6 @@ final class NemotronProvider: TranscriptionProvider {
     var name: String { self.mode.displayName }
     var isAvailable: Bool { false }
     private(set) var isReady: Bool = false
-    var prefersNativeFileTranscription: Bool { false }
 
     private let mode: Mode
 

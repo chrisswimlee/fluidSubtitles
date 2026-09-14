@@ -16,19 +16,61 @@ struct LiveTranslationHomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 self.header
+                if !TheaterAvailability.isSupported {
+                    Text(TheaterAvailability.unsupportedCopy)
+                        .font(self.theme.typography.body)
+                        .foregroundStyle(self.theme.palette.warning)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("theater.needsMacOS26")
+                }
                 if let status = self.theaterStatusText {
                     Text(status)
                         .font(self.theme.typography.caption)
-                        .foregroundStyle(self.theme.palette.secondaryText)
+                        .foregroundStyle(self.theaterStatusColor)
+                        .accessibilityIdentifier("theater.status")
                 }
-                TranslationLanguagePairCard()
-                if !self.readySnapshot.canListen {
-                    self.readinessCard
+                if TheaterAvailability.isSupported {
+                    self.modePicker
+                    if self.settings.theaterSessionMode == .watch {
+                        WatchSourcePicker(showsCheckCapture: true)
+                    }
+                    TranslationLanguagePairCard()
+                    Text(
+                        self.settings.theaterSessionMode == .watch
+                            ? TheaterReadiness.watchCopy
+                            : TheaterReadiness.oneSpeakerCloseMic
+                    )
+                    .font(self.theme.typography.caption)
+                    .foregroundStyle(self.theme.palette.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    if !self.readySnapshot.canListen {
+                        self.readinessCard
+                    }
                 }
             }
             .fluidPageContent()
             .accessibilityIdentifier("theater.home")
+            .onChange(of: self.settings.theaterSessionMode) { _, _ in
+                if self.controller.isSessionActive, self.controller.listenKind == .captions {
+                    self.controller.stopListening()
+                }
+            }
         }
+    }
+
+    private var modePicker: some View {
+        Picker("Theater mode", selection: Binding(
+            get: { self.settings.theaterSessionMode },
+            set: { self.settings.theaterSessionMode = $0 }
+        )) {
+            ForEach(TheaterSessionMode.allCases) { mode in
+                Text(mode.displayName).tag(mode)
+            }
+        }
+        .pickerStyle(.segmented)
+        .help(TheaterReadiness.modeStopsListen)
+        .accessibilityLabel("Theater mode")
+        .accessibilityIdentifier("theater.mode")
     }
 
     private var header: some View {
@@ -44,9 +86,26 @@ struct LiveTranslationHomeView: View {
         }
     }
 
+    private var theaterStatusColor: Color {
+        if self.controller.subscriber.statusKind.usesWarningColor {
+            return self.theme.palette.warning
+        }
+        if self.controller.subscriber.statusKind == .success {
+            return self.theme.palette.accent
+        }
+        return self.theme.palette.secondaryText
+    }
+
     private var theaterStatusText: String? {
+        if self.controller.isPaused {
+            return "Paused."
+        }
         if self.controller.isSessionActive, self.controller.listenKind == .captions {
-            return "Listening. Captions print after each sentence."
+            return TheaterReadiness.listeningStatus
+        }
+        let failure = self.controller.subscriber.statusText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !failure.isEmpty, failure != "Listening…" {
+            return failure
         }
         if self.settings.theaterWindowEnabled {
             return "Theater is open."
@@ -55,10 +114,7 @@ struct LiveTranslationHomeView: View {
     }
 
     private var readySnapshot: TheaterReadyGate.Snapshot {
-        TheaterReadyGate.snapshot(
-            engineSupportsSource: SpokenLanguageResolver.voiceEngineSupportsSource(),
-            modelInstalled: SettingsStore.shared.selectedSpeechModel.isInstalled,
-            sameLanguagePair: SpokenLanguageResolver.isSameLanguagePair(),
+        TheaterReadyGate.liveSnapshot(
             pack: self.controller.packAvailability,
             microphone: self.asr.micStatus,
             firstCaptionPrinted: self.settings.theaterListenUsed
@@ -71,7 +127,11 @@ struct LiveTranslationHomeView: View {
                 FluidSectionHeader(title: "To listen", systemImage: "checklist")
                 self.readyRow("Voice Engine", done: self.readySnapshot.voiceEngineReady)
                 self.readyRow("Translation pack", done: self.readySnapshot.languagePackReady)
-                self.readyRow("Microphone", done: self.readySnapshot.microphoneAllowed)
+                if self.settings.theaterSessionMode == .watch {
+                    self.readyRow("Screen Recording", done: self.readySnapshot.captureAllowed)
+                } else {
+                    self.readyRow("Microphone", done: self.readySnapshot.microphoneAllowed)
+                }
                 Text(self.readySnapshot.nextAction)
                     .font(self.theme.typography.bodySmall)
                     .foregroundStyle(self.theme.palette.warning)
@@ -100,6 +160,9 @@ struct LiveTranslationSettingsView: View {
     @Environment(\.theme) private var theme
     @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var settings = SettingsStore.shared
+    @ObservedObject private var controller = LiveTranslationController.shared
+    @ObservedObject private var subscriber = LiveTranslationController.shared.subscriber
+    @State private var showClearConfirmation = false
 
     var recordTranslateShortcut: (() -> Void)?
     var isRecordingTranslateShortcut = false
@@ -134,6 +197,14 @@ struct LiveTranslationSettingsView: View {
 
             MLXRunnerSettingsCard()
         }
+        .alert("Clear captions?", isPresented: self.$showClearConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Clear", role: .destructive) {
+                self.controller.clearBoard()
+            }
+        } message: {
+            Text(TheaterReadiness.clearCaptionsConfirm)
+        }
     }
 
     private var theaterAppearanceCard: some View {
@@ -141,20 +212,49 @@ struct LiveTranslationSettingsView: View {
             VStack(alignment: .leading, spacing: 14) {
                 FluidSectionHeader(title: "Theater Window", systemImage: "rectangle.on.rectangle")
 
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Board")
+                            .font(self.theme.typography.bodyStrong)
+                            .foregroundStyle(self.settingsTitleText)
+                        Text(TheaterReadiness.presentationStyle)
+                            .font(self.theme.typography.bodySmall)
+                            .foregroundStyle(self.settingsSecondaryText)
+                    }
+                    Spacer()
+                    Picker("Board", selection: Binding(
+                        get: { self.settings.theaterPresentation },
+                        set: { self.settings.theaterPresentationStyle = $0.rawValue }
+                    )) {
+                        ForEach(TheaterPresentationStyle.allCases) { style in
+                            Text(style.displayName).tag(style)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(width: 220, alignment: .trailing)
+                    .accessibilityLabel("Theater board")
+                    .accessibilityIdentifier("theater.settings.presentationStyle")
+                    .help(self.settings.theaterPresentation.help)
+                }
+
                 self.settingsToggleRow(
                     title: "Show the spoken line",
-                    description: "Show what you said first. The translation prints under it on the same line."
+                    description: SpokenLanguageResolver.isSameLanguagePair()
+                        ? TheaterReadiness.spokenLineSameLanguage
+                        : "Show what you said above the translation so both rooms can follow."
                 ) {
                     Toggle("Show the spoken line", isOn: self.$settings.translationShowSource)
                         .toggleStyle(.switch)
                         .tint(self.theme.palette.accent)
                         .labelsHidden()
+                        .disabled(SpokenLanguageResolver.isSameLanguagePair())
                         .accessibilityLabel("Show the spoken line")
                 }
 
                 self.settingsToggleRow(
                     title: "Captions only",
-                    description: "Show only captions. Move the pointer over Theater to reveal the rest. Languages and Listen stay visible."
+                    description: "Show only captions. Move the pointer over Theater to reveal the rest. Languages, Listen, and Captions only stay visible."
                 ) {
                     Toggle("Captions only", isOn: self.$settings.theaterHideChrome)
                         .toggleStyle(.switch)
@@ -186,6 +286,7 @@ struct LiveTranslationSettingsView: View {
                     .toggleStyle(.switch)
                     .tint(self.theme.palette.accent)
                     .labelsHidden()
+                    .disabled(!self.settings.selectedSpeechModel.isWhisperModel)
                     .accessibilityLabel("Also hear English, Korean, and Thai questions")
                 }
 
@@ -282,7 +383,26 @@ struct LiveTranslationSettingsView: View {
                     .font(self.theme.typography.caption)
                     .foregroundStyle(self.settingsSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(TheaterReadiness.oneSpeakerCloseMic)
+
+                self.settingsToggleRow(
+                    title: "Clear captions",
+                    description: TheaterReadiness.clearCaptions
+                ) {
+                    Button("Clear") {
+                        self.showClearConfirmation = true
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(self.theme.palette.warning)
+                    .disabled(!self.canClearCaptions)
+                    .accessibilityLabel("Clear captions")
+                    .accessibilityIdentifier("theater.settings.clear")
+                }
+
+                Text(
+                    self.settings.theaterSessionMode == .watch
+                        ? TheaterReadiness.watchCopy
+                        : TheaterReadiness.oneSpeakerCloseMic
+                )
                     .font(self.theme.typography.caption)
                     .foregroundStyle(self.settingsSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -309,6 +429,14 @@ struct LiveTranslationSettingsView: View {
         }
     }
 
+    private var canClearCaptions: Bool {
+        self.controller.hasClearableBoard
+            || self.subscriber.archivedLineCount > 0
+            || self.subscriber.committedLines.contains {
+                !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+    }
+
     private var settingsTitleText: Color {
         Color(nsColor: .labelColor)
     }
@@ -324,7 +452,11 @@ struct OpenTheaterButton: View {
 
     var body: some View {
         Button {
-            PresenterCaptionController.shared.setVisible(!self.settings.theaterWindowEnabled)
+            if self.settings.theaterWindowEnabled {
+                PresenterCaptionController.shared.requestClose()
+            } else {
+                PresenterCaptionController.shared.setVisible(true)
+            }
         } label: {
             Label(
                 self.settings.theaterWindowEnabled ? "Close Theater" : "Open Theater",
@@ -334,12 +466,23 @@ struct OpenTheaterButton: View {
         .buttonStyle(.borderedProminent)
         .tint(self.theme.palette.accent)
         .controlSize(.regular)
+        .disabled(!TheaterAvailability.isSupported)
+        .help(
+            TheaterAvailability.isSupported
+                ? TheaterReadiness.openTheaterHelp
+                : TheaterAvailability.unsupportedCopy
+        )
         .accessibilityLabel(self.settings.theaterWindowEnabled ? "Close Theater" : "Open Theater")
         .accessibilityIdentifier("theater.open")
     }
 }
 
 struct TheaterListenButton: View {
+    var usesChromeKey = false
+    var listenIdentifier = "theater.listen"
+    var stopIdentifier = "theater.listen"
+    var pauseIdentifier = "theater.home.pause"
+
     @Environment(\.theme) private var theme
     @ObservedObject private var controller = LiveTranslationController.shared
     @ObservedObject private var settings = SettingsStore.shared
@@ -350,32 +493,81 @@ struct TheaterListenButton: View {
     }
 
     private var snapshot: TheaterReadyGate.Snapshot {
-        TheaterReadyGate.snapshot(
-            engineSupportsSource: SpokenLanguageResolver.voiceEngineSupportsSource(),
-            modelInstalled: self.settings.selectedSpeechModel.isInstalled,
-            sameLanguagePair: SpokenLanguageResolver.isSameLanguagePair(),
+        TheaterReadyGate.liveSnapshot(
             pack: self.controller.packAvailability,
             microphone: self.asr.micStatus,
             firstCaptionPrinted: self.settings.theaterListenUsed
         )
     }
 
+    private var dictationBusy: Bool {
+        !self.isListening && self.asr.isRunningOrStarting
+    }
+
+    private var listenSymbol: String {
+        if self.isListening { return "stop.fill" }
+        return self.settings.theaterSessionMode == .watch ? "speaker.wave.2.fill" : "mic.fill"
+    }
+
+    private var listenHelp: String {
+        if self.dictationBusy { return TheaterReadiness.dictationBusy }
+        if self.isListening { return TheaterReadiness.stopHelp }
+        return self.snapshot.nextAction
+    }
+
     var body: some View {
-        Button {
-            LiveTranslationController.shared.toggleCaptionListening()
-        } label: {
-            Label(
-                self.isListening ? "Stop" : "Listen",
-                systemImage: self.isListening ? "stop.fill" : "mic.fill"
-            )
+        HStack(spacing: self.usesChromeKey ? 6 : 8) {
+            if self.isListening {
+                Button {
+                    self.run {
+                        if self.controller.isPaused {
+                            self.controller.resumeListening()
+                        } else {
+                            self.controller.pauseListening()
+                        }
+                    }
+                } label: {
+                    Label(
+                        self.controller.isPaused ? "Resume" : "Pause",
+                        systemImage: self.controller.isPaused ? "play.fill" : "pause.fill"
+                    )
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .help(self.controller.isPaused ? TheaterReadiness.resumeHelp : TheaterReadiness.printedLinesStay)
+                .accessibilityLabel(self.controller.isPaused ? "Resume" : "Pause")
+                .accessibilityIdentifier(self.pauseIdentifier)
+            }
+
+            Button {
+                self.run {
+                    if self.isListening {
+                        self.controller.stopListening()
+                    } else if self.usesChromeKey {
+                        self.controller.startCaptionListening()
+                    } else {
+                        LiveTranslationController.shared.toggleCaptionListening()
+                    }
+                }
+            } label: {
+                Label(self.isListening ? "Stop" : "Listen", systemImage: self.listenSymbol)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(self.isListening ? Color(nsColor: .systemRed) : self.theme.palette.accent)
+            .controlSize(.regular)
+            .disabled(!self.isListening && (!self.snapshot.canListen || self.dictationBusy))
+            .help(self.listenHelp)
+            .accessibilityLabel(self.isListening ? "Stop Listen" : "Listen")
+            .accessibilityIdentifier(self.isListening ? self.stopIdentifier : self.listenIdentifier)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(self.isListening ? self.theme.palette.warning : self.theme.palette.accent)
-        .controlSize(.regular)
-        .disabled(!self.isListening && !self.snapshot.canListen)
-        .help(self.isListening ? "Stop. Captions print after each sentence." : self.snapshot.nextAction)
-        .accessibilityLabel(self.isListening ? "Stop Listen" : "Listen")
-        .accessibilityIdentifier("theater.listen")
+    }
+
+    private func run(_ action: () -> Void) {
+        if self.usesChromeKey {
+            PresenterCaptionController.shared.performChromeAction(action)
+        } else {
+            action()
+        }
     }
 }
 

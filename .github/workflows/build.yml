@@ -88,6 +88,8 @@ jobs:
     - name: Show Xcode version
       run: xcodebuild -version
       
+    # Hosted CI is Xcode 26 on macos-15. It cannot prove Watch or a live Theater
+    # listen. Prove those on a Mac with docs/WATCH_PROOF.md and docs/STAGE_SCORE.md.
     # Tiny Whisper GGUF output is nondeterministic on hosted macOS runners.
     # Keep this E2E assertion in the suite for local validation, but skip it in CI.
     - name: Build and test (excluding flaky Tiny Whisper E2E)

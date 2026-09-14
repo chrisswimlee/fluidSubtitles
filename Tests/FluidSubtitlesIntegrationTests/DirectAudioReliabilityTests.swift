@@ -629,7 +629,7 @@ final class DirectAudioReliabilityTests: XCTestCase {
             .deletingLastPathComponent()
         let source = try String(
             contentsOf: repositoryRoot
-                .appendingPathComponent("Sources/FluidSubtitles/Services/ASRService.swift"),
+                .appendingPathComponent("Sources/FluidSubtitles/Services/ASRService+Stop.swift"),
             encoding: .utf8
         )
         let callbackSection = try XCTUnwrap(
@@ -649,7 +649,7 @@ final class DirectAudioReliabilityTests: XCTestCase {
             .deletingLastPathComponent()
         let source = try String(
             contentsOf: repositoryRoot
-                .appendingPathComponent("Sources/FluidSubtitles/ContentView.swift"),
+                .appendingPathComponent("Sources/FluidSubtitles/ContentView+Transcription.swift"),
             encoding: .utf8
         )
         let normalOutputSection = try XCTUnwrap(
@@ -664,7 +664,7 @@ final class DirectAudioReliabilityTests: XCTestCase {
         XCTAssertLessThan(deliveryCompletionIndex.lowerBound, deliveryHandlerIndex.lowerBound)
         let hideIndex = try XCTUnwrap(normalOutputSection.range(of: "self.hideOverlayForDispatchedPaste("))
         XCTAssertLessThan(deliveryHandlerIndex.lowerBound, hideIndex.lowerBound)
-        let dispatchHideSection = try XCTUnwrap(source.components(separatedBy: "private func hideOverlayForDispatchedPaste(").last?.components(separatedBy: "private func handleTypingDelivery(").first)
+        let dispatchHideSection = try XCTUnwrap(source.components(separatedBy: "func hideOverlayForDispatchedPaste(").last?.components(separatedBy: "func handleTypingDelivery(").first)
         XCTAssertTrue(dispatchHideSection.contains("reason=paste_dispatched"))
         XCTAssertTrue(dispatchHideSection.contains("self.overlayLifecycleID == lifecycleID"))
         XCTAssertFalse(dispatchHideSection.contains("Task {"))
@@ -675,8 +675,8 @@ final class DirectAudioReliabilityTests: XCTestCase {
         )
 
         let deliveryHandlerSection = try XCTUnwrap(
-            source.components(separatedBy: "private func handleTypingDelivery(").last?
-                .components(separatedBy: "private func hideOverlayAfterOutput()").first
+            source.components(separatedBy: "func handleTypingDelivery(").last?
+                .components(separatedBy: "func hideOverlayAfterOutput()").first
         )
         XCTAssertTrue(deliveryHandlerSection.contains("self.overlayLifecycleID == expectedOverlayLifecycleID"))
         XCTAssertTrue(normalOutputSection.contains("shouldHideOverlay: shouldHideOverlayAfterDelivery && spokenSendRequested"))
@@ -710,12 +710,12 @@ final class DirectAudioReliabilityTests: XCTestCase {
             .deletingLastPathComponent()
         let source = try String(
             contentsOf: repositoryRoot
-                .appendingPathComponent("Sources/FluidSubtitles/ContentView.swift"),
+                .appendingPathComponent("Sources/FluidSubtitles/ContentView+Transcription.swift"),
             encoding: .utf8
         )
         let slowStatusSection = try XCTUnwrap(
-            source.components(separatedBy: "private func makeAIProcessingFeedback(").last?
-                .components(separatedBy: "private func prepareOverlayForASRStop(").first
+            source.components(separatedBy: "func makeAIProcessingFeedback(").last?
+                .components(separatedBy: "func prepareOverlayForASRStop(").first
         )
 
         XCTAssertTrue(slowStatusSection.contains("self.overlayLifecycleID == lifecycleID"))
@@ -723,8 +723,8 @@ final class DirectAudioReliabilityTests: XCTestCase {
         XCTAssertTrue(slowStatusSection.contains("let streamPreview = DictationAIStreamPreviewBuffer"))
 
         let stopSection = try XCTUnwrap(
-            source.components(separatedBy: "private func stopAndProcessTranscription(").last?
-                .components(separatedBy: "private func makeAIProcessingFeedback(").first
+            source.components(separatedBy: "func stopAndProcessTranscription(").last?
+                .components(separatedBy: "func makeAIProcessingFeedback(").first
         )
         let lifecycleSnapshotIndex = try XCTUnwrap(
             stopSection.range(of: "let expectedOverlayLifecycleID = self.overlayLifecycleID")

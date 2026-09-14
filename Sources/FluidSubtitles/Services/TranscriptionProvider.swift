@@ -163,14 +163,6 @@ protocol TranscriptionProvider {
     /// Providers can bypass final-output transforms that would distort the saved phrase.
     func transcribeDictionaryTraining(_ samples: [Float]) async throws -> ASRTranscriptionResult
 
-    /// Whether this provider prefers to handle long-form file transcription itself.
-    /// This is useful when the backend already has model-native long-audio chunking/reassembly.
-    var prefersNativeFileTranscription: Bool { get }
-
-    /// Transcribe a complete audio/video file.
-    /// Providers that do not implement this return an unsupported-file error.
-    func transcribeFile(at fileURL: URL) async throws -> ASRTranscriptionResult
-
     /// Check if models exist on disk (without loading them)
     func modelsExistOnDisk() -> Bool
 
@@ -204,7 +196,6 @@ extension TranscriptionProvider {
     func modelsExistOnDisk() -> Bool { return false }
     func clearCache() async throws {}
     var shouldClearCacheAfterCancellation: Bool { true }
-    var prefersNativeFileTranscription: Bool { false }
     func transcribeStreaming(_ samples: [Float]) async throws -> ASRTranscriptionResult {
         try await self.transcribe(samples)
     }
@@ -215,14 +206,6 @@ extension TranscriptionProvider {
 
     func transcribeDictionaryTraining(_ samples: [Float]) async throws -> ASRTranscriptionResult {
         try await self.transcribeFinal(samples)
-    }
-
-    func transcribeFile(at fileURL: URL) async throws -> ASRTranscriptionResult {
-        throw NSError(
-            domain: "TranscriptionProvider",
-            code: -1,
-            userInfo: [NSLocalizedDescriptionKey: "\(self.name) does not implement native file transcription."]
-        )
     }
 
     var streamingPreviewMode: StreamingPreviewMode { .trailingWindow }

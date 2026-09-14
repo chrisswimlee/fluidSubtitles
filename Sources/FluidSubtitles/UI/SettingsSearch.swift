@@ -174,15 +174,21 @@ enum SettingsSearchIndex {
         .init(
             target: .liveTranslation,
             title: "Theater",
-            terms: ["translate theater captions language pair apple translation korean english thai I speak"]
+            terms: [
+                "translate theater captions language pair apple translation korean english thai I speak",
+                "watch lectern check capture this mac",
+            ]
         ),
         .init(
             target: .theaterAppearance,
             title: "Theater Window",
             terms: [
                 "caption font size spoken line source translation theater window captions only dark light appearance theme",
+                "popup pop-up transparent overlay board slides keynote see-through",
                 "hide from screen share zoom keynote recording capture projector OBS",
                 "also hear english korean thai questions whisper auto detect Q&A",
+                "clear captions board archive wipe reset high contrast",
+                "watch check capture this mac system audio screen recording lectern",
             ]
         ),
         .init(

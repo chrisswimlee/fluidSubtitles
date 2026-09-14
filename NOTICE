@@ -30,6 +30,12 @@ See that repository for its license.
 AppUpdater, PromiseKit, and their dependencies
 See Package.resolved for versions and each project’s license.
 
+MediaRemoteAdapter
+https://github.com/ejbills/mediaremote-adapter
+Used to pause and resume other apps’ playback during dictation. That
+repository does not publish a license file. See that project and
+https://github.com/ungive/mediaremote-adapter for terms.
+
 NVIDIA Parakeet and Nemotron speech models
 Distributed by NVIDIA / Hugging Face under each model card’s license.
 Users download weights themselves; this repository does not redistribute them.

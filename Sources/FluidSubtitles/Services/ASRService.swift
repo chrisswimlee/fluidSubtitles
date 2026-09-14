@@ -170,6 +170,29 @@ final class ASRService: ObservableObject {
     var cachedInputDeviceIDsByUID: [String: AudioObjectID] = [:]
     var cachedInputLivenessByUID: [String: Bool] = [:]
     let typingService = TypingService()
+    /// Session-only Voice Engine swap for critical thermal. Never persisted.
+    var thermalSpeechModelOverride: SettingsStore.SpeechModel?
+
+    var effectiveSpeechModel: SettingsStore.SpeechModel {
+        self.thermalSpeechModelOverride ?? SettingsStore.shared.selectedSpeechModel
+    }
+
+    var hasThermalSpeechOverride: Bool { self.thermalSpeechModelOverride != nil }
+
+    func applyThermalSpeechOverride(_ model: SettingsStore.SpeechModel) {
+        guard self.thermalSpeechModelOverride != model else { return }
+        self.thermalSpeechModelOverride = model
+        self.resetTranscriptionProvider()
+        Task { try? await self.ensureAsrReady() }
+    }
+
+    func clearThermalSpeechOverride() {
+        guard self.thermalSpeechModelOverride != nil else { return }
+        self.thermalSpeechModelOverride = nil
+        if self.isRunning == false {
+            self.resetTranscriptionProvider()
+        }
+    }
     var defaultInputListenerInstalled = false
     var defaultInputListenerToken: AudioObjectPropertyListenerBlock?
     var defaultOutputListenerToken: AudioObjectPropertyListenerBlock?
@@ -306,7 +329,7 @@ final class ASRService: ObservableObject {
     /// The transcription provider, selected based on the unified SpeechModel setting.
     /// Uses the new SettingsStore.selectedSpeechModel instead of old TranscriptionProviderOption.
     var transcriptionProvider: TranscriptionProvider {
-        let model = SettingsStore.shared.selectedSpeechModel
+        let model = self.effectiveSpeechModel
 
         switch model {
         case .appleSpeechAnalyzer:
@@ -407,13 +430,13 @@ final class ASRService: ObservableObject {
         return provider
     }
 
-    /// Returns the user-friendly name of the currently selected speech model
+    /// Returns the user-friendly name of the engine currently hearing speech.
     var activeProviderName: String {
-        SettingsStore.shared.selectedSpeechModel.displayName
+        self.effectiveSpeechModel.displayName
     }
 
     func currentSpeechModelDimensions() -> (provider: String, model: String) {
-        let selectedModel = SettingsStore.shared.selectedSpeechModel
+        let selectedModel = self.effectiveSpeechModel
         return (
             provider: selectedModel.provider.rawValue.lowercased(),
             model: selectedModel.rawValue
@@ -550,7 +573,7 @@ final class ASRService: ObservableObject {
             self.resetProviderAfterStreamingRecovery = true
             return
         }
-        let newModel = SettingsStore.shared.selectedSpeechModel
+        let newModel = self.effectiveSpeechModel
         DebugLogger.shared.info("ASRService: Switching to '\(newModel.displayName)', resetting provider state...", source: "ASRService")
 
         // Any in-flight preview belongs to the provider being retired. Its operation
@@ -595,7 +618,7 @@ final class ASRService: ObservableObject {
         Task { [weak self] in
             guard let self = self else { return }
             _ = await retiringTask?.result
-            guard SettingsStore.shared.selectedSpeechModel == newModel else { return }
+            guard self.effectiveSpeechModel == newModel else { return }
             await self.checkIfModelsExistAsync()
             await MainActor.run {
                 self.refreshWordBoostStatus()
@@ -633,6 +656,7 @@ final class ASRService: ObservableObject {
         case none
         case directCoreAudio
         case audioEngine
+        case systemAudio
     }
 
     struct AudioRouteRecoveryRequest {
@@ -663,6 +687,7 @@ final class ASRService: ObservableObject {
     }()
 
     var activeAudioCaptureBackend: AudioCaptureBackend = .none
+    let systemAudioCapture = SystemAudioCapture()
     var audioStartAttemptInputUID: String?
     var audioStartAttemptInputName: String?
     var audioStartAttemptIsBluetooth = false
@@ -1025,6 +1050,8 @@ final class ASRService: ObservableObject {
             if let engine = self.engineStorage as? AVAudioEngine, engine.isRunning {
                 engine.stop()
             }
+        case .systemAudio:
+            await self.systemAudioCapture.stop()
         case .none:
             break
         }
@@ -1219,12 +1246,11 @@ final class ASRService: ObservableObject {
     }
 
     var streamingChunkDurationSeconds: Double {
-        let selectedModel = SettingsStore.shared.selectedSpeechModel
-        return selectedModel.streamingPreviewIntervalSeconds
+        self.effectiveSpeechModel.streamingPreviewIntervalSeconds
     }
 
     var minimumStreamingPreviewSamples: Int {
-        Int(SettingsStore.shared.selectedSpeechModel.minimumStreamingPreviewSeconds * 16_000)
+        Int(self.effectiveSpeechModel.minimumStreamingPreviewSeconds * 16_000)
     }
 
     /// Handles AVAudioEngine tap processing off the @MainActor to avoid touching main-actor state

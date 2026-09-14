@@ -117,6 +117,7 @@ final class TranscriptionSoundPlayer {
                 player.volume = desiredVolume
             }
             player.play()
+            WatchPlaybackReference.noteChime()
             DebugLogger.shared.benchmark(
                 "APP_BENCH",
                 message: "sound_play_dispatched sound=\(soundName) elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - startedAt) * 1000).rounded()))",

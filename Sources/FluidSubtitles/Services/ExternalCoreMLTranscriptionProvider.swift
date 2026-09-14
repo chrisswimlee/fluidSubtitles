@@ -9,7 +9,6 @@ final class ExternalCoreMLTranscriptionProvider: TranscriptionProvider {
 
     var isAvailable: Bool { true }
     private(set) var isReady: Bool = false
-    var prefersNativeFileTranscription: Bool { true }
     private let streamingPreviewMaxSeconds: Double = 12
 
     private var cohereManager: CohereTranscribeAsrManager?
@@ -119,33 +118,6 @@ final class ExternalCoreMLTranscriptionProvider: TranscriptionProvider {
         let text = try await manager.transcribe(
             audioSamples: self.paddedSamplesToModelLimit(previewSamples),
             promptIDs: promptIDs.isEmpty ? nil : promptIDs
-        )
-        return ASRTranscriptionResult(text: text, confidence: 1.0)
-    }
-
-    func transcribeFile(at fileURL: URL) async throws -> ASRTranscriptionResult {
-        guard let manager = self.cohereManager else {
-            DebugLogger.shared.error(
-                "ExternalCoreML: file transcription requested before manager initialization",
-                source: "ExternalCoreML"
-            )
-            throw Self.makeError("External CoreML model is not initialized.")
-        }
-
-        let startedAt = Date()
-        DebugLogger.shared.info(
-            "ExternalCoreML: native file transcription start [file=\(fileURL.lastPathComponent)]",
-            source: "ExternalCoreML"
-        )
-        let promptIDs = self.coherePromptIDsForCurrentLanguage()
-        let text = try await manager.transcribe(
-            audioFileAt: fileURL,
-            promptIDs: promptIDs.isEmpty ? nil : promptIDs
-        )
-        let elapsed = Date().timeIntervalSince(startedAt)
-        DebugLogger.shared.info(
-            "ExternalCoreML: native file transcription finished in \(String(format: "%.2f", elapsed))s [chars=\(text.count)]",
-            source: "ExternalCoreML"
         )
         return ASRTranscriptionResult(text: text, confidence: 1.0)
     }

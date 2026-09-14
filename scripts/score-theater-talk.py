@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Score a Theater talk against a reference JSONL. Same 15% bar as TheaterQualityScore."""
+"""Score a Theater talk against a reference JSONL. Same 15% bar as TheaterQualityScore.
+
+Each line is one JSON object: languageID, reference, hypothesis.
+See docs/STAGE_SCORE.md for a three-line English plus Korean layout example.
+Do not check in a real talk or invented WER.
+"""
 
 from __future__ import annotations
 

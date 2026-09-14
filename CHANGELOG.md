@@ -4,6 +4,28 @@ All notable changes to fluidSubtitles are documented in this file.
 
 ## [Unreleased]
 
+- Getting Started lists Screen Recording for Watch next to the Lectern microphone. The microphone permission string no longer claims audio never leaves this Mac. README screenshots show the current Theater home and board.
+- Theater Open / Listen / Stop use the same buttons and copy on Home, Settings, History, and the window. Settings cards use the same section headers as Theater.
+- Theater chrome groups delivery and Board controls, keeps Captions only on the bar, and confirms Close while Listen is running. Home has Pause. Undo removes the last printed line. Menu bar says Open Theater home / Show Theater.
+- Theater can Clear the caption board and session archive from the window or Theater Window settings. Listen keeps going.
+- TheaterSession.jsonl overflow writes on a serial queue with a batched flush so clause commits do not fsync on the MainActor.
+- Type into app uses Reliable Paste when a Korean or Thai IME is selected, or when Show-as is Korean/Thai after the first Theater caption.
+- Cross-language commits can reuse a speculative Apple Translation started at a clause-boundary approximation. Live prefetch does not preempt a queued commit and does not use local MLX.
+- Critical thermal can use Apple Speech for this Listen only; the Voice Engine setting is unchanged. Serious thermal still only thins silence-edge ASR ticks.
+- Watch drops packets that look like a delayed copy of the same capture (virtual/aggregate howl). Check capture warns when default output looks like loopback. Process exclusion stays; the hardware output mix is not subtracted.
+- README now has a How Theater works section for the on-device capture, commit, wrap, memory, and measured-clock path.
+- First run uses Apple Speech Analyzer on macOS 26 (Flash is under Show other models), defaults to same-language captions, and waits for a translation pack before Open Theater when the pair is two languages. The landing page says Theater needs macOS 26 and Apple Silicon.
+- Watch stays on the chosen app when audio has not started yet, instead of flipping to This Mac. Check capture success and failure use different status styles. Export, Retry, and Listen restore key the same way Theme and Pause already do.
+- Theater can be a solid Pop-up board or a Transparent overlay over slides. Switch it in Theater Window or on the board; Open / Close Theater turns the window on or off.
+- Theater (Listen, Watch, floating captions) requires macOS 26. Dictation still runs on macOS 15.
+- Changing I speak no longer swaps the Voice Engine. Listen stays on the model you picked and tells you if it cannot hear that language.
+- A new Listen no longer sends the previous talk’s last clauses into Apple Translation or MLX. Korean zero-subject context stays inside this Listen.
+- A spoken paragraph without a period now prints after about eight words (or 36 Korean/Thai characters) so the audience can follow. Thin ASR starters like “It.” wait until they grow into a real clause. Korean and Thai no longer wait for a 30-second re-decode before the first mid-talk line. Follow-along cuts at a comma or “and”, and a new Listen can repeat the last greeting.
+- Theater can sit over Keynote without stealing key (nonactivating panel). Chrome takes key for Theme, font, hide, Pause, and Edit, then gives it back unless the caption editor is open. Pause keeps ASR warm and does not rewrite printed lines. Minimize shrinks the board to a pill.
+- Watch mode captions audio other apps play (ScreenCaptureKit). Home and Theater pick This Mac or a running app; Safari/Chrome/Firefox include helper processes. A silent app waits for audio instead of flipping to This Mac. Check capture starts a short tap and reports whether audio arrived. If Screen Recording was just granted, Listen says to quit and reopen. If the stream dies, Listen ends. Lectern stays on the microphone. DRM and some calls stay silent.
+- Drop YouTube boilerplate and clause-level loops before a line prints. Short acknowledgements and Korean/Thai emphasis stays.
+- Apple Speech (macOS 26+) now follows I speak (Korean, English, or Thai) instead of the Mac locale, so Speech Analyzer no longer fails with “Current locale is not supported.”
+- Drop leftover FluidVoice file-transcription APIs and Voice Engine language lists. This app only hears Korean, English, and Thai.
 - Theater home is now header actions, languages, and blockers only. Getting Started, onboarding, and Settings drop leftover FluidVoice copy and the extra Open Theater / credit cards.
 - Theater Listen and dictation both pin Whisper to I speak. The Voice Engine picker no longer offers Automatic or unused Whisper locales.
 - Theater can hide from Zoom, Keynote, and screen recordings while still showing on this Mac and a wired projector. The latency clock now reports request-to-first-buffer as `mic`. Whisper can auto-detect English, Korean, and Thai questions. Import lecture terms as JSON. Short first greetings and Theater Listen are not thrown away as silence.
@@ -28,7 +50,8 @@ All notable changes to fluidSubtitles are documented in this file.
 - Lead the first-run app with Theater: shorter onboarding, a captions-first sidebar, Listen on the Theater page, and dictation AI under Settings.
 - Keep I speak and Show as visible on Theater, including captions-only. The theme control no longer crowds them off the bar.
 - Print Theater captions slowly as a visual aid. A line only grows or takes back one word at a time. Already-printed text is not rewritten; a correction trims from the end. A new sentence starts on a new line.
-- Keep Theater on one spoken line: leftover speech no longer reprints earlier sentences or goes blank after a restitch.
+- Keep Theater on one spoken line: the current sentence can print while you talk, and leftover speech no longer reprints earlier sentences or goes blank after a restitch.
+- Cross-language Theater prints what you said first, then the translation types in below. It does not wait for Pause. Same-language talks stay one line.
 - Keep captions moving on a long talk. Peeling printed clauses off the live transcript no longer rescans it once per committed line, so a full 200-line board costs about 2 ms per speech update instead of stalling past the next one.
 - Prefer a readable typewriter over catching up. A late line keeps walking forward instead of dumping the rest.
 - Show real numbers on the Theater latency readout again. It reported only thermal state.

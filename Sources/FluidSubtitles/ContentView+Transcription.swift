@@ -1335,7 +1335,16 @@ extension ContentView {
 
     func startCaptionListening() {
         guard !self.asr.isRunningOrStarting else { return }
-        if self.asr.micStatus == .denied {
+        guard TheaterAvailability.isSupported else {
+            LiveTranslationController.shared.reportListenFailure(TheaterAvailability.unsupportedCopy)
+            return
+        }
+        if SettingsStore.shared.theaterSessionMode == .watch {
+            if !ScreenRecordingAccess.isGranted {
+                LiveTranslationController.shared.reportListenFailure(ScreenRecordingAccess.deniedCopy)
+                return
+            }
+        } else if self.asr.micStatus == .denied {
             LiveTranslationController.shared.reportListenFailure(
                 "Microphone access is denied. Allow it in System Settings."
             )
@@ -1352,10 +1361,19 @@ extension ContentView {
                 TranscriptionSoundPlayer.shared.playStartSound()
             })
             if startOutcome == .failed {
+                let existing = LiveTranslationController.shared.subscriber.statusText
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
                 LiveTranslationController.shared.cancelSession()
-                LiveTranslationController.shared.reportListenFailure(
-                    "Could not start listening. Check the microphone and Voice Engine."
-                )
+                if SettingsStore.shared.theaterSessionMode == .watch {
+                    let watchError = existing.isEmpty || existing == "Listening…"
+                        ? ScreenRecordingAccess.deniedCopy
+                        : existing
+                    LiveTranslationController.shared.reportListenFailure(watchError)
+                } else {
+                    LiveTranslationController.shared.reportListenFailure(
+                        "Could not start listening. Check the microphone and Voice Engine."
+                    )
+                }
             }
         }
         Task {

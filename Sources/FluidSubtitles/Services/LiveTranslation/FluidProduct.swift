@@ -64,6 +64,7 @@ enum FluidProduct {
     }
 
     /// Developer ID team IDs allowed to install updates, in addition to the running app’s team.
-    /// Keep this empty until a published Developer ID identity is known; empty and ad-hoc teams are rejected.
+    /// Keep this empty until a published Developer ID identity is known. Empty and ad-hoc
+    /// teams are rejected, so in-app updates stay off until the first notarized GitHub Release.
     static let allowedUpdateTeamIDs: Set<String> = []
 }

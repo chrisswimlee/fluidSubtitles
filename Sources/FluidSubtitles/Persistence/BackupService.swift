@@ -118,6 +118,7 @@ struct SettingsBackupPayload: Codable, Equatable {
     let theaterHideChrome: Bool?
     let theaterHighContrast: Bool?
     let theaterAppearance: String?
+    let theaterPresentationStyle: String?
     let theaterHideFromScreenShare: Bool?
     let theaterAlsoHearOtherLanguages: Bool?
 }

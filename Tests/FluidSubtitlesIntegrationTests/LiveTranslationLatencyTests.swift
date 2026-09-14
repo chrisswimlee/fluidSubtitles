@@ -191,6 +191,49 @@ final class LiveTranslationLatencyTests: XCTestCase {
         )
     }
 
+    func testSilenceGateDowngradesEngineOnlyWhenThermalIsCritical() {
+        XCTAssertFalse(LiveTranslationSilenceGate.shouldDowngradeEngine(.nominal))
+        XCTAssertFalse(LiveTranslationSilenceGate.shouldDowngradeEngine(.fair))
+        XCTAssertFalse(LiveTranslationSilenceGate.shouldDowngradeEngine(.serious))
+        XCTAssertTrue(LiveTranslationSilenceGate.shouldDowngradeEngine(.critical))
+        XCTAssertFalse(
+            LiveTranslationThermalEngine.shouldApply(
+                current: .appleSpeechAnalyzer,
+                thermal: .critical,
+                alreadyOverridden: false
+            )
+        )
+        XCTAssertFalse(
+            LiveTranslationThermalEngine.shouldApply(
+                current: .nemotronStreaming,
+                thermal: .serious,
+                alreadyOverridden: false
+            )
+        )
+        XCTAssertTrue(
+            LiveTranslationThermalEngine.shouldApply(
+                current: .nemotronStreaming,
+                thermal: .critical,
+                alreadyOverridden: false
+            )
+        )
+        XCTAssertFalse(
+            LiveTranslationThermalEngine.shouldApply(
+                current: .nemotronStreaming,
+                thermal: .critical,
+                alreadyOverridden: true
+            )
+        )
+        XCTAssertEqual(
+            LiveTranslationThermalEngine.fallbackModel(isAppleSpeechAnalyzerAvailable: true),
+            .appleSpeechAnalyzer
+        )
+        XCTAssertEqual(
+            LiveTranslationThermalEngine.fallbackModel(isAppleSpeechAnalyzerAvailable: false),
+            .appleSpeech
+        )
+    }
+
     func testSilenceGateDoesNotSkipVoicedWindowWhenThermalIsSerious() {
         XCTAssertFalse(
             LiveTranslationSilenceGate.shouldSkipASRTick(

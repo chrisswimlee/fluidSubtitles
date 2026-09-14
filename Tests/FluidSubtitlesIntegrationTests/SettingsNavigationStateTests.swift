@@ -85,6 +85,10 @@ final class SettingsNavigationStateTests: XCTestCase {
         XCTAssertEqual(SettingsSearchIndex.results(for: "theater").first?.section, .translation)
         XCTAssertTrue(SettingsSearchIndex.results(for: "captions only").contains { $0.target == .theaterAppearance })
         XCTAssertTrue(SettingsSearchIndex.results(for: "screen share").contains { $0.target == .theaterAppearance })
+        XCTAssertTrue(SettingsSearchIndex.results(for: "Watch").contains { $0.target == .theaterAppearance })
+        XCTAssertTrue(SettingsSearchIndex.results(for: "Check capture").contains { $0.target == .theaterAppearance })
+        XCTAssertTrue(SettingsSearchIndex.results(for: "This Mac").contains { $0.target == .theaterAppearance })
+        XCTAssertTrue(SettingsSearchIndex.results(for: "high contrast").contains { $0.target == .theaterAppearance })
         XCTAssertTrue(SettingsSearchIndex.results(for: "Caption Cleanup").isEmpty)
     }
 

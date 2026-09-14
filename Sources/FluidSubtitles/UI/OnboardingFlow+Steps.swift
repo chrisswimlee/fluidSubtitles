@@ -20,7 +20,7 @@ extension OnboardingFlowView {
                         title: "Captions after each sentence.",
                         accentTitle: "Korean, English, and Thai.",
                         firstDetail: FluidProduct.manifesto,
-                        secondDetail: "Open Theater, press Listen. Share the window when the audience needs another language."
+                        secondDetail: "Theater needs macOS 26 and Apple Silicon. Open Theater, then press Listen."
                     ) {
                         FluidOnboardingLandingPrimaryButton(title: "Next") {
                             self.goNext()
@@ -151,7 +151,7 @@ extension OnboardingFlowView {
                             }
                             .padding(.top, 22)
 
-                            Text("Any pair among Korean, English, and Thai works. You can swap later.")
+                            Text("Same language needs no download. Pick a second language only if you need translation.")
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(Color.white.opacity(0.44))
                                 .padding(.top, 18)
@@ -392,7 +392,11 @@ extension OnboardingFlowView {
             self.selectedLanguageID = language.id
             self.settings.onboardingSelectedLanguageID = language.id
             if let translationLanguage = TranslationLanguageCatalog.language(id: language.id) {
+                let keepSameLanguage = SpokenLanguageResolver.isSameLanguagePair()
                 self.settings.translationSourceLanguageID = translationLanguage.id
+                if keepSameLanguage {
+                    self.settings.translationTargetLanguageID = translationLanguage.id
+                }
             }
             self.selectedModelRouteID = VoiceEngineLanguageCatalog.routes(for: language).first?.id
             self.isShowingOtherModelRoutes = false
@@ -677,7 +681,7 @@ extension OnboardingFlowView {
                             FluidOnboardingCompactAppIconMark(size: 66)
                                 .padding(.bottom, 22)
 
-                            Text("Try a Theater caption.")
+                            Text(TheaterAvailability.isSupported ? "Try a Theater caption." : "Theater needs macOS 26.")
                                 .font(.system(size: 28, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .multilineTextAlignment(.center)
@@ -686,7 +690,7 @@ extension OnboardingFlowView {
                                 .padding(.horizontal, 32)
                                 .padding(.bottom, 14)
 
-                            Text("Open Theater and press Listen. Continue after a line appears.")
+                            Text(self.playgroundCaptionHint)
                                 .font(.system(size: 15, weight: .medium))
                                 .foregroundStyle(Color.white.opacity(0.62))
                                 .multilineTextAlignment(.center)
@@ -702,7 +706,27 @@ extension OnboardingFlowView {
                                     .padding(.bottom, 18)
                             }
 
+                            if TheaterAvailability.isSupported, !SpokenLanguageResolver.isSameLanguagePair() {
+                                if !self.languagePackAvailability.isEmpty {
+                                    Text(self.languagePackAvailability)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(Color.white.opacity(0.56))
+                                        .padding(.bottom, 8)
+                                }
+                                if !self.isOnboardingTranslationPackReady {
+                                    Button("Download language pack") {
+                                        Task {
+                                            await self.refreshLanguagePackAvailability(requestDownload: true)
+                                        }
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .padding(.bottom, 16)
+                                }
+                            }
+
+                            if TheaterAvailability.isSupported {
                             Button {
+                                guard self.canOpenOnboardingTheater else { return }
                                 PresenterCaptionController.shared.setVisible(true)
                                 LiveTranslationController.shared.startCaptionListening()
                             } label: {
@@ -714,15 +738,17 @@ extension OnboardingFlowView {
                                 .foregroundStyle(.white)
                                 .frame(width: 200, height: 40)
                                 .background(
-                                    FluidOnboardingLandingColors.blue.opacity(0.92),
+                                    FluidOnboardingLandingColors.blue.opacity(self.canOpenOnboardingTheater ? 0.92 : 0.38),
                                     in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 )
                             }
                             .buttonStyle(.plain)
+                            .disabled(!self.canOpenOnboardingTheater)
                             .onChange(of: self.translationController.subscriber.committedLines) { _, lines in
                                 guard !lines.isEmpty else { return }
                                 self.settings.theaterListenUsed = true
                                 self.settings.onboardingPlaygroundValidated = true
+                            }
                             }
                         }
                         .frame(maxWidth: .infinity)
@@ -757,6 +783,15 @@ extension OnboardingFlowView {
                 .frame(width: proxy.size.width, height: proxy.size.height)
                 .accessibilityHidden(true)
             }
+        }
+        .task {
+            await self.refreshLanguagePackAvailability()
+        }
+        .onChange(of: self.settings.translationSourceLanguageID) { _, _ in
+            Task { await self.refreshLanguagePackAvailability() }
+        }
+        .onChange(of: self.settings.translationTargetLanguageID) { _, _ in
+            Task { await self.refreshLanguagePackAvailability() }
         }
     }
 

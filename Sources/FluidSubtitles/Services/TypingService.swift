@@ -143,6 +143,7 @@ final class TypingService {
     /// Called during application launch, before any paste requests can arrive.
     static func startKeyboardLayoutTracking() {
         self.pasteKeyCache.start()
+        InsertIMEGuard.startTracking()
     }
 
     /// The virtual key code for "v" in the current keyboard layout (used for Cmd+V paste).
@@ -554,6 +555,16 @@ final class TypingService {
     private func insertTextInstantly(_ text: String, preferredTargetPID: pid_t?) -> Bool {
         self.log("[TypingService] insertTextInstantly called with \(text.count) characters")
         self.log("[TypingService] Attempting to type text: \"\(text.prefix(50))\(text.count > 50 ? "..." : "")\"")
+
+        if InsertIMEGuard.shouldAvoidUnicodeInjection() {
+            self.log("[TypingService] Korean/Thai IME or caption language; forcing Reliable Paste")
+            if self.tryReliablePasteInsertion(text, preferredTargetPID: preferredTargetPID) {
+                self.log("[TypingService] SUCCESS: IME Reliable Paste path completed")
+                return true
+            }
+            self.log("[TypingService] IME Reliable Paste failed; not falling through to unicode injection")
+            return false
+        }
 
         if self.textInsertionMode == .standard,
            let ghosttyTargetPID = self.ghosttyTargetPID(preferredTargetPID: preferredTargetPID)

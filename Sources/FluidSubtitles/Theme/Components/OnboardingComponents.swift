@@ -65,7 +65,7 @@ struct FluidOnboardingLandingHero<Actions: View>: View {
             .font(.system(size: 22, weight: .medium))
             .foregroundStyle(Color.white.opacity(0.70))
             .multilineTextAlignment(.center)
-            .lineLimit(2)
+            .lineLimit(3)
             .minimumScaleFactor(0.82)
             .padding(.bottom, 42)
 

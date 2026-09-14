@@ -59,8 +59,7 @@ nonisolated enum LLMError: Error, LocalizedError, @unchecked Sendable {
 
 // MARK: - LLMClient
 
-/// Unified LLM communication layer for all modes (Transcription, Command, Rewrite).
-/// Handles HTTP requests, SSE streaming, thinking token extraction, and tool call parsing.
+/// LLM transport for dictation cleanup. Handles HTTP, SSE streaming, and thinking-token extraction.
 /// Stateless, thread-safe transport. Keeping streaming decode off MainActor prevents
 /// provider token bursts from delaying dictation UI and final text delivery.
 final nonisolated class LLMClient: @unchecked Sendable {

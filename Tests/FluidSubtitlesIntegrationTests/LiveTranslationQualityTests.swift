@@ -121,7 +121,7 @@ final class LiveTranslationQualityTests: XCTestCase {
         XCTAssertTrue(VoiceEngineLanguageCatalog.supports(settings.selectedSpeechModel, languageID: "th"))
     }
 
-    func testBilingualWrapPutsEnglishBeforeThaiWhenSpokenIsThai() throws {
+    func testBilingualWrapPutsSpokenThaiBeforeEnglish() {
         let font = NSFont.systemFont(ofSize: 24, weight: .semibold)
         let rows = TheaterBilingualWrap.rows(
             spoken: "สวัสดี",
@@ -129,15 +129,14 @@ final class LiveTranslationQualityTests: XCTestCase {
             font: font,
             width: 800
         )
-        XCTAssertFalse(rows.isEmpty, "rows() should pair spoken and translated lines")
-        guard rows.count >= 2, !rows[0].isSpoken, rows[1].isSpoken else {
-            throw XCTSkip("Thai pairing is not in this build; Korean pairing is covered separately.")
-        }
-        XCTAssertEqual(rows[0].text, "Hello")
-        XCTAssertEqual(rows[1].text, "สวัสดี")
+        XCTAssertGreaterThanOrEqual(rows.count, 2)
+        XCTAssertEqual(rows[0].text, "สวัสดี")
+        XCTAssertTrue(rows[0].isSpoken)
+        XCTAssertEqual(rows[1].text, "Hello")
+        XCTAssertFalse(rows[1].isSpoken)
     }
 
-    func testBilingualWrapPutsEnglishBeforeKoreanWhenSpokenIsKorean() {
+    func testBilingualWrapPutsSpokenKoreanBeforeEnglish() {
         let font = NSFont.systemFont(ofSize: 24, weight: .semibold)
         let rows = TheaterBilingualWrap.rows(
             spoken: "안녕하세요",
@@ -146,10 +145,10 @@ final class LiveTranslationQualityTests: XCTestCase {
             width: 800
         )
         XCTAssertGreaterThanOrEqual(rows.count, 2)
-        XCTAssertEqual(rows[0].text, "Hello")
-        XCTAssertFalse(rows[0].isSpoken)
-        XCTAssertEqual(rows[1].text, "안녕하세요")
-        XCTAssertTrue(rows[1].isSpoken)
+        XCTAssertEqual(rows[0].text, "안녕하세요")
+        XCTAssertTrue(rows[0].isSpoken)
+        XCTAssertEqual(rows[1].text, "Hello")
+        XCTAssertFalse(rows[1].isSpoken)
     }
 
     func testLastListenLatencyStoreRoundTrips() throws {
@@ -215,6 +214,19 @@ final class LiveTranslationQualityTests: XCTestCase {
         XCTAssertTrue(sameLanguage.canListen)
         XCTAssertTrue(sameLanguage.isFullyReady)
         XCTAssertEqual(sameLanguage.nextAction, "Ready.")
+
+        let watchBlocked = TheaterReadyGate.snapshot(
+            engineSupportsSource: true,
+            modelInstalled: true,
+            sameLanguagePair: true,
+            pack: .installed,
+            microphone: .authorized,
+            firstCaptionPrinted: false,
+            mode: .watch,
+            screenRecordingAllowed: false
+        )
+        XCTAssertFalse(watchBlocked.canListen)
+        XCTAssertTrue(watchBlocked.nextAction.contains("restarting") || watchBlocked.nextAction.contains("reopen"))
     }
 
     @MainActor

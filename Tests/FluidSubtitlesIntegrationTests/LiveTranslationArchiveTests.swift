@@ -102,6 +102,24 @@ final class LiveTranslationArchiveTests: XCTestCase {
         XCTAssertEqual(recounted.overflowCount, 3)
     }
 
+    func testEnqueueIsVisibleToLoadAllWithoutCallingAppend() {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("theater-enqueue-\(UUID().uuidString).jsonl")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let archive = LectureCaptionArchive(url: url)
+        for index in 1...20 {
+            archive.enqueue([
+                LectureCaptionEntry(id: UInt64(index), source: "line \(index).", translated: "caption \(index).")
+            ])
+        }
+        XCTAssertEqual(archive.overflowCount, 20)
+        let loaded = archive.loadAll()
+        XCTAssertEqual(loaded.count, 20)
+        XCTAssertEqual(loaded.first?.translated, "caption 1.")
+        XCTAssertEqual(loaded.last?.translated, "caption 20.")
+        XCTAssertEqual(archive.overflowCount, 20)
+    }
+
     @MainActor
     func testExportUsesArchivedLinesPlusTheVisibleWindow() {
         let url = FileManager.default.temporaryDirectory
@@ -120,5 +138,11 @@ final class LiveTranslationArchiveTests: XCTestCase {
         XCTAssertEqual(subscriber.exportCaptionPairs.count, 205)
         XCTAssertEqual(subscriber.exportCaptionPairs.first?.translated, "caption 1.")
         XCTAssertEqual(subscriber.lineWindowStatus, "Showing last 200 of 205")
+
+        subscriber.reset(clearArchive: true)
+        XCTAssertTrue(subscriber.committedLines.isEmpty)
+        XCTAssertEqual(subscriber.archivedLineCount, 0)
+        XCTAssertTrue(subscriber.exportCaptionPairs.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
     }
 }

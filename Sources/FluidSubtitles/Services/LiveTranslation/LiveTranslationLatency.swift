@@ -70,6 +70,47 @@ enum LiveTranslationSilenceGate {
             return false
         }
     }
+
+    /// Critical thermal is the only state that swaps the Voice Engine.
+    /// Serious keeps silence-edge tick thinning only.
+    static func shouldDowngradeEngine(_ thermal: ProcessInfo.ThermalState) -> Bool {
+        switch thermal {
+        case .critical:
+            return true
+        default:
+            return false
+        }
+    }
+}
+
+enum LiveTranslationThermalEngine {
+    static let statusCopy = "Using Apple Speech because this Mac is hot."
+
+    static func fallbackModel(isAppleSpeechAnalyzerAvailable: Bool) -> SettingsStore.SpeechModel {
+        isAppleSpeechAnalyzerAvailable ? .appleSpeechAnalyzer : .appleSpeech
+    }
+
+    static func fallbackModel() -> SettingsStore.SpeechModel {
+        if #available(macOS 26.0, *) {
+            return self.fallbackModel(isAppleSpeechAnalyzerAvailable: true)
+        }
+        return self.fallbackModel(isAppleSpeechAnalyzerAvailable: false)
+    }
+
+    static func shouldApply(
+        current: SettingsStore.SpeechModel,
+        thermal: ProcessInfo.ThermalState,
+        alreadyOverridden: Bool
+    ) -> Bool {
+        guard !alreadyOverridden else { return false }
+        guard LiveTranslationSilenceGate.shouldDowngradeEngine(thermal) else { return false }
+        switch current {
+        case .appleSpeech, .appleSpeechAnalyzer:
+            return false
+        default:
+            return true
+        }
+    }
 }
 
 enum LiveTranslationThermalReadout {
@@ -99,7 +140,8 @@ struct LiveTranslationLatencySample: Equatable {
     var displayText: String {
         var parts: [String] = []
         if let micMilliseconds {
-            parts.append("mic \(micMilliseconds)")
+            let label = SettingsStore.shared.theaterSessionMode == .watch ? "cap" : "mic"
+            parts.append("\(label) \(micMilliseconds)")
         }
         if let endToEndMilliseconds {
             parts.append("\(endToEndMilliseconds)ms e2e")

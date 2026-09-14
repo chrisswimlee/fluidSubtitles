@@ -25,7 +25,9 @@
 	<key>NSAccessibilityUsageDescription</key>
 	<string>fluidSubtitles needs Accessibility permission to type Transcription into other apps. Theater captions on your screen do not require this.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>fluidSubtitles needs microphone access to record your voice for live transcription and translation. Your audio is processed locally and never sent to external servers.</string>
+	<string>fluidSubtitles needs microphone access to caption speech on this Mac. Audio stays on this Mac unless you opt in to a cloud AI provider.</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>fluidSubtitles captures audio that other apps play so Theater can caption it on this Mac. Video is not stored. Audio is processed locally.</string>
 	<key>LSUIElement</key>
 	<false/>
 	<key>NSAppleEventsUsageDescription</key>

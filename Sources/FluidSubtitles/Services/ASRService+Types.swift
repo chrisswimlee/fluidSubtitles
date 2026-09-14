@@ -372,16 +372,8 @@ enum ASRStopOutcome: Equatable {
 /// robust error handling and performance optimization.
 ///
 /// ## Language Support
-/// The service supports multiple models with varying language capabilities:
-/// - **Parakeet TDT v3** (Default): Automatically detects and transcribes 25 European languages:
-///   Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French, German,
-///   Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian,
-///   Slovak, Slovenian, Spanish, Swedish, Russian, and Ukrainian.
-/// - **Parakeet TDT v2**: Specialized for high-accuracy English transcription.
-/// - **Apple Speech**: Supports all system languages available on macOS.
-/// - **Whisper**: Supports 99 languages.
-///
-/// No manual language selection is required for Parakeet models - v3 automatically detects the spoken language.
+/// fluidSubtitles only hears Korean, English, and Thai. Parakeet Flash and TDT stay on English.
+/// Apple Speech and Whisper cover Korean, English, and Thai. Nemotron Thai is experimental.
 /// ## Thread Safety
 /// All public methods are marked with @MainActor to ensure thread safety.
 /// Audio processing happens on background threads for optimal performance.

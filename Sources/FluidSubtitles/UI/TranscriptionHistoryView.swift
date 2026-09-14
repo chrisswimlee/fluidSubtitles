@@ -318,7 +318,7 @@ struct TranscriptionHistoryView: View {
                     .foregroundStyle(.secondary)
 
                 Text(self.searchQuery.isEmpty
-                    ? "Open Theater and press Listen. Captions from this Mac will appear here."
+                    ? TheaterReadiness.historyEmpty
                     : "Try a different search term")
                     .font(.system(size: 12))
                     .foregroundStyle(.tertiary)
@@ -326,10 +326,7 @@ struct TranscriptionHistoryView: View {
             }
 
             if self.searchQuery.isEmpty {
-                Button("Open Theater") {
-                    PresenterCaptionController.shared.setVisible(true)
-                }
-                .buttonStyle(.borderedProminent)
+                OpenTheaterButton()
             }
 
             Spacer()

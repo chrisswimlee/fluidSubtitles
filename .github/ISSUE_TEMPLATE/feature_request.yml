@@ -6,7 +6,16 @@ body:
   - type: markdown
     attributes:
       value: |
+        Start a [Discussion](https://github.com/chrisswimlee/fluidSubtitles/discussions) in Ideas first.
+        Open this issue only after a maintainer accepts that direction.
+
         Describe the user problem and the behavior you want in fluidSubtitles.
+  - type: input
+    id: discussion
+    attributes:
+      label: Accepted Discussion
+      description: Link the Ideas discussion a maintainer accepted. Broad or unclear features may be redirected there.
+      placeholder: https://github.com/chrisswimlee/fluidSubtitles/discussions/
   - type: textarea
     id: problem
     attributes:

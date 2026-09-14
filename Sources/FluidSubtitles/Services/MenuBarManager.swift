@@ -515,7 +515,7 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
 
         let theaterMenu = NSMenu(title: "Theater")
         let openHomeItem = NSMenuItem(
-            title: "Open Theater",
+            title: "Open Theater home",
             action: #selector(openLiveTranslation),
             keyEquivalent: ""
         )
@@ -523,7 +523,7 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         theaterMenu.addItem(openHomeItem)
 
         let theaterItem = NSMenuItem(
-            title: SettingsStore.shared.theaterWindowEnabled ? "Hide window" : "Show window",
+            title: SettingsStore.shared.theaterWindowEnabled ? "Hide Theater" : "Show Theater",
             action: #selector(toggleTheater),
             keyEquivalent: ""
         )
@@ -534,7 +534,7 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         let listenItem = NSMenuItem(
             title: LiveTranslationController.shared.isSessionActive
                 && LiveTranslationController.shared.listenKind == .captions
-                ? "Stop Listen"
+                ? "Stop"
                 : "Listen",
             action: #selector(toggleCaptionListen),
             keyEquivalent: ""
@@ -623,14 +623,25 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
             : ""
         let hotkeyInfo = listenHotkey.isEmpty ? "" : " (\(listenHotkey))"
         let statusTitle: String
-        if isCaptionListening || self.isRecording {
+        if !TheaterAvailability.isSupported {
+            statusTitle = TheaterAvailability.unsupportedCopy
+        } else if isCaptionListening || self.isRecording {
             statusTitle = "Listening…\(hotkeyInfo)"
         } else {
             statusTitle = "Theater ready\(hotkeyInfo)"
         }
         self.statusMenuItem?.title = statusTitle
-        self.theaterMenuItem?.title = SettingsStore.shared.theaterWindowEnabled ? "Hide window" : "Show window"
-        self.listenMenuItem?.title = isCaptionListening ? "Stop Listen" : "Listen"
+        self.theaterMenuItem?.title = SettingsStore.shared.theaterWindowEnabled ? "Hide Theater" : "Show Theater"
+        self.theaterMenuItem?.isEnabled = TheaterAvailability.isSupported
+        self.listenMenuItem?.title = isCaptionListening ? "Stop" : "Listen"
+        let ready = TheaterReadyGate.liveSnapshot(
+            pack: LiveTranslationController.shared.packAvailability,
+            microphone: AppServices.shared.asr.micStatus,
+            firstCaptionPrinted: SettingsStore.shared.theaterListenUsed
+        )
+        let dictationBusy = AppServices.shared.asr.isRunningOrStarting && !isCaptionListening
+        self.listenMenuItem?.isEnabled = TheaterAvailability.isSupported
+            && (isCaptionListening || (ready.canListen && !dictationBusy))
         self.copyLastTranscriptMenuItem?.isEnabled = self.canCopyLastTranscript
         self.microphoneMenuItem?.isEnabled = true
 
@@ -966,7 +977,11 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
     }
 
     @objc private func toggleTheater() {
-        PresenterCaptionController.shared.setVisible(!SettingsStore.shared.theaterWindowEnabled)
+        if SettingsStore.shared.theaterWindowEnabled {
+            PresenterCaptionController.shared.requestClose()
+        } else {
+            PresenterCaptionController.shared.setVisible(true)
+        }
         self.updateMenuItemsText()
     }
 

@@ -29,6 +29,7 @@ final nonisolated class AudioCapturePipeline: @unchecked Sendable {
 
     let lock = NSLock()
     var recordingEnabled: Bool = false
+    var capturePaused: Bool = false
     var levelMonitoringEnabled: Bool = false
     var firstAudioReported: Bool = false
     var recordingSessionID: Int = 0
@@ -87,6 +88,7 @@ final nonisolated class AudioCapturePipeline: @unchecked Sendable {
             self.recordingAttemptID = attemptID
             self.recordingStartHostTime = startHostTime == 0 ? mach_absolute_time() : startHostTime
             self.recordingStopHostTime = nil
+            self.capturePaused = false
             self.resetResamplerLocked()
             self.lastInputSampleEnd = nil
             self.resetCaptureHealthLocked()
@@ -94,6 +96,7 @@ final nonisolated class AudioCapturePipeline: @unchecked Sendable {
         }
         if enabled == false {
             self.recordingEnabled = false
+            self.capturePaused = false
             self.recordingSessionID = 0
             self.recordingAttemptID = 0
             self.recordingStartHostTime = 0
@@ -111,6 +114,29 @@ final nonisolated class AudioCapturePipeline: @unchecked Sendable {
         self.lock.lock()
         defer { self.lock.unlock() }
         return self.levelMonitoringEnabled
+    }
+
+    func setCapturePaused(_ paused: Bool) {
+        self.lock.lock()
+        let wasPaused = self.capturePaused
+        self.capturePaused = paused
+        if wasPaused, paused == false {
+            self.lastInputSampleEnd = nil
+            self.resetResamplerLocked()
+        }
+        self.lock.unlock()
+    }
+
+    var lastInputSampleEndForTesting: Int64? {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        return self.lastInputSampleEnd
+    }
+
+    var isCapturePaused: Bool {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        return self.capturePaused
     }
 
     func setLevelMonitoringEnabled(_ enabled: Bool) {
@@ -148,6 +174,7 @@ final nonisolated class AudioCapturePipeline: @unchecked Sendable {
     }
 
     func handle(buffer: AVAudioPCMBuffer, time: AVAudioTime) {
+        if self.isCapturePaused { return }
         let mono = Self.downmixToMono(buffer)
         guard mono.isEmpty == false else {
             self.onLevel(0.0)
@@ -170,6 +197,7 @@ final nonisolated class AudioCapturePipeline: @unchecked Sendable {
         inputSampleTime: Int64
     ) {
         guard frameCount > 0 else { return }
+        if self.isCapturePaused { return }
         self.handleMonoSamples(
             Array(UnsafeBufferPointer(start: samples, count: frameCount)),
             sampleRate: sampleRate,
@@ -190,6 +218,7 @@ final nonisolated class AudioCapturePipeline: @unchecked Sendable {
             self.onLevel(0.0)
             return
         }
+        if self.isCapturePaused { return }
 
         self.lock.lock()
         let recordingEnabled = self.recordingEnabled

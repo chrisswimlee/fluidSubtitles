@@ -85,19 +85,57 @@ enum TranslationClauseSegmenter {
     static func isCommitComplete(_ text: String, languageID: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
+        let complete: Bool
         if let last = trimmed.unicodeScalars.last, Self.terminalPunctuation.contains(last) {
-            return true
+            complete = true
+        } else {
+            switch self.languageCode(from: languageID) {
+            case "ko":
+                complete = self.hasEnding(trimmed, endings: Self.koreanCommitEndings)
+            case "ja":
+                complete = self.hasJapanesePredicateEnding(trimmed)
+            case "th":
+                complete = self.hasEnding(trimmed, endings: Self.thaiCommitEndings)
+            default:
+                complete = false
+            }
+        }
+        return complete && !self.isTooThinToCommit(trimmed, languageID: languageID)
+    }
+
+    /// ASR often emits "It." / "The." / "So." as a sentence. That is not a clause.
+    static func isTooThinToCommit(_ text: String, languageID: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        if CaptionJunkGate.isAcknowledgement(trimmed) { return false }
+        let words = self.tokens(trimmed).map(self.tokenKey).filter { !$0.isEmpty }
+        if words.contains(where: { $0.contains(where: \.isASCII) }) {
+            if words.count >= 3 { return false }
+            if words.count == 1 { return self.isThinEnglishStarter(words[0]) }
+            return self.isThinEnglishStarter(words[0])
+                && (self.isThinEnglishStarter(words[1]) || self.isThinEnglishAuxiliary(words[1]))
         }
         switch self.languageCode(from: languageID) {
-        case "ko":
-            return self.hasEnding(trimmed, endings: Self.koreanCommitEndings)
-        case "ja":
-            return self.hasJapanesePredicateEnding(trimmed)
-        case "th":
-            return self.hasEnding(trimmed, endings: Self.thaiCommitEndings)
+        case "ko", "ja", "th":
+            return self.stripped(trimmed).filter { !$0.isWhitespace }.count < 2
         default:
-            return false
+            return words.isEmpty
         }
+    }
+
+    static func isThinEnglishStarter(_ word: String) -> Bool {
+        Self.thinEnglishStarters.contains(self.tokenKey(word))
+    }
+
+    /// A paragraph with no period still has to move. One Theater line is enough.
+    static func shouldFollowAlong(_ text: String, languageID: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return false }
+        if self.isTooThinToCommit(trimmed, languageID: languageID) { return false }
+        if self.isCompactScript(languageID) {
+            return trimmed.count >= LiveTranslationTiming.followAlongCharacters
+        }
+        return self.tokens(trimmed).count >= LiveTranslationTiming.followAlongWords
     }
 
     static func isInternalBoundary(_ text: String, languageID: String) -> Bool {
@@ -120,6 +158,7 @@ enum TranslationClauseSegmenter {
         let trimmed = tail.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return .ignore }
         if trimmed.count >= LiveTranslationTiming.maxDraftCharacters { return .commitNow }
+        if self.shouldFollowAlong(trimmed, languageID: languageID) { return .commitNow }
         return .waitForStability
     }
 
@@ -130,7 +169,9 @@ enum TranslationClauseSegmenter {
         if self.looksComplete(tail, languageID: languageID) {
             return LiveTranslationTiming.completeSettleNanoseconds(languageID: languageID)
         }
-        if tail.count >= LiveTranslationTiming.maxDraftCharacters {
+        if tail.count >= LiveTranslationTiming.maxDraftCharacters
+            || self.shouldFollowAlong(tail, languageID: languageID)
+        {
             return 0
         }
         return LiveTranslationTiming.openSettleNanoseconds(languageID: languageID)
@@ -252,11 +293,19 @@ enum TranslationClauseSegmenter {
                 != incoming.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         guard right.hasPrefix(left) || right.hasPrefix(left + " ") else { return false }
+        if ["en", "ko", "th", "ja"].contains(where: { self.isTooThinToCommit(previous, languageID: $0) }) {
+            return true
+        }
         if ["en", "ko", "th", "ja"].contains(where: { self.isCommitComplete(previous, languageID: $0) }) {
             return false
         }
         let leftover = self.leftoverTail(incoming, already: [previous])
         if leftover.isEmpty { return true }
+        if ["en", "ko", "th", "ja"].contains(where: {
+            self.looksComplete(leftover, languageID: $0) || self.shouldFollowAlong(leftover, languageID: $0)
+        }) {
+            return false
+        }
         return self.split(leftover, languageID: "en").completed.isEmpty
     }
 
@@ -341,41 +390,99 @@ enum TranslationClauseSegmenter {
     ) -> (unit: String, rest: String)? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        let split = self.split(trimmed, languageID: languageID)
-        if let first = split.completed.first {
+        let split = self.absorbThinCompleted(self.split(trimmed, languageID: languageID), languageID: languageID)
+        if let first = split.completed.first, !self.isTooThinToCommit(first, languageID: languageID) {
             return (first, self.remainder(after: first, split: split, original: trimmed, languageID: languageID))
         }
         if self.looksComplete(split.tail, languageID: languageID) {
             return self.singleClause(split.tail, languageID: languageID)
         }
+        if self.shouldFollowAlong(split.tail, languageID: languageID) {
+            let cut = self.followAlongCut(split.tail, languageID: languageID)
+            guard !cut.head.isEmpty else { return nil }
+            return (unit: cut.head, rest: cut.rest)
+        }
         if allowPauseFinalize,
            self.isReadyToCommit(split.tail, languageID: languageID, allowPauseFinalize: true)
         {
-            let cut = self.lineCut(split.tail, languageID: languageID)
+            let cut = self.followAlongCut(split.tail, languageID: languageID)
             guard !cut.head.isEmpty else { return nil }
             return (unit: cut.head, rest: cut.rest)
         }
         return nil
     }
 
-    /// The clause Theater should follow right now. Unread completed sentences stay
-    /// off the live line so a restitch cannot paint the last few sentences at once.
+    /// The clause Theater should follow right now. A restitch of several
+    /// sentences shows the first unread one, not the whole leftover.
     static func liveOpenText(_ leftover: String, languageID: String) -> String {
         let trimmed = leftover.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "" }
         let split = self.split(trimmed, languageID: languageID)
-        let open = split.tail.isEmpty ? (split.completed.last ?? trimmed) : split.tail
+        if let first = split.completed.first, !self.isTooThinToCommit(first, languageID: languageID) {
+            return self.currentSpokenLine(first, languageID: languageID)
+        }
+        let open = split.tail.isEmpty ? trimmed : split.tail
         return self.currentSpokenLine(open, languageID: languageID)
     }
 
-    static func isAlreadyPrintedSource(_ source: String, already: [String]) -> Bool {
+    /// Next clause that is not already on Theater. Cumulative ASR still starts
+    /// with printed sentences; never commit that blob as one line.
+    static func printableCommitUnit(
+        _ text: String,
+        already: [String],
+        languageID: String,
+        allowPauseFinalize: Bool
+    ) -> String? {
+        var remaining = self.leftoverTail(text, already: already, languageID: languageID)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if remaining.isEmpty { return nil }
+
+        var steps = 0
+        while steps < 32, !remaining.isEmpty {
+            steps += 1
+            guard let next = self.nextCommitUnit(
+                remaining,
+                languageID: languageID,
+                allowPauseFinalize: allowPauseFinalize
+            ) else {
+                return nil
+            }
+            let unit = next.unit.trimmingCharacters(in: .whitespacesAndNewlines)
+            let peeled = self.leftoverTail(unit, already: already, languageID: languageID)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if peeled.isEmpty
+                || self.isAlreadyPrintedSource(unit, already: already, languageID: languageID)
+            {
+                if next.rest == remaining { return nil }
+                remaining = next.rest
+                continue
+            }
+            if peeled != unit {
+                remaining = peeled
+                continue
+            }
+            return unit
+        }
+        return nil
+    }
+
+    static func isAlreadyPrintedSource(
+        _ source: String,
+        already: [String],
+        languageID: String = ""
+    ) -> Bool {
         let cleaned = source.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return true }
         if already.contains(where: { self.isSameClause($0, cleaned) }) { return true }
         if already.contains(where: { self.shouldIgnoreAsStalePrefix(previous: $0, incoming: cleaned) }) {
             return true
         }
-        return self.leftoverTail(cleaned, already: already).isEmpty
+        if already.dropLast().contains(where: {
+            self.shouldReviseCommitted(previous: $0, incoming: cleaned, languageID: languageID)
+        }) {
+            return true
+        }
+        return self.leftoverTail(cleaned, already: already, languageID: languageID).isEmpty
     }
 
     /// Join committed translations for typing or history.
@@ -753,7 +860,16 @@ extension TranslationClauseSegmenter {
             let split = self.split(remainder, languageID: languageID)
             guard let first = split.completed.first else { break }
             let printed = already.contains {
-                self.isSameClause($0, first) || self.shouldIgnoreAsStalePrefix(previous: $0, incoming: first)
+                self.isSameClause($0, first)
+                    || self.shouldIgnoreAsStalePrefix(previous: $0, incoming: first)
+                    || (
+                        self.shouldReviseCommitted(
+                            previous: $0,
+                            incoming: first,
+                            languageID: languageID
+                        )
+                        && !self.shouldReplaceLast(previous: $0, incoming: first)
+                    )
             }
             guard printed else { break }
             if let last = already.last,
@@ -801,6 +917,85 @@ extension TranslationClauseSegmenter {
         let needle = self.stripped(prefixN)
         let haystack = self.stripped(trimmed)
         return needle.count >= 6 && haystack.contains(needle)
+    }
+
+    /// Prefer a comma or connective so a follow-along line does not end on "the".
+    fileprivate static func followAlongCut(_ text: String, languageID: String) -> (head: String, rest: String) {
+        let hard = self.lineCut(text, languageID: languageID)
+        guard !hard.head.isEmpty else { return hard }
+        if let breath = self.breathHead(in: hard.head, languageID: languageID) {
+            let leftoverHead = String(hard.head.dropFirst(breath.count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let rest = [leftoverHead, hard.rest].filter { !$0.isEmpty }.joined(separator: " ")
+            return (breath, rest)
+        }
+        return self.retractTrailingThin(head: hard.head, rest: hard.rest, languageID: languageID)
+    }
+
+    fileprivate static func breathHead(in head: String, languageID: String) -> String? {
+        if self.isCompactScript(languageID) {
+            let peeled = self.peelCompletedInternalClauses(head, languageID: languageID)
+            if let first = peeled.completed.first, !peeled.tail.isEmpty, !self.isTooThinToCommit(first, languageID: languageID) {
+                return first
+            }
+            return nil
+        }
+        if let comma = self.lastPunctuationBreath(in: head) {
+            return comma
+        }
+        return self.lastConjunctionBreath(in: head)
+    }
+
+    fileprivate static func lastPunctuationBreath(in head: String) -> String? {
+        let marks = CharacterSet(charactersIn: ",;:")
+        guard let index = head.lastIndex(where: { character in
+            character.unicodeScalars.contains { marks.contains($0) }
+        }) else {
+            return nil
+        }
+        let left = String(head[...index]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard self.tokens(left).count >= LiveTranslationTiming.minPauseFinalizeWords else {
+            return nil
+        }
+        return left
+    }
+
+    fileprivate static func lastConjunctionBreath(in head: String) -> String? {
+        let words = self.tokens(head)
+        guard words.count >= LiveTranslationTiming.minPauseFinalizeWords + 1 else { return nil }
+        let connectives: Set<String> = ["and", "but", "so", "then", "or"]
+        for index in stride(from: words.count - 1, through: 1, by: -1) {
+            guard connectives.contains(self.tokenKey(words[index])) else { continue }
+            var cut = index
+            while cut > 1, connectives.contains(self.tokenKey(words[cut - 1])) {
+                cut -= 1
+            }
+            guard cut >= LiveTranslationTiming.minPauseFinalizeWords else { continue }
+            let left = words.prefix(cut).joined(separator: " ")
+            guard !self.isTooThinToCommit(left, languageID: "en") else { continue }
+            return left
+        }
+        return nil
+    }
+
+    fileprivate static func retractTrailingThin(
+        head: String,
+        rest: String,
+        languageID: String
+    ) -> (head: String, rest: String) {
+        if self.isCompactScript(languageID) { return (head, rest) }
+        var words = self.tokens(head)
+        var pulled: [String] = []
+        let floor = max(LiveTranslationTiming.minPauseFinalizeWords, LiveTranslationTiming.followAlongWords / 2)
+        while words.count > floor, let last = words.last {
+            guard self.isThinEnglishStarter(last) || self.isThinEnglishAuxiliary(last) else { break }
+            pulled.insert(last, at: 0)
+            words.removeLast()
+        }
+        guard !pulled.isEmpty else { return (head, rest) }
+        let nextHead = words.joined(separator: " ")
+        let nextRest = (pulled + self.tokens(rest)).joined(separator: " ")
+        return (nextHead, nextRest)
     }
 
     fileprivate static func lineCut(_ text: String, languageID: String) -> (head: String, rest: String) {
@@ -925,6 +1120,43 @@ extension TranslationClauseSegmenter {
         return nil
     }
 
+    fileprivate static let thinEnglishStarters: Set<String> = [
+        "a", "an", "and", "as", "at", "because", "but", "for", "from", "he",
+        "here", "i", "if", "in", "it", "its", "just", "like", "my", "now",
+        "of", "on", "or", "our", "she", "so", "the", "then", "there", "they",
+        "this", "that", "to", "uh", "um", "we", "well", "when", "with", "your",
+    ]
+
+    fileprivate static let thinEnglishAuxiliaries: Set<String> = [
+        "am", "are", "be", "been", "being", "can", "could", "did", "do", "does",
+        "had", "has", "have", "is", "shall", "should", "was", "were", "will", "would",
+    ]
+
+    fileprivate static func isThinEnglishAuxiliary(_ word: String) -> Bool {
+        Self.thinEnglishAuxiliaries.contains(self.tokenKey(word))
+    }
+
+    fileprivate static func absorbThinCompleted(_ split: Split, languageID: String) -> Split {
+        var completed = split.completed
+        var prefix: [String] = []
+        while let first = completed.first, self.isTooThinToCommit(first, languageID: languageID) {
+            prefix.append(completed.removeFirst())
+        }
+        guard !prefix.isEmpty else { return split }
+        let glued = self.joinTranslatedLines(prefix, languageID: languageID)
+        if let next = completed.first {
+            completed[0] = self.joinTranslatedLines([glued, next], languageID: languageID)
+            return Split(completed: completed, tail: split.tail)
+        }
+        if split.tail.isEmpty {
+            return Split(completed: [], tail: glued)
+        }
+        return Split(
+            completed: [],
+            tail: self.joinTranslatedLines([glued, split.tail], languageID: languageID)
+        )
+    }
+
     fileprivate static let tokenTrimSet = CharacterSet.punctuationCharacters
         .union(.whitespacesAndNewlines)
 
@@ -1014,12 +1246,16 @@ struct LectureCaptionLog: Equatable {
     }
 
     @discardableResult
-    mutating func commit(source: String, translated: String) -> (id: UInt64, overflow: [LectureCaptionEntry])? {
+    mutating func commit(
+        source: String,
+        translated: String,
+        mayReviseLast: Bool = true
+    ) -> (id: UInt64, overflow: [LectureCaptionEntry])? {
         let cleanedSource = source.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanedTranslation = translated.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanedSource.isEmpty, !cleanedTranslation.isEmpty else { return nil }
 
-        if let lastSource = self.entries.last?.source {
+        if mayReviseLast, let lastSource = self.entries.last?.source {
             if lastSource == cleanedSource { return nil }
             if TranslationClauseSegmenter.shouldIgnoreAsStalePrefix(previous: lastSource, incoming: cleanedSource) {
                 return nil
@@ -1087,6 +1323,12 @@ struct LectureCaptionLog: Equatable {
     }
 
     @discardableResult
+    mutating func popLast() -> LectureCaptionEntry? {
+        guard !self.entries.isEmpty else { return nil }
+        return self.entries.removeLast()
+    }
+
+    @discardableResult
     mutating func trimIfNeeded() -> [LectureCaptionEntry] {
         guard self.entries.count > LiveTranslationTiming.maxCommittedLines else { return [] }
         let overflowCount = self.entries.count - LiveTranslationTiming.maxCommittedLines
@@ -1097,8 +1339,8 @@ struct LectureCaptionLog: Equatable {
 }
 
 enum LiveTranslationConfirm {
-    /// Korean and Thai preview ticks are too weak to print. Wait for the
-    /// fuller 30-second decode, then commit leftover speech only.
+    /// Korean and Thai preview ticks are weak. Pause and Stop still take the
+    /// fuller 30-second decode for leftover speech. Mid-talk prints from the live stitch.
     static func requiresConfirmBeforePrint(languageID: String) -> Bool {
         switch TranslationClauseSegmenter.languageCode(from: languageID) {
         case "ko", "th":
@@ -1111,10 +1353,9 @@ enum LiveTranslationConfirm {
     static func shouldReDecode(
         isFinal: Bool,
         isPause: Bool = false,
-        languageID: String = ""
+        languageID _: String = ""
     ) -> Bool {
-        if isFinal || isPause { return true }
-        return self.requiresConfirmBeforePrint(languageID: languageID)
+        isFinal || isPause
     }
 
     /// First print: keep a short greeting ("OK", "네", "ขอบคุณ") when confirm heard it.

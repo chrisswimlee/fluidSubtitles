@@ -94,8 +94,9 @@ enum TranslationLanguageCatalog {
         self.language(id: spokenID, in: available) ?? Self.english
     }
 
+    /// First run captions in the spoken language. A second language is a choice, not a default.
     static func defaultTarget(forSource source: TranslationLanguage) -> TranslationLanguage {
-        source.id == Self.english.id ? Self.korean : Self.english
+        source
     }
 
     static func targets(excluding _: TranslationLanguage) -> [TranslationLanguage] {

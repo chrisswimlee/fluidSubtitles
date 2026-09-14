@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 
 /// Splits a bilingual caption into visual lines and interleaves them:
-/// Latin with Hangul or Thai — instead of a full spoken block then a full translation.
+/// spoken first, translation below — so both rooms can follow.
 ///
 /// Wrap is measured on the finished sentence so line breaks do not jump while
 /// the typewriter is still printing. Later wrap-pairs stay hidden until the
@@ -36,21 +36,14 @@ enum TheaterBilingualWrap {
             return spokenLines.map { Row(text: $0, isSpoken: true) }
         }
 
-        let englishFirst = (self.looksHangul(spoken) || self.looksThai(spoken))
-            && self.looksLatin(translated)
         let count = max(spokenLines.count, translatedLines.count)
         var rows: [Row] = []
         rows.reserveCapacity(count * 2)
         for index in 0..<count {
             let spokenLine = index < spokenLines.count ? spokenLines[index] : ""
             let translatedLine = index < translatedLines.count ? translatedLines[index] : ""
-            if englishFirst {
-                self.append(translatedLine, isSpoken: false, onto: &rows)
-                self.append(spokenLine, isSpoken: true, onto: &rows)
-            } else {
-                self.append(spokenLine, isSpoken: true, onto: &rows)
-                self.append(translatedLine, isSpoken: false, onto: &rows)
-            }
+            self.append(spokenLine, isSpoken: true, onto: &rows)
+            self.append(translatedLine, isSpoken: false, onto: &rows)
         }
         return rows
     }
@@ -224,26 +217,5 @@ enum TheaterBilingualWrap {
             return (Row(text: progress.partial, isSpoken: row.isSpoken), false)
         }
         return (nil, false)
-    }
-
-    private static func looksLatin(_ text: String) -> Bool {
-        text.unicodeScalars.contains { scalar in
-            CharacterSet.letters.contains(scalar) && scalar.isASCII
-        }
-    }
-
-    private static func looksHangul(_ text: String) -> Bool {
-        text.unicodeScalars.contains { scalar in
-            let value = scalar.value
-            return (0xAC00...0xD7A3).contains(value)
-                || (0x1100...0x11FF).contains(value)
-                || (0x3130...0x318F).contains(value)
-        }
-    }
-
-    private static func looksThai(_ text: String) -> Bool {
-        text.unicodeScalars.contains { scalar in
-            (0x0E00...0x0E7F).contains(scalar.value)
-        }
     }
 }

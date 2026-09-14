@@ -110,6 +110,7 @@ extension SettingsStore {
             theaterHideChrome: self.theaterHideChrome,
             theaterHighContrast: self.theaterHighContrast,
             theaterAppearance: self.theaterAppearance,
+            theaterPresentationStyle: self.theaterPresentationStyle,
             theaterHideFromScreenShare: self.theaterHideFromScreenShare,
             theaterAlsoHearOtherLanguages: self.theaterAlsoHearOtherLanguages
         )
@@ -298,6 +299,9 @@ extension SettingsStore {
         }
         if let theaterAppearance = payload.theaterAppearance {
             self.theaterAppearance = theaterAppearance
+        }
+        if let theaterPresentationStyle = payload.theaterPresentationStyle {
+            self.theaterPresentationStyle = theaterPresentationStyle
         }
         if let theaterHideFromScreenShare = payload.theaterHideFromScreenShare {
             self.theaterHideFromScreenShare = theaterHideFromScreenShare

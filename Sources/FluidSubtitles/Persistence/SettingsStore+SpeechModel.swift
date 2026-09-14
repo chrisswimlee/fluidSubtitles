@@ -76,16 +76,17 @@ extension SettingsStore {
         var languageSupport: String {
             switch self {
             case .parakeetTDT:
-                return "25 Languages"
+                return "English (not Korean or Thai)"
             case .parakeetTDTv2: return "English Only (Higher Accuracy)"
             case .parakeetRealtime: return "English Only (Live Streaming)"
-            case .qwen3Asr: return "30 Languages"
-            case .cohereTranscribeSixBit: return "14 Languages (Select Manually)"
-            case .nemotronOffline, .nemotronStreaming, .nemotronStreaming320: return "Around 40 Languages"
-            case .appleSpeech: return "System Languages"
-            case .appleSpeechAnalyzer: return "EN, ES, FR, DE, IT, JA, KO, PT, ZH"
+            case .qwen3Asr: return "Korean, English, Thai"
+            case .cohereTranscribeSixBit: return "English, Korean"
+            case .nemotronOffline, .nemotronStreaming, .nemotronStreaming320:
+                return "Korean, English, Thai"
+            case .appleSpeech, .appleSpeechAnalyzer:
+                return "Korean, English, Thai"
             case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLargeTurbo, .whisperLarge:
-                return "99 Languages"
+                return "Korean, English, Thai"
             }
         }
 
@@ -243,9 +244,15 @@ extension SettingsStore {
             }
         }
 
-        /// Default model for the current architecture
+        /// First launch: Apple Speech Analyzer on macOS 26, else Apple Speech, else architecture fallback.
         static var defaultModel: SpeechModel {
-            CPUArchitecture.isAppleSilicon ? .parakeetTDT : .whisperBase
+            if Self.availableModels.contains(.appleSpeechAnalyzer) {
+                return .appleSpeechAnalyzer
+            }
+            if Self.availableModels.contains(.appleSpeech) {
+                return .appleSpeech
+            }
+            return CPUArchitecture.isAppleSilicon ? .parakeetTDT : .whisperBase
         }
 
         // MARK: - UI Card Metadata
@@ -276,28 +283,25 @@ extension SettingsStore {
         var cardDescription: String {
             switch self {
             case .parakeetTDT:
-                return "Fast multilingual transcription. Supports Bulgarian, Croatian, Czech, Danish, " +
-                    "Dutch, English, Estonian, Finnish, French, German, Greek, Hungarian, Italian, " +
-                    "Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Russian, Slovak, " +
-                    "Slovenian, Spanish, Swedish, and Ukrainian."
+                return "Fast English transcription. Korean and Thai Listen need Apple Speech, Cohere, or Whisper."
             case .parakeetTDTv2:
-                return "Optimized for English accuracy and fastest transcription."
+                return "English-only. Fastest Parakeet for English Theater and dictation."
             case .parakeetRealtime:
-                return "English-only streaming local dictation with low-latency partial text and end-of-utterance detection."
+                return "English-only streaming dictation with live partial text. Korean and Thai Listen need another Voice Engine."
             case .qwen3Asr:
-                return "Qwen3 multilingual ASR via FluidAudio. Higher quality, heavier memory footprint."
+                return "Local FluidAudio model for Korean, English, or Thai. Heavier memory footprint."
             case .cohereTranscribeSixBit:
-                return "High-accuracy multilingual transcription. Select the language manually before dictation for best results."
+                return "High-accuracy English and Korean. Pick the language before Listen."
             case .nemotronOffline:
-                return "Slower but more accurate NVIDIA Nemotron 3.5 transcription. Supports 40 language-locales with auto or manual language selection."
+                return "Slower, more accurate Nemotron for Korean, English, or Thai. Thai is experimental."
             case .nemotronStreaming:
-                return "NVIDIA Nemotron 3.5 streaming-capable transcription. Supports 40 language-locales with auto or manual language selection."
+                return "Streaming Nemotron for Korean, English, or Thai. Thai is experimental."
             case .nemotronStreaming320:
-                return "NVIDIA Nemotron 3.5 streaming-capable transcription. Supports 40 language-locales with auto or manual language selection."
+                return "Streaming Nemotron for Korean, English, or Thai. Thai is experimental."
             case .appleSpeech:
-                return "Built-in macOS speech recognition. No model download required."
+                return "Built-in macOS speech. No download. Works for Korean, English, and Thai."
             case .appleSpeechAnalyzer:
-                return "Advanced and modern on-device recognition for newer macOS devices."
+                return "On-device Speech Analyzer for Korean, English, and Thai. Requires a newer macOS."
             case .whisperTiny:
                 return "Minimal resource usage. Best for older Macs or battery life."
             case .whisperBase:
@@ -444,13 +448,11 @@ extension SettingsStore {
         /// Optional badge text for the card (e.g., "Recommended")
         var badgeText: String? {
             switch self {
-            case .parakeetTDT: return "Recommended"
-            case .parakeetTDTv2: return "Recommended"
-            case .parakeetRealtime: return "Beta"
+            case .appleSpeechAnalyzer: return "Recommended"
+            case .parakeetRealtime: return "Faster English"
             case .qwen3Asr: return "Beta"
             case .cohereTranscribeSixBit: return "New"
             case .nemotronOffline, .nemotronStreaming, .nemotronStreaming320: return "New + Beta"
-            case .appleSpeechAnalyzer: return "New"
             default: return nil
             }
         }
@@ -761,37 +763,20 @@ extension SettingsStore {
 }
 
 extension SettingsStore.SpeechModel {
-    var supportedLanguageCodes: String? {
+        var supportedLanguageCodes: String? {
         switch self {
-        case .parakeetTDT:
-            return "BG, HR, CS, DA, NL, EN, ET, FI, FR, DE, EL, HU, IT, LV, LT, MT, PL, PT, RO, SK, SL, ES, SV, RU, UK"
-        case .parakeetRealtime:
+        case .parakeetTDT, .parakeetTDTv2, .parakeetRealtime:
             return "EN"
         case .cohereTranscribeSixBit:
-            return "AR, DE, EL, EN, ES, FR, IT, JA, KO, NL, PL, PT, VI, ZH"
+            return "EN, KO"
         case .nemotronOffline, .nemotronStreaming, .nemotronStreaming320:
-            return "40 language-locales"
-        case .appleSpeechAnalyzer:
-            return "EN, ES, FR, DE, IT, JA, KO, PT, ZH"
-        default:
-            return nil
-        }
-    }
-
-    var supportedLanguageNames: String? {
-        switch self {
-        case .parakeetTDT:
-            return """
-            Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Slovak, Slovenian, Spanish, Swedish, Russian, and Ukrainian
-            """
-        case .cohereTranscribeSixBit:
-            return "Arabic, German, Greek, English, Spanish, French, Italian, Japanese, Korean, Dutch, Polish, Portuguese, Vietnamese, and Mandarin Chinese"
-        case .nemotronOffline, .nemotronStreaming, .nemotronStreaming320:
-            return "Spanish, Italian, Portuguese, Hindi, Korean, English, German, French, Russian, Turkish, Vietnamese, Dutch, Japanese, Arabic, " +
-                "Ukrainian; Polish, Norwegian Bokmal, Finnish, Mandarin, Czech, Bulgarian, Slovak, Swedish, Croatian, Romanian, Estonian, " +
-                "Danish, and Hungarian are Alpha; Greek, Hebrew, Lithuanian, Slovenian, Latvian, Maltese, Thai, and Norwegian Nynorsk are Experimental."
-        default:
-            return nil
+            return "EN, KO, TH"
+        case .appleSpeech, .appleSpeechAnalyzer:
+            return "EN, KO, TH"
+        case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLargeTurbo, .whisperLarge:
+            return "EN, KO, TH"
+        case .qwen3Asr:
+            return "EN, KO, TH"
         }
     }
 }

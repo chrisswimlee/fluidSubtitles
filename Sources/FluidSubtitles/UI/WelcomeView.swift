@@ -69,8 +69,8 @@ struct WelcomeView: View {
                                 step: 2,
                                 title: self.asr.micStatus == .authorized ? "Microphone allowed" : "Allow the microphone",
                                 description: self.asr.micStatus == .authorized
-                                    ? "Theater can hear you."
-                                    : "Theater needs the microphone to caption speech.",
+                                    ? TheaterReadiness.gettingStartedMicrophoneReady
+                                    : TheaterReadiness.gettingStartedMicrophone,
                                 status: self.asr.micStatus == .authorized ? .completed : .pending,
                                 action: {
                                     if self.asr.micStatus == .notDetermined {
@@ -83,9 +83,25 @@ struct WelcomeView: View {
                                 showActionButton: self.asr.micStatus != .authorized
                             )
 
+                            SetupStepView(
+                                step: 3,
+                                title: ScreenRecordingAccess.isGranted
+                                    ? "Screen Recording allowed"
+                                    : "Allow Screen Recording for Watch",
+                                description: ScreenRecordingAccess.isGranted
+                                    ? TheaterReadiness.gettingStartedScreenRecordingReady
+                                    : TheaterReadiness.gettingStartedScreenRecording,
+                                status: ScreenRecordingAccess.isGranted ? .completed : .pending,
+                                action: {
+                                    _ = ScreenRecordingAccess.request()
+                                },
+                                actionButtonTitle: "Allow",
+                                showActionButton: !ScreenRecordingAccess.isGranted
+                            )
+
                             if self.needsTranslationPack {
                                 SetupStepView(
-                                    step: 3,
+                                    step: 4,
                                     title: self.isLanguagePackReady ? "Language pack ready" : "Download language pack",
                                     description: self.languagePackAvailability.isEmpty
                                         ? "Apple Translation downloads the Korean, English, or Thai pack once."
@@ -110,23 +126,31 @@ struct WelcomeView: View {
                             }
 
                             SetupStepView(
-                                step: self.needsTranslationPack ? 4 : 3,
-                                title: self.settings.theaterListenUsed ? "Theater is ready" : "Open Theater and Listen",
-                                description: self.settings.theaterListenUsed
-                                    ? "A caption appeared. Open Theater anytime from the sidebar."
-                                    : "Open Theater, then press Listen until a caption appears.",
-                                status: self.settings.theaterListenUsed ? .completed : .pending,
+                                step: self.needsTranslationPack ? 5 : 4,
+                                title: TheaterAvailability.isSupported
+                                    ? (self.settings.theaterListenUsed
+                                        ? TheaterReadiness.gettingStartedReady
+                                        : TheaterReadiness.gettingStartedOpen)
+                                    : "Theater needs macOS 26",
+                                description: TheaterAvailability.isSupported
+                                    ? (self.settings.theaterListenUsed
+                                        ? TheaterReadiness.gettingStartedReadyDetail
+                                        : TheaterReadiness.gettingStartedOpenDetail)
+                                    : TheaterAvailability.unsupportedCopy,
+                                status: TheaterAvailability.isSupported && self.settings.theaterListenUsed
+                                    ? .completed
+                                    : .pending,
                                 action: {
                                     self.selectedSidebarItem = .liveTranslation
                                     PresenterCaptionController.shared.setVisible(true)
                                 },
                                 actionButtonTitle: "Open Theater",
-                                showActionButton: !self.settings.theaterListenUsed
+                                showActionButton: TheaterAvailability.isSupported && !self.settings.theaterListenUsed
                             )
                             .accessibilityIdentifier("getting-started-theater")
 
                             SetupStepView(
-                                step: self.needsTranslationPack ? 5 : 4,
+                                step: self.needsTranslationPack ? 6 : 5,
                                 title: self.accessibilityEnabled
                                     ? "Type into app is ready"
                                     : "Optional: type into another app",

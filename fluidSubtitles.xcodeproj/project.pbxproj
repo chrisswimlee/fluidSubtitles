@@ -19,7 +19,10 @@
 		FTSB00000000000000000002 /* LiveTranslationSubscriberTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FTSB00000000000000000001 /* LiveTranslationSubscriberTests.swift */; };
 		FTLT00000000000000000002 /* LiveTranslationLatencyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FTLT00000000000000000001 /* LiveTranslationLatencyTests.swift */; };
 		FTQT00000000000000000002 /* LiveTranslationQualityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FTQT00000000000000000001 /* LiveTranslationQualityTests.swift */; };
+		FTWO00000000000000000002 /* WatchOverlayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FTWO00000000000000000001 /* WatchOverlayTests.swift */; };
 		FTAR00000000000000000002 /* LiveTranslationArchiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FTAR00000000000000000001 /* LiveTranslationArchiveTests.swift */; };
+		FTIME0000000000000000002 /* InsertIMEGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FTIME0000000000000000001 /* InsertIMEGuardTests.swift */; };
+		FTAS00000000000000000002 /* AppleSpeechLocaleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FTAS00000000000000000001 /* AppleSpeechLocaleTests.swift */; };
 		C0DE89000000000000000002 /* SettingsNavigationStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE89000000000000000001 /* SettingsNavigationStateTests.swift */; };
 		7CDB0A2D2F3C4D5600FB7CAD /* DictationE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CDB0A292F3C4D5600FB7CAD /* DictationE2ETests.swift */; };
 		B52000000000000000000002 /* PrivateAIDictationTokenBudgetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52000000000000000000001 /* PrivateAIDictationTokenBudgetTests.swift */; };
@@ -44,7 +47,6 @@
 		7CDB0A2F2F3C4D5600FB7CAD /* dictation_fixture.wav in Resources */ = {isa = PBXBuildFile; fileRef = 7CDB0A2B2F3C4D5600FB7CAD /* dictation_fixture.wav */; };
 		7CDB0A302F3C4D5600FB7CAD /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7CDB0A2C2F3C4D5600FB7CAD /* XCTest.framework */; };
 		7CE006BD2E80EBE600DDCCD6 /* AppUpdater in Frameworks */ = {isa = PBXBuildFile; productRef = 7CE006BC2E80EBE600DDCCD6 /* AppUpdater */; };
-		86CAA2D4EF18433096185602 /* LLMClientRequestBodyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 343B29013F4441D6A797D12D /* LLMClientRequestBodyTests.swift */; };
 		UIT10000000000000000008 /* TheaterSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = UIT10000000000000000001 /* TheaterSmokeTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -105,7 +107,10 @@
 		FTSB00000000000000000001 /* LiveTranslationSubscriberTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranslationSubscriberTests.swift; sourceTree = "<group>"; };
 		FTLT00000000000000000001 /* LiveTranslationLatencyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranslationLatencyTests.swift; sourceTree = "<group>"; };
 		FTQT00000000000000000001 /* LiveTranslationQualityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranslationQualityTests.swift; sourceTree = "<group>"; };
+		FTWO00000000000000000001 /* WatchOverlayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchOverlayTests.swift; sourceTree = "<group>"; };
 		FTAR00000000000000000001 /* LiveTranslationArchiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTranslationArchiveTests.swift; sourceTree = "<group>"; };
+		FTIME0000000000000000001 /* InsertIMEGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsertIMEGuardTests.swift; sourceTree = "<group>"; };
+		FTAS00000000000000000001 /* AppleSpeechLocaleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSpeechLocaleTests.swift; sourceTree = "<group>"; };
 		C0DE89000000000000000001 /* SettingsNavigationStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsNavigationStateTests.swift; sourceTree = "<group>"; };
 		7CDB0A202F3C4D5600FB7CAD /* FluidSubtitlesIntegrationTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FluidSubtitlesIntegrationTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		UIT10000000000000000001 /* TheaterSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TheaterSmokeTests.swift; sourceTree = "<group>"; };
@@ -211,7 +216,10 @@
 				FTSB00000000000000000001 /* LiveTranslationSubscriberTests.swift */,
 				FTLT00000000000000000001 /* LiveTranslationLatencyTests.swift */,
 				FTQT00000000000000000001 /* LiveTranslationQualityTests.swift */,
+				FTWO00000000000000000001 /* WatchOverlayTests.swift */,
 				FTAR00000000000000000001 /* LiveTranslationArchiveTests.swift */,
+				FTIME0000000000000000001 /* InsertIMEGuardTests.swift */,
+				FTAS00000000000000000001 /* AppleSpeechLocaleTests.swift */,
 				C0DE89000000000000000001 /* SettingsNavigationStateTests.swift */,
 				343B29013F4441D6A797D12D /* LLMClientRequestBodyTests.swift */,
 				980330F3CE464336ADCE3E23 /* TemperatureSupportTests.swift */,
@@ -433,7 +441,10 @@
 				FTSB00000000000000000002 /* LiveTranslationSubscriberTests.swift in Sources */,
 				FTLT00000000000000000002 /* LiveTranslationLatencyTests.swift in Sources */,
 				FTQT00000000000000000002 /* LiveTranslationQualityTests.swift in Sources */,
+				FTWO00000000000000000002 /* WatchOverlayTests.swift in Sources */,
 				FTAR00000000000000000002 /* LiveTranslationArchiveTests.swift in Sources */,
+				FTIME0000000000000000002 /* InsertIMEGuardTests.swift in Sources */,
+				FTAS00000000000000000002 /* AppleSpeechLocaleTests.swift in Sources */,
 				C0DE89000000000000000002 /* SettingsNavigationStateTests.swift in Sources */,
 				86CAA2D4EF18433096185602 /* LLMClientRequestBodyTests.swift in Sources */,
 				272BFB5CB271489892CAE50C /* TemperatureSupportTests.swift in Sources */,

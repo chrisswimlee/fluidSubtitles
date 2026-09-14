@@ -164,7 +164,12 @@ enum VoiceEngineLanguageCatalog {
     }
 
     static func applyPreferredRoute(forLanguageID languageID: String, to settings: SettingsStore = .shared) {
-        _ = Self.ensureCompatibleEngine(forLanguageID: languageID, settings: settings)
+        guard let language = Self.language(id: languageID) else { return }
+        let routes = Self.routes(for: language)
+        let preferred = Self.preferredLocalRoute(from: routes) ?? routes.first
+        if let preferred {
+            Self.apply(preferred, to: settings)
+        }
     }
 
     /// Recommended on the first preferred model for this language.
@@ -172,6 +177,9 @@ enum VoiceEngineLanguageCatalog {
     static func badgeText(for route: VoiceEngineLanguageRoute) -> String? {
         if Self.isFirstPreferredRoute(route) {
             return "Recommended"
+        }
+        if route.language.id == "en", route.model == .parakeetRealtime {
+            return "Faster English"
         }
         if route.language.id == "th", Self.isNemotron(route.model) {
             return "Experimental"
@@ -185,28 +193,15 @@ enum VoiceEngineLanguageCatalog {
         Self.routes(forLanguageID: languageID).contains { $0.model == model }
     }
 
-    /// Keep a compatible engine, or switch to the best installed one for this
-    /// language. English-only Parakeet models are never kept for Korean or Thai.
-    /// Thai Nemotron is treated as a weak match and yields to Apple Speech / Whisper.
+    /// Returns the selected engine's route when it can hear this language.
+    /// Does not change the Voice Engine the user picked.
     @discardableResult
     static func ensureCompatibleEngine(
         forLanguageID languageID: String,
         settings: SettingsStore = .shared
     ) -> VoiceEngineLanguageRoute? {
         guard let language = Self.language(id: languageID) else { return nil }
-        let routes = Self.routes(for: language)
-        let preferred = Self.preferredLocalRoute(from: routes) ?? routes.first
-        if let current = routes.first(where: { $0.model == settings.selectedSpeechModel }),
-           current.model.isInstalled,
-           !Self.isWeakMatch(current, preferred: preferred)
-        {
-            Self.apply(current, to: settings)
-            return current
-        }
-        if let preferred {
-            Self.apply(preferred, to: settings)
-        }
-        return preferred
+        return Self.routes(for: language).first { $0.model == settings.selectedSpeechModel }
     }
 
     private static func preferredLocalRoute(from routes: [VoiceEngineLanguageRoute]) -> VoiceEngineLanguageRoute? {
@@ -225,17 +220,17 @@ enum VoiceEngineLanguageCatalog {
         return nil
     }
 
-    /// en: Parakeet Flash, then TDT v2, then Apple Speech Analyzer, then the rest.
+    /// en: Apple Speech Analyzer, then Apple Speech, then Flash (faster English), then the rest.
     /// ko: Apple Speech Analyzer, Apple Speech, Cohere, Whisper, Nemotron. Never Parakeet.
     /// th: Apple Speech Analyzer, Apple Speech, Whisper, Nemotron last. Never Parakeet or Cohere.
     private static func preferredModelOrder(forLanguageID languageID: String) -> [SettingsStore.SpeechModel] {
         switch languageID {
         case "en":
             return [
-                .parakeetRealtime,
-                .parakeetTDTv2,
                 .appleSpeechAnalyzer,
                 .appleSpeech,
+                .parakeetRealtime,
+                .parakeetTDTv2,
                 .whisperSmall,
                 .whisperLargeTurbo,
                 .parakeetTDT,
@@ -380,8 +375,68 @@ enum VoiceEngineLanguageCatalog {
         self.whisperLanguageCodeMap[languageID]
     }
 
-    private static func appleSpeechAnalyzerLocaleIdentifier(for languageID: String) -> String? {
-        self.appleSpeechAnalyzerLocaleMap[languageID]
+    static func appleSpeechAnalyzerLocaleIdentifier(for languageID: String) -> String? {
+        self.appleSpeechAnalyzerLocaleMap[self.languagePrefix(languageID)]
+    }
+
+    static func preferredAppleSpeechAnalyzerLocale(forLanguageID languageID: String) -> String {
+        self.appleSpeechAnalyzerLocaleIdentifier(for: languageID)
+            ?? self.appleSpeechAnalyzerLocaleMap["en"]
+            ?? "en-US"
+    }
+
+    /// SpeechAnalyzer compares BCP-47 IDs exactly. `en` is not `en-US`.
+    /// Pick a supported locale for I speak (Korean, English, or Thai).
+    static func resolveAppleSpeechAnalyzerLocale(
+        preferredIdentifier: String,
+        languageID: String,
+        supportedIdentifiers: [String]
+    ) -> String? {
+        let supported = supportedIdentifiers
+            .map { self.normalizeLocaleID($0) }
+            .filter { !$0.isEmpty }
+        guard !supported.isEmpty else { return nil }
+
+        let language = TranslationLanguageCatalog.language(id: languageID)?.id
+            ?? TranslationLanguageCatalog.language(id: preferredIdentifier)?.id
+            ?? "en"
+        let mapped = self.preferredAppleSpeechAnalyzerLocale(forLanguageID: language)
+        let preferred = self.normalizeLocaleID(preferredIdentifier)
+        var candidates = [mapped, language]
+        if self.languagePrefix(preferred) == language {
+            candidates.insert(preferred, at: 0)
+        }
+
+        for candidate in candidates {
+            if let match = self.bestAppleSpeechAnalyzerMatch(candidate, in: supported) {
+                return match
+            }
+        }
+        return nil
+    }
+
+    static func normalizeLocaleID(_ identifier: String) -> String {
+        identifier
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "_", with: "-")
+    }
+
+    static func languagePrefix(_ identifier: String) -> String {
+        let normalized = self.normalizeLocaleID(identifier).lowercased()
+        return normalized.split(separator: "-").first.map(String.init) ?? normalized
+    }
+
+    private static func bestAppleSpeechAnalyzerMatch(_ candidate: String, in supported: [String]) -> String? {
+        let needle = self.normalizeLocaleID(candidate)
+        if let exact = supported.first(where: { $0.caseInsensitiveCompare(needle) == .orderedSame }) {
+            return exact
+        }
+        let prefix = self.languagePrefix(needle)
+        let mapped = self.normalizeLocaleID(self.preferredAppleSpeechAnalyzerLocale(forLanguageID: prefix))
+        if let preferred = supported.first(where: { $0.caseInsensitiveCompare(mapped) == .orderedSame }) {
+            return preferred
+        }
+        return supported.first { self.languagePrefix($0) == prefix }
     }
 
     private static func appleSpeechLegacyLocaleIdentifier(for languageID: String) -> String? {
@@ -471,15 +526,9 @@ enum VoiceEngineLanguageCatalog {
     ]
 
     private static let appleSpeechAnalyzerLocaleMap: [String: String] = [
-        "de": "de-DE",
         "en": "en-US",
-        "es": "es-US",
-        "fr": "fr-FR",
-        "it": "it-IT",
-        "ja": "ja-JP",
         "ko": "ko-KR",
-        "pt": "pt-BR",
-        "zh": "zh-CN",
+        "th": "th-TH",
     ]
 
     private static let appleSpeechLegacyLocalePreferences: [String: [String]] = [

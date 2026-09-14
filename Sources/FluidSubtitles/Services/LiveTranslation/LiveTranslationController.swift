@@ -8,6 +8,7 @@ final class LiveTranslationController: ObservableObject {
     static let shared = LiveTranslationController()
 
     @Published private(set) var isSessionActive = false
+    @Published private(set) var isPaused = false
     @Published private(set) var listenKind: TranslationListenKind?
     @Published private(set) var packAvailability: TranslationPackAvailability = .unknown
     let subscriber = LiveTranslationSubscriber()
@@ -22,6 +23,7 @@ final class LiveTranslationController: ObservableObject {
     private var sessionToken: UInt64 = 0
     private var stopToken: UInt64 = 0
     private var cancellables: Set<AnyCancellable> = []
+    private var pendingThermalDowngrade = false
 
     var shouldHandleTranslationStop: Bool {
         self.isSessionActive || self.abandonCaptionSession
@@ -42,6 +44,7 @@ final class LiveTranslationController: ObservableObject {
         NotificationCenter.default.publisher(for: ProcessInfo.thermalStateDidChangeNotification)
             .sink { [weak self] _ in
                 self?.subscriber.refreshThermal()
+                self?.noteThermalStateChanged()
                 self?.refreshPresenter()
             }
             .store(in: &self.cancellables)
@@ -52,17 +55,18 @@ final class LiveTranslationController: ObservableObject {
         let target = self.subscriber.liveCaptionText
         let source = self.subscriber.liveSpokenText
         if SettingsStore.shared.translationShowSource, !source.isEmpty, target != source {
-            if target.isEmpty { return "\n\(source)" }
-            return "\(target)\n\(source)"
+            if target.isEmpty { return source }
+            return "\(source)\n\(target)"
         }
         return target.isEmpty ? source : target
     }
 
     func beginSession(kind: TranslationListenKind) {
-        SpokenLanguageResolver.pinWhisperToSpokenSource()
+        SpokenLanguageResolver.pinSpokenEngineToSource()
         self.sessionToken += 1
         self.abandonCaptionSession = false
         self.isSessionActive = true
+        self.isPaused = false
         self.listenKind = kind
         PresenterCaptionController.shared.commitEdits()
         self.subscriber.beginListening()
@@ -86,6 +90,7 @@ final class LiveTranslationController: ObservableObject {
     func markSilenceHold() {
         guard self.isSessionActive else { return }
         self.subscriber.noteSilenceHold()
+        self.applyPendingThermalDowngradeIfNeeded()
     }
 
     func handleEndOfUtterance() {
@@ -116,6 +121,7 @@ final class LiveTranslationController: ObservableObject {
             self.abandonCaptionSession = false
             self.isSessionActive = false
             self.listenKind = nil
+            self.clearThermalEngineOverride()
             self.subscriber.endListening()
             self.persistBoard()
             return ""
@@ -127,13 +133,16 @@ final class LiveTranslationController: ObservableObject {
                 self.abandonCaptionSession = false
                 self.isSessionActive = false
                 self.listenKind = nil
+                self.clearThermalEngineOverride()
                 self.subscriber.endListening()
                 self.persistBoard()
             }
             return ""
         }
         self.isSessionActive = false
+        self.isPaused = false
         self.listenKind = nil
+        self.clearThermalEngineOverride()
         let text = kind == .insert
             ? self.subscriber.consumePendingInsertDocument()
             : translated
@@ -144,7 +153,9 @@ final class LiveTranslationController: ObservableObject {
     func cancelSession() {
         self.abandonCaptionSession = false
         self.isSessionActive = false
+        self.isPaused = false
         self.listenKind = nil
+        self.clearThermalEngineOverride()
         self.subscriber.endListening()
         self.refreshPresenter()
     }
@@ -159,6 +170,7 @@ final class LiveTranslationController: ObservableObject {
             self.abandonCaptionSession = true
             self.stopToken = self.sessionToken
             self.isSessionActive = false
+            self.isPaused = false
             self.stopListening()
         }
         self.subscriber.endListening()
@@ -229,12 +241,37 @@ final class LiveTranslationController: ObservableObject {
 
     func startCaptionListening() {
         PresenterCaptionController.shared.commitEdits()
-        PresenterCaptionController.shared.makeKeyForInteraction()
         Task {
             let ready = await self.ensureReadyToListen()
             guard ready else { return }
             self.onStartCaptionListening?()
         }
+    }
+
+    func pauseListening() {
+        guard self.isSessionActive, self.listenKind == .captions, !self.isPaused else { return }
+        self.isPaused = true
+        AppServices.shared.asr.setCapturePaused(true)
+        self.refreshPresenter()
+    }
+
+    func resumeListening() {
+        guard self.isSessionActive, self.isPaused else { return }
+        self.isPaused = false
+        AppServices.shared.asr.setCapturePaused(false)
+        self.refreshPresenter()
+    }
+
+    func handleWatchCaptureStopped(_ message: String) {
+        guard self.isSessionActive, self.listenKind == .captions else { return }
+        self.subscriber.reportFailure(WatchCaptureStop.userFacingStatus(message))
+        self.subscriber.endListening()
+        self.abandonCaptionSession = true
+        self.stopToken = self.sessionToken
+        self.isSessionActive = false
+        self.isPaused = false
+        self.stopListening()
+        self.refreshPresenter()
     }
 
     func startInsertListening() {
@@ -250,15 +287,25 @@ final class LiveTranslationController: ObservableObject {
             self.stopListening()
             return
         }
+        guard TheaterAvailability.isSupported else {
+            self.subscriber.reportFailure(TheaterAvailability.unsupportedCopy)
+            self.refreshPresenter()
+            return
+        }
         PresenterCaptionController.shared.setVisible(true)
         self.startCaptionListening()
     }
 
     func ensureReadyToListen() async -> Bool {
+        guard TheaterAvailability.isSupported else {
+            self.subscriber.reportFailure(TheaterAvailability.unsupportedCopy)
+            self.refreshPresenter()
+            return false
+        }
         let source = SpokenLanguageResolver.sourceLanguage()
         let target = SpokenLanguageResolver.targetLanguage()
         VoiceEngineLanguageCatalog.ensureCompatibleEngine(forLanguageID: source.id)
-        SpokenLanguageResolver.pinWhisperToSpokenSource()
+        SpokenLanguageResolver.pinSpokenEngineToSource()
         if !SpokenLanguageResolver.voiceEngineSupportsSource() {
             self.subscriber.reportFailure(
                 SpokenLanguageResolver.voiceEngineMismatchMessage()
@@ -275,7 +322,18 @@ final class LiveTranslationController: ObservableObject {
             self.refreshPresenter()
             return false
         }
-        if AppServices.shared.asr.micStatus == .denied
+        self.applyThermalDowngradeIfNeeded(immediate: true)
+        if SettingsStore.shared.theaterSessionMode == .watch {
+            if !ScreenRecordingAccess.isGranted {
+                _ = ScreenRecordingAccess.request()
+            }
+            let access = await ScreenRecordingAccess.resolve()
+            if access != .granted {
+                self.subscriber.reportFailure(ScreenRecordingAccess.message(for: access))
+                self.refreshPresenter()
+                return false
+            }
+        } else if AppServices.shared.asr.micStatus == .denied
             || AppServices.shared.asr.micStatus == .restricted
         {
             self.subscriber.reportFailure("Allow microphone access in System Settings.")
@@ -313,12 +371,58 @@ final class LiveTranslationController: ObservableObject {
         self.refreshPresenter()
     }
 
+    func reportListenStatus(_ message: String, kind: TheaterStatusKind) {
+        self.subscriber.reportStatus(message, kind: kind)
+        self.refreshPresenter()
+    }
+
     func retryFailedTranslation() {
         self.subscriber.retryFailedTranslation()
         self.refreshPresenter()
     }
 
+    func flushArchive() {
+        self.subscriber.flushArchive()
+    }
+
+    func noteThermalStateChanged() {
+        guard self.isSessionActive else { return }
+        guard LiveTranslationSilenceGate.shouldDowngradeEngine(ProcessInfo.processInfo.thermalState)
+        else { return }
+        self.pendingThermalDowngrade = true
+    }
+
+    func applyPendingThermalDowngradeIfNeeded() {
+        guard self.pendingThermalDowngrade else { return }
+        self.applyThermalDowngradeIfNeeded(immediate: true)
+    }
+
+    func applyThermalDowngradeIfNeeded(immediate: Bool) {
+        let asr = AppServices.shared.asr
+        let thermal = ProcessInfo.processInfo.thermalState
+        guard LiveTranslationThermalEngine.shouldApply(
+            current: SettingsStore.shared.selectedSpeechModel,
+            thermal: thermal,
+            alreadyOverridden: asr.hasThermalSpeechOverride
+        ) else { return }
+        if immediate == false, self.isSessionActive {
+            self.pendingThermalDowngrade = true
+            return
+        }
+        let fallback = LiveTranslationThermalEngine.fallbackModel()
+        asr.applyThermalSpeechOverride(fallback)
+        self.pendingThermalDowngrade = false
+        self.subscriber.reportStatus(LiveTranslationThermalEngine.statusCopy, kind: .info)
+        self.refreshPresenter()
+    }
+
+    func clearThermalEngineOverride() {
+        self.pendingThermalDowngrade = false
+        AppServices.shared.asr.clearThermalSpeechOverride()
+    }
+
     func persistBoard() {
+        self.subscriber.flushArchive()
         let snapshot = self.subscriber.snapshot()
         SettingsStore.shared.theaterBoardSnapshot = snapshot.entries.isEmpty ? nil : snapshot
         self.subscriber.persistLastLatency()
@@ -347,6 +451,41 @@ final class LiveTranslationController: ObservableObject {
         ClipboardService.copyToClipboard(text)
     }
 
+    var hasClearableBoard: Bool {
+        if self.subscriber.archivedLineCount > 0 { return true }
+        if self.subscriber.committedLines.contains(where: {
+            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }) {
+            return true
+        }
+        return PresenterCaptionController.shared.hasDeliverableText
+    }
+
+    var hasUndoableCaption: Bool {
+        self.subscriber.committedLines.contains {
+            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
+    func undoLastCaption() {
+        guard self.hasUndoableCaption else { return }
+        self.subscriber.removeLastCommittedLine()
+        self.persistBoard()
+        self.refreshPresenter()
+        self.objectWillChange.send()
+    }
+
+    func clearBoard() {
+        PresenterCaptionController.shared.cancelEditing()
+        self.subscriber.reset(clearArchive: true)
+        self.persistBoard()
+        if self.isSessionActive {
+            self.subscriber.beginListening()
+        }
+        self.refreshPresenter()
+        self.objectWillChange.send()
+    }
+
     func refreshPackAvailability(
         source: TranslationLanguage? = nil,
         target: TranslationLanguage? = nil
@@ -361,6 +500,12 @@ final class LiveTranslationController: ObservableObject {
     }
 
     func restoreTheaterIfNeeded() {
+        if !TheaterAvailability.isSupported {
+            SettingsStore.shared.theaterWindowEnabled = false
+            PresenterCaptionController.shared.orderOutIfClosed()
+            Task { await self.refreshPackAvailability() }
+            return
+        }
         TranslationSessionHostController.install()
         let wasEnabled = SettingsStore.shared.theaterWindowEnabled
         if wasEnabled {
@@ -386,8 +531,21 @@ final class LiveTranslationController: ObservableObject {
     private func refreshPresenter() {
         guard SettingsStore.shared.theaterWindowEnabled else { return }
         var status = self.subscriber.statusText
-        if status.isEmpty, let window = self.subscriber.lineWindowStatus {
+        var statusKind = self.subscriber.statusKind
+        if self.isPaused {
+            status = "Paused"
+            statusKind = .info
+        } else if status.isEmpty, self.isSessionActive,
+                  SettingsStore.shared.theaterSessionMode == .watch,
+                  self.subscriber.lastLatencySample.micMilliseconds == nil
+        {
+            status = TheaterReadiness.watchListeningCopy(
+                sourceTitle: WatchSourceSettings.displayTitle(SettingsStore.shared)
+            )
+            statusKind = .info
+        } else if status.isEmpty, let window = self.subscriber.lineWindowStatus {
             status = window
+            statusKind = .info
         }
         PresenterCaptionController.shared.update(
             source: self.subscriber.liveSpokenText,
@@ -398,7 +556,9 @@ final class LiveTranslationController: ObservableObject {
             pendingSources: self.subscriber.pendingSpokenLines,
             pairLabel: SpokenLanguageResolver.pairLabel(),
             status: status,
+            statusKind: statusKind,
             isListening: self.isSessionActive,
+            isPaused: self.isPaused,
             canRetryTranslation: self.subscriber.canRetryTranslation,
             approachingLineLimit: self.subscriber.isApproachingLineLimit,
             latencyReadout: self.subscriber.lastLatencySample.displayText,

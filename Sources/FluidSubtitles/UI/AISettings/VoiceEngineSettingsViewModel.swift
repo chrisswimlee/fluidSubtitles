@@ -128,6 +128,7 @@ final class VoiceEngineSettingsViewModel: ObservableObject {
             self.previewSpeechModel = model
             self.setSelectedSpeechProvider(model.provider)
         }
+        SpokenLanguageResolver.pinSpokenEngineToSource(settings: self.settings)
         self.asr.resetTranscriptionProvider()
         Task {
             do {
@@ -209,25 +210,25 @@ final class VoiceEngineSettingsViewModel: ObservableObject {
         let model = self.settings.selectedSpeechModel
         switch model {
         case .appleSpeech:
-            return "Apple Speech (Legacy) uses built-in macOS speech recognition. No model download required, works on Intel and Apple Silicon."
+            return "Apple Speech uses built-in macOS recognition. No download. Korean, English, and Thai on Intel and Apple Silicon."
         case .appleSpeechAnalyzer:
-            return "Apple Speech uses advanced on-device recognition with fast, accurate transcription. Requires macOS 26+."
+            return "Apple Speech Analyzer is on-device recognition for Korean, English, and Thai. Requires macOS 26+."
         case .parakeetTDT:
-            return "Parakeet TDT v3 uses CoreML and Neural Engine for fastest transcription (25 languages) on Apple Silicon."
+            return "Parakeet TDT v3 is the fast English engine on Apple Silicon. Theater switches to Apple Speech or Whisper for Korean or Thai."
         case .parakeetTDTv2:
-            return "Parakeet TDT v2 is an English-only model optimized for accuracy and consistency on Apple Silicon."
+            return "Parakeet TDT v2 is English-only on Apple Silicon."
         case .parakeetRealtime:
-            return "Parakeet Flash uses FluidAudio's true streaming EOU pipeline for low-latency English dictation. Best when you want words to appear live as you speak."
+            return "Parakeet Flash streams English with live partial text. Korean and Thai Listen need another Voice Engine."
         case .qwen3Asr:
-            return "Qwen3 ASR is a multilingual FluidAudio model with strong quality, but higher memory usage. Requires macOS 15+."
+            return "Qwen3 ASR is a local model for Korean, English, or Thai. Higher memory. Requires macOS 15+."
         case .cohereTranscribeSixBit:
-            return "Cohere Transcribe downloads a CoreML pipeline from Hugging Face and caches it locally. Select the language manually before dictation. Best on Apple Silicon with 8GB+ RAM."
+            return "Cohere Transcribe is a local CoreML engine for English and Korean. Pick the language before Listen."
         case .nemotronOffline:
-            return "Nemotron 3.5 Multilingual is slower but more accurate. Supports around 40 languages with auto or manual language selection. Best on Apple Silicon with 8GB+ RAM."
+            return "Nemotron 3.5 is slower and more accurate for Korean, English, or Thai. Thai is experimental. Best on Apple Silicon with 8GB+ RAM."
         case .nemotronStreaming, .nemotronStreaming320:
-            return "Nemotron Speech 3.5 Streaming Capable uses NVIDIA's streaming CoreML pipeline. Supports around 40 languages with auto or manual language selection."
+            return "Nemotron Speech 3.5 streams Korean, English, or Thai. Thai is experimental."
         default:
-            return "Whisper works on any Mac. In fluidSubtitles, use it for Korean, English, or Thai."
+            return "Whisper works on any Mac for Korean, English, or Thai."
         }
     }
 

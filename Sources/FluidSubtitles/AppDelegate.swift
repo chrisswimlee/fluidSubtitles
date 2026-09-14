@@ -65,6 +65,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         Task { @MainActor in
+            LiveTranslationController.shared.flushArchive()
             await TranscriptionHistoryStore.shared.finishPendingWrites()
             if let error = TranscriptionHistoryStore.shared.persistenceError {
                 let alert = NSAlert()

@@ -20,19 +20,35 @@ Open **Theater** in the sidebar, pick Korean, English, or Thai on each side, the
 
 ## Theater captions
 
-1. Download a Voice Engine for the language you speak (Apple Speech is enough to try).
-2. Open **Theater** and pick I speak / Show as. Download the Apple Translation pack if the pair is two languages.
-3. Allow the microphone. **Listen** stays off until those three are green.
-4. Speak one sentence. **Type into app** unlocks after that first caption. **Copy** always takes everything on screen.
+1. Use **macOS 26** on Apple Silicon. First run uses Apple Speech (no download). Same-language captions need no translation pack.
+2. Open **Theater** and pick Lectern or Watch. Watch defaults to This Mac; one running app is optional (Safari and Chrome helpers mix more than one tab). Use **Check capture** to prove the tap before Listen. Then pick I speak / Show as. Download the Apple Translation pack only if the pair is two languages.
+3. Lectern needs the microphone. Watch needs Screen Recording (quit and reopen after you grant it). **Listen** stays off until those are green.
+4. Speak one sentence, or play one in another app. **Type into app** unlocks after that first caption. **Copy** always takes everything on screen. **Clear** wipes the board and the session archive; Listen can keep going.
 
 Accessibility permission is only required if you want a translation typed into other apps. Theater captions on your screen do not need it.
+
+---
+
+## How Theater works
+
+Theater is a measured on-device pipeline, not a cloud caption API.
+
+1. **Capture** — Lectern is a first-party Core Audio HAL path, not `AVAudioEngine` on the live path. Watch is ScreenCaptureKit audio: a 2×2 1 fps dummy video, 48 kHz stereo request, then a mono downmix into the same 16 kHz ring. **Check capture** starts a real stream and reports whether energy arrived.
+2. **Speech edges** — Live PCM stays in a 30-second ring. The first ASR tick is immediate. After 400 ms of RMS silence, later ticks are skipped so a long pause does not keep the Neural Engine hot. There is no neural VAD in front of first words.
+3. **Commit, then translate** — Finished clauses print; the open tail stays off the board. Apple Translation runs on commit (`TranslationSession.preferredStrategy = .lowLatency` on macOS 26.4). Same-language pairs skip the pack. Korean and Thai send the last 4 source clauses from this Listen, then peel the new caption. A clause-boundary approximation may prefetch Apple Translation.
+4. **Stage window** — A nonactivating panel over Keynote. Hide from Zoom and screen share with `NSWindow.sharingType`. After a sentence is measured, bilingual wrap interleaves English with Hangul or Thai line by line. YouTube boilerplate is dropped before print.
+5. **Bounded memory** — 30 s of 16 kHz float, the newest 2,400 transcript characters, 200 visible lines, and JSONL overflow for a 3-hour keynote.
+6. **Measured clock** — Theater shows `mic · e2e · ASR · MT` (Watch uses `cap` for first audio) from Core Audio host time. Those values come from a real Listen. Hosted CI cannot prove Watch.
+
+The systems write-up is [docs/APPLE_SILICON_STREAMING.md](docs/APPLE_SILICON_STREAMING.md). Latency budgets and the HUD are in [docs/LIVE_TRANSLATION_LATENCY.md](docs/LIVE_TRANSLATION_LATENCY.md).
 
 ---
 
 ## Features
 
 - **Korean, English, and Thai** — any pair, either direction, including same-language captions without a translation pack. Listen uses a Voice Engine that can hear I speak (Apple Speech or Whisper for Korean and Thai; Parakeet Flash is English-only)
-- **Theater captions** — a floating window you turn on, edit, and close, with an on-screen `mic · e2e · ASR · MT` clock. Hide it from screen share. A line prints after the sentence, usually a few seconds later.
+- **Theater captions** — a floating window you turn on, edit, and close. Use **Pop-up** for a solid board or **Transparent** so slides show through. On-screen `mic · e2e · ASR · MT` clock (Watch uses `cap` for first audio). Hide it from screen share. Pause keeps the session warm. Minimize shrinks to a pill. Clear wipes the board and the session archive. A line prints after the sentence, usually a few seconds later.
+- **Watch** — caption YouTube, Twitch, or another app via Screen Recording. Default is This Mac; you can pick one running app (Safari and Chrome helpers mix more than one tab). Still Korean, English, and Thai. DRM and some calls stay silent. A quiet app waits for audio instead of flipping to This Mac. After you grant Screen Recording, quit and reopen the app. **Check capture** starts a short tap and says whether audio arrived.
 - **Translate into an app** — a separate shortcut from dictation; types this listen’s translation into the app you clicked. Korean and Thai depend on that app’s input method. Accessibility is required.
 - **On-device translation** — Apple Translation language packs, processed locally
 - **Multiple speech models** — Nemotron, Parakeet, Cohere, Apple Speech, and Whisper
@@ -43,45 +59,28 @@ Accessibility permission is only required if you want a translation typed into o
 
 ## Supported Models
 
-| Model | Best for | Language support | Download size | Hardware |
+fluidSubtitles only hears and captions **Korean, English, and Thai**. The Voice Engine picker matches that. Upstream weights may have been trained on more languages; this app does not expose them.
+
+| Model | Best for | Hears here | Download size | Hardware |
 | --- | --- | --- | --- | --- |
-| Nemotron Speech 3.5 — Ultra Fast Low Latency | Streaming-capable multilingual dictation | ~40 languages | ~670 MB | Apple Silicon |
-| Nemotron 3.5 Multilingual | Higher-accuracy multilingual dictation | ~40 languages | ~530 MB | Apple Silicon |
-| [Parakeet Flash (Beta)](https://huggingface.co/nvidia/parakeet_realtime_eou_120m-v1) | Lowest-latency live English dictation. Theater will not keep this engine when I speak is Korean or Thai. | English | ~250 MB | Apple Silicon |
-| Parakeet TDT v3 | Fast default multilingual dictation | [25 languages](#parakeet-tdt-v3-languages) | ~500 MB | Apple Silicon |
-| Parakeet TDT v2 | Fastest English-only dictation | [English](#parakeet-tdt-v2-languages) | ~500 MB | Apple Silicon |
-| Cohere Transcribe | High-accuracy multilingual dictation | [14 languages](#cohere-transcribe-languages) | ~1.4 GB | Apple Silicon |
-| Apple Speech | Zero-download native macOS speech | [System languages](#apple-speech-languages) | Built-in | Apple Silicon + Intel |
-| Whisper Tiny / Base / Small / Medium / Large | Broad compatibility, including Intel Macs | [99 languages](#whisper-language-support) | ~75 MB to ~2.9 GB | Apple Silicon + Intel |
-
-### Parakeet TDT v3 Languages
-
-Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Russian, Slovak, Slovenian, Spanish, Swedish, and Ukrainian.
-
-### Parakeet TDT v2 Languages
-
-English.
-
-### Cohere Transcribe Languages
-
-English, French, German, Italian, Spanish, Portuguese, Greek, Dutch, Polish, Mandarin, Japanese, Korean, Vietnamese, and Arabic.
-
-### Apple Speech Languages
-
-System language support depends on the macOS speech recognition languages available on your machine.
-
-### Whisper Language Support
-
-Whisper supports up to 99 languages, depending on the model size you choose.
+| Nemotron Speech 3.5 — Ultra Fast Low Latency | Streaming Korean, English, or Thai | Korean, English, Thai (Thai experimental) | ~670 MB | Apple Silicon |
+| Nemotron 3.5 Multilingual | Higher-accuracy Korean, English, or Thai | Korean, English, Thai (Thai experimental) | ~530 MB | Apple Silicon |
+| [Parakeet Flash (Beta)](https://huggingface.co/nvidia/parakeet_realtime_eou_120m-v1) | Lowest-latency live English. Korean and Thai Listen need another Voice Engine. | English | ~250 MB | Apple Silicon |
+| Parakeet TDT v3 | Fast English. Korean and Thai Listen need another Voice Engine. | English | ~500 MB | Apple Silicon |
+| Parakeet TDT v2 | Fastest English-only | English | ~500 MB | Apple Silicon |
+| Cohere Transcribe | High-accuracy English and Korean | English, Korean | ~1.4 GB | Apple Silicon |
+| Apple Speech | Zero-download native macOS speech | Korean, English, Thai | Built-in | Apple Silicon + Intel |
+| Whisper Tiny / Base / Small / Medium / Large | Broad compatibility, including Intel Macs | Korean, English, Thai | ~75 MB to ~2.9 GB | Apple Silicon + Intel |
 
 ---
 
 ## Requirements
 
-- macOS 15.0 (Sequoia) or later. macOS 26 adds Speech Analyzer and faster on-device Translation
+- macOS 15.0 (Sequoia) or later for dictation. **Theater** (Listen, Watch, floating captions) needs macOS 26
 - Apple Silicon Mac for Theater streaming (Parakeet, Nemotron, Cohere). Whisper and Apple Speech can run on Intel for dictation; that is not the Theater path
 - ~1 GB disk space for a voice model
-- Microphone access
+- Microphone access for Lectern and dictation
+- Screen Recording for Watch (system audio). After you grant it, quit and reopen FluidSubtitles
 - Accessibility permissions if you want a translation typed into other apps
 - Download the Apple Translation pack once before a cross-language Listen. Same-language captions do not need a pack.
 
@@ -130,15 +129,15 @@ This is a **Developer ID zip**, not TestFlight and not the Mac App Store. The ap
 ./build.sh release
 ```
 
-That writes `dist/fluidsubtitles-{version}.zip`. Set `APPLE_ID`, `APPLE_TEAM_ID`, and `APPLE_APP_SPECIFIC_PASSWORD` to notarize. A GitHub tag `v*` runs `.github/workflows/release.yml`. Hosted CI cannot sign unless a Developer ID certificate is imported; a local notarized zip attached to the GitHub Release is the first public path. Making the GitHub repository public is required for in-app update checks.
+That writes `dist/fluidsubtitles-{version}.zip`. Set `APPLE_ID`, `APPLE_TEAM_ID`, and `APPLE_APP_SPECIFIC_PASSWORD` to notarize. A GitHub tag `v*` runs `.github/workflows/release.yml`. Hosted CI cannot sign unless a Developer ID certificate is imported; a local notarized zip attached to the GitHub Release is the first public path. Making the GitHub repository public is required for in-app update checks. After that first Developer ID zip, add the team ID to `FluidProduct.allowedUpdateTeamIDs` — the set is empty today, so updates reject every build. Hosted CI cannot prove Watch or a live Theater listen.
 
 ---
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Please read the [code of conduct](CODE_OF_CONDUCT.md) and [security policy](SECURITY.md) before opening an issue or pull request.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the first hour (signed `./build.sh`, Apple Speech Analyzer, Theater on macOS 26, tests minus UITests). Please read the [code of conduct](CODE_OF_CONDUCT.md) and [security policy](SECURITY.md) before opening an issue or pull request.
 
-When a change belongs in the upstream dictation engine rather than translation or captions, consider contributing to [FluidVoice](https://github.com/altic-dev/FluidVoice) as well.
+When a change belongs in the upstream dictation engine rather than translation or captions, file it on [FluidVoice](https://github.com/altic-dev/FluidVoice). Starter tickets are listed in [.github/GOOD_FIRST_ISSUES.md](.github/GOOD_FIRST_ISSUES.md).
 
 ---
 

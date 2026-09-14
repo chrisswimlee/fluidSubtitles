@@ -144,7 +144,37 @@ final class LiveTranslationMailboxTests: XCTestCase {
         XCTAssertTrue(seen.contains("First commit"))
         XCTAssertTrue(seen.contains("Second commit"))
         XCTAssertTrue(seen.contains("Live draft"))
+        XCTAssertEqual(seen.values, ["First commit", "Second commit", "Live draft"])
 
+        mailbox.cancelAll(TranslationEngineError(message: "done"))
+        serve.cancel()
+    }
+
+    func testLiveDoesNotPreemptAQueuedCommit() async throws {
+        let mailbox = TranslationRequestMailbox()
+        let seen = RequestLog()
+        let serve = Task {
+            while let request = await mailbox.next() {
+                seen.append(request.text)
+                try? await Task.sleep(nanoseconds: 40_000_000)
+                request.resume(.success("t-\(request.text)"))
+            }
+        }
+        try await Task.sleep(nanoseconds: 20_000_000)
+        let commit = Task {
+            try await mailbox.submit("Commit clause", kind: .commit)
+        }
+        try await Task.sleep(nanoseconds: 20_000_000)
+        let pendingCommit = mailbox.hasQueuedOrInFlightCommit
+        XCTAssertTrue(pendingCommit)
+        let live = Task {
+            try await mailbox.submit("Live draft", kind: .live)
+        }
+        let committed = try await commit.value
+        let liveCaption = try await live.value
+        XCTAssertEqual(committed, "t-Commit clause")
+        XCTAssertEqual(liveCaption, "t-Live draft")
+        XCTAssertEqual(seen.values, ["Commit clause", "Live draft"])
         mailbox.cancelAll(TranslationEngineError(message: "done"))
         serve.cancel()
     }
@@ -152,29 +182,35 @@ final class LiveTranslationMailboxTests: XCTestCase {
 
 private final class RequestLog: @unchecked Sendable {
     private let lock = NSLock()
-    private var values: [String] = []
+    private var stored: [String] = []
 
     func append(_ value: String) {
         self.lock.lock()
-        self.values.append(value)
+        self.stored.append(value)
         self.lock.unlock()
     }
 
     var last: String? {
         self.lock.lock()
         defer { self.lock.unlock() }
-        return self.values.last
+        return self.stored.last
     }
 
     var count: Int {
         self.lock.lock()
         defer { self.lock.unlock() }
-        return self.values.count
+        return self.stored.count
     }
 
     func contains(_ value: String) -> Bool {
         self.lock.lock()
         defer { self.lock.unlock() }
-        return self.values.contains(value)
+        return self.stored.contains(value)
+    }
+
+    var values: [String] {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        return self.stored
     }
 }

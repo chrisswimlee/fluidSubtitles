@@ -18,9 +18,17 @@ extension ASRService {
     ) async -> AudioCaptureStartOutcome {
         DebugLogger.shared.info("🎤 START() called - beginning recording session", source: "ASRService")
 
-        guard self.micStatus == .authorized else {
-            DebugLogger.shared.error("❌ START() blocked - mic not authorized", source: "ASRService")
-            return .failed
+        let watchCaptions = !forDictionaryTraining && self.isWatchCaptionCapture
+        if watchCaptions {
+            guard ScreenRecordingAccess.isGranted else {
+                DebugLogger.shared.error("❌ START() blocked - Screen Recording not authorized", source: "ASRService")
+                return .failed
+            }
+        } else {
+            guard self.micStatus == .authorized else {
+                DebugLogger.shared.error("❌ START() blocked - mic not authorized", source: "ASRService")
+                return .failed
+            }
         }
         guard !self.recordingBufferHandoffGate.isRecovering else {
             self.presentStreamingRecoveryError()
@@ -126,6 +134,14 @@ extension ASRService {
         DebugLogger.shared.debug("✅ Buffers cleared", source: "ASRService")
 
         self.isDictionaryTrainingCaptureActive = false
+        if watchCaptions {
+            return await self.startWatchAudioCapture(
+                captureSessionID: captureSessionID,
+                readinessAttemptID: readinessAttemptID,
+                startGeneration: startGeneration,
+                onCaptureStarted: onCaptureStarted
+            )
+        }
 
         do {
             let maximumStartAttempts =
@@ -352,7 +368,7 @@ extension ASRService {
             }
 
             // Only start streaming for models that support it (large Whisper models are too slow)
-            let model = SettingsStore.shared.selectedSpeechModel
+            let model = self.effectiveSpeechModel
             if model.supportsStreaming, !forDictionaryTraining {
                 DebugLogger.shared.debug("📡 Starting streaming transcription...", source: "ASRService")
                 self.benchmarkLog("streaming_timer_start intervalMs=\(Int((self.streamingChunkDurationSeconds * 1000).rounded())) minSamples=\(self.minimumStreamingPreviewSamples)")
