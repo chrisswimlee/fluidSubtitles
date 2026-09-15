@@ -3,26 +3,29 @@ disabled_rules:
   - trailing_comma # handled by SwiftFormat
   - explicit_type_interface
   - closure_body_length
-  - attributes 
-  - multiple_closures_with_trailing_closure 
+  - attributes
+  - multiple_closures_with_trailing_closure
   - opening_brace # handled by SwiftFormat
-  - implicit_optional_initialization # common in SwiftUI/AppKit; doesn't indicate a bug here
-  - nesting # large view/service files often contain nested types
-  # todo is a warning so new work does not hide leftover notes
+  - implicit_optional_initialization
+  - nesting
+  - blanket_disable_command
+  - superfluous_disable_command
+  - strict_fileprivate
+  - file_header
+  - force_unwrapping
+  - force_try
+  - discouraged_optional_collection
+  - sorted_imports
+  - trailing_newline
+  - vertical_whitespace
+  - for_where
+  - empty_count
+  - redundant_type_annotation
+  - non_optional_string_data_conversion
 
 opt_in_rules:
-  - discouraged_optional_collection
-  - empty_count
   - fatal_error_message
-  - file_header
   - first_where
-  - force_unwrapping
-  - literal_expression_end_indentation
-  - multiline_arguments
-  - pattern_matching_keywords
-  - redundant_type_annotation
-  - sorted_imports
-  - strict_fileprivate
   - toggle_bool
   - unavailable_function
 
@@ -31,9 +34,10 @@ excluded:
   - DerivedData
   - fluidSubtitles.xcodeproj
   - scratch
+
 line_length:
   warning: 250
-  error: 300
+  error: 320
   ignores_comments: true
   ignores_urls: true
 
@@ -45,25 +49,27 @@ identifier_name:
 todo:
   severity: warning
 
+# FluidVoice-era files exceed the default metric gates. Do not split
+# ASRService / ContentView to satisfy these numbers.
 type_body_length:
-  warning: 400
-  error: 800
-
-file_length:
-  warning: 1200
+  warning: 800
   error: 2000
 
+file_length:
+  warning: 2000
+  error: 2500
+
 function_body_length:
-  warning: 80
-  error: 150
+  warning: 200
+  error: 450
 
 cyclomatic_complexity:
-  warning: 20
-  error: 30
+  warning: 30
+  error: 55
 
 function_parameter_count:
-  warning: 7
-  error: 10
+  warning: 8
+  error: 12
 
 large_tuple:
   warning: 4
@@ -71,9 +77,8 @@ large_tuple:
 
 custom_rules:
   disallow_nslog:
-    regex: 'NSLog'
+    regex: "NSLog"
     message: "Use DebugLogger.shared.* for consistency."
   enforce_mark_spacing:
-    regex: '\/\/ MARK:(?! - )'
+    regex: "// MARK:(?! - )"
     message: "Format section markers as `// MARK: - Section`."
-

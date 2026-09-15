@@ -619,7 +619,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_CODE_COVERAGE = NO;
 				ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER = readwrite;
@@ -646,7 +646,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 1.6.10;
+				MARKETING_VERSION = 1.6.11;
 				PRODUCT_BUNDLE_IDENTIFIER = com.fluidsubtitles.app.debug;
 				PRODUCT_MODULE_NAME = FluidSubtitles_Debug;
 				PRODUCT_NAME = "fluidSubtitles Debug";
@@ -676,7 +676,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_CODE_COVERAGE = NO;
 				ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER = readwrite;
@@ -703,7 +703,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 1.6.10;
+				MARKETING_VERSION = 1.6.11;
 				PRODUCT_BUNDLE_IDENTIFIER = com.fluidsubtitles.app;
 				PRODUCT_MODULE_NAME = FluidSubtitles;
 				PRODUCT_NAME = fluidSubtitles;
