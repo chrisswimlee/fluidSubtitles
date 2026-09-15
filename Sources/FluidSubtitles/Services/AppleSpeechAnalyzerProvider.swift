@@ -43,6 +43,7 @@ final class AppleSpeechAnalyzerProvider: TranscriptionProvider {
 
     func prepare(progressHandler: ((ModelPreparationProgress) -> Void)?) async throws {
         try Task.checkCancellation()
+        self.discardPreparedLocaleIfItDoesNotMatchISpeak()
         let supportedLocales = await SpeechTranscriber.supportedLocales
         try Task.checkCancellation()
         let locale = try self.resolveSupportedLocale(from: supportedLocales)
@@ -176,6 +177,14 @@ final class AppleSpeechAnalyzerProvider: TranscriptionProvider {
     // MARK: - Transcription
 
     func transcribe(_ samples: [Float]) async throws -> ASRTranscriptionResult {
+        if self.preparedLocaleDoesNotMatchISpeak() {
+            self.discardPreparedLocaleIfItDoesNotMatchISpeak()
+            throw NSError(
+                domain: "AppleSpeechAnalyzerProvider",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Speech Analyzer is still set to hear a different language."]
+            )
+        }
         guard self.isReady, let analyzerFormat = self.analyzerFormat else {
             throw NSError(
                 domain: "AppleSpeechAnalyzerProvider",
@@ -275,7 +284,30 @@ final class AppleSpeechAnalyzerProvider: TranscriptionProvider {
     // MARK: - Helpers
 
     private func selectedSpeechLocale() -> Locale {
-        SettingsStore.shared.selectedAppleSpeechLocale
+        let sourceID = SpokenLanguageResolver.sourceLanguage().id
+        let identifier = VoiceEngineLanguageCatalog.preferredAppleSpeechAnalyzerLocale(
+            forLanguageID: sourceID
+        )
+        return Locale(identifier: identifier)
+    }
+
+    private func preparedLocaleDoesNotMatchISpeak() -> Bool {
+        guard let prepared = self.preparedLocale else { return false }
+        let preparedPrefix = VoiceEngineLanguageCatalog.languagePrefix(
+            self.normalizedIdentifier(for: prepared)
+        )
+        let sourcePrefix = VoiceEngineLanguageCatalog.languagePrefix(
+            SpokenLanguageResolver.sourceLanguage().id
+        )
+        return preparedPrefix != sourcePrefix
+    }
+
+    private func discardPreparedLocaleIfItDoesNotMatchISpeak() {
+        guard self.preparedLocaleDoesNotMatchISpeak() else { return }
+        self.isReady = false
+        self.preparedLocale = nil
+        self.analyzerFormat = nil
+        self.converter = nil
     }
 
     private func resolveSupportedLocale(from supportedLocales: [Locale]) throws -> Locale {

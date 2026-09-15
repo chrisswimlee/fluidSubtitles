@@ -74,11 +74,11 @@ final class LiveTranslationQualityTests: XCTestCase {
         XCTAssertTrue(vtt.contains("00:00:04.000 --> 00:00:08.000"))
     }
 
-    func testProductLanguagesAreOnlyEnglishKoreanThai() {
-        XCTAssertEqual(VoiceEngineLanguageCatalog.productLanguageIDs, ["en", "ko", "th"])
+    func testProductLanguagesAreEnglishKoreanThaiJapanese() {
+        XCTAssertEqual(VoiceEngineLanguageCatalog.productLanguageIDs, ["en", "ko", "ja", "th"])
         XCTAssertEqual(
             Set(VoiceEngineLanguageCatalog.allLanguages().map(\.id)),
-            ["en", "ko", "th"]
+            ["en", "ko", "ja", "th"]
         )
     }
 
@@ -100,6 +100,21 @@ final class LiveTranslationQualityTests: XCTestCase {
         XCTAssertFalse(
             thai.contains { Self.isParakeet($0.model) },
             "Thai preferred routes must not include Parakeet."
+        )
+
+        guard let japaneseLanguage = VoiceEngineLanguageCatalog.language(id: "ja", availableModels: catalogModels) else {
+            XCTFail("Japanese should be a product language")
+            return
+        }
+        let japanese = VoiceEngineLanguageCatalog.routes(for: japaneseLanguage, availableModels: catalogModels)
+        XCTAssertFalse(japanese.isEmpty)
+        XCTAssertFalse(
+            japanese.contains { Self.isParakeet($0.model) },
+            "Japanese preferred routes must not include Parakeet."
+        )
+        XCTAssertTrue(
+            japanese.contains { $0.model == .cohereTranscribeSixBit },
+            "Japanese should expose Cohere."
         )
     }
 
@@ -130,10 +145,25 @@ final class LiveTranslationQualityTests: XCTestCase {
             width: 800
         )
         XCTAssertGreaterThanOrEqual(rows.count, 2)
-        XCTAssertEqual(rows[0].text, "สวัสดี")
-        XCTAssertTrue(rows[0].isSpoken)
-        XCTAssertEqual(rows[1].text, "Hello")
-        XCTAssertFalse(rows[1].isSpoken)
+        XCTAssertEqual(rows[0].text, "Hello")
+        XCTAssertFalse(rows[0].isSpoken)
+        XCTAssertEqual(rows[1].text, "สวัสดี")
+        XCTAssertTrue(rows[1].isSpoken)
+    }
+
+    func testBilingualWrapPutsSpokenJapaneseBeforeEnglish() {
+        let font = NSFont.systemFont(ofSize: 24, weight: .semibold)
+        let rows = TheaterBilingualWrap.rows(
+            spoken: "こんにちは",
+            translated: "Hello",
+            font: font,
+            width: 800
+        )
+        XCTAssertGreaterThanOrEqual(rows.count, 2)
+        XCTAssertEqual(rows[0].text, "Hello")
+        XCTAssertFalse(rows[0].isSpoken)
+        XCTAssertEqual(rows[1].text, "こんにちは")
+        XCTAssertTrue(rows[1].isSpoken)
     }
 
     func testBilingualWrapPutsSpokenKoreanBeforeEnglish() {
@@ -145,10 +175,10 @@ final class LiveTranslationQualityTests: XCTestCase {
             width: 800
         )
         XCTAssertGreaterThanOrEqual(rows.count, 2)
-        XCTAssertEqual(rows[0].text, "안녕하세요")
-        XCTAssertTrue(rows[0].isSpoken)
-        XCTAssertEqual(rows[1].text, "Hello")
-        XCTAssertFalse(rows[1].isSpoken)
+        XCTAssertEqual(rows[0].text, "Hello")
+        XCTAssertFalse(rows[0].isSpoken)
+        XCTAssertEqual(rows[1].text, "안녕하세요")
+        XCTAssertTrue(rows[1].isSpoken)
     }
 
     func testLastListenLatencyStoreRoundTrips() throws {
@@ -171,6 +201,44 @@ final class LiveTranslationQualityTests: XCTestCase {
         XCTAssertTrue(TheaterReadiness.timedExportHonesty.contains("committed"))
     }
 
+    func testEngineCopyKeepsVoiceAndTranslationSeparate() {
+        XCTAssertTrue(TheaterEngineCopy.voicePurpose.contains("speech into text"))
+        XCTAssertEqual(TheaterEngineCopy.translationName, "Apple Translation")
+        XCTAssertTrue(TheaterEngineCopy.translationPurpose.contains("Not a chat model"))
+        XCTAssertEqual(
+            TheaterEngineCopy.translationRunningLine(
+                mode: .transcription,
+                sameLanguage: false,
+                pack: .installed
+            ),
+            "Voice writes what you say. Translation Engine stays off."
+        )
+        XCTAssertEqual(
+            TheaterEngineCopy.translationRunningLine(
+                mode: .translation,
+                sameLanguage: true,
+                pack: .unknown
+            ),
+            "Same language — Apple Translation is not needed."
+        )
+        XCTAssertEqual(
+            TheaterEngineCopy.translationRunningLine(
+                mode: .translation,
+                sameLanguage: false,
+                pack: .installed
+            ),
+            "Running Apple Translation on this Mac."
+        )
+        XCTAssertEqual(
+            TheaterEngineCopy.translationRunningLine(
+                mode: .translation,
+                sameLanguage: false,
+                pack: .supported
+            ),
+            "Apple Translation needs this language pack once."
+        )
+    }
+
     func testTalkReportFlagsALineIWouldNotShow() {
         let report = TheaterQualityScore.report(
             asr: [(
@@ -187,7 +255,7 @@ final class LiveTranslationQualityTests: XCTestCase {
         XCTAssertEqual(report.asrError, 0)
         XCTAssertTrue(report.wouldShowASR)
         XCTAssertFalse(report.wouldShowTranslation)
-        XCTAssertEqual(TheaterQualityScore.stagePairs.count, 3)
+        XCTAssertEqual(TheaterQualityScore.stagePairs.count, 5)
         XCTAssertEqual(LiveTranslationTiming.contextSentenceCount, 4)
     }
 
@@ -201,7 +269,7 @@ final class LiveTranslationQualityTests: XCTestCase {
             firstCaptionPrinted: false
         )
         XCTAssertFalse(blocked.canListen)
-        XCTAssertTrue(blocked.nextAction.contains("microphone"))
+        XCTAssertEqual(blocked.nextAction, MicrophoneAccess.deniedCopy)
 
         let sameLanguage = TheaterReadyGate.snapshot(
             engineSupportsSource: true,
@@ -215,18 +283,17 @@ final class LiveTranslationQualityTests: XCTestCase {
         XCTAssertTrue(sameLanguage.isFullyReady)
         XCTAssertEqual(sameLanguage.nextAction, "Ready.")
 
-        let watchBlocked = TheaterReadyGate.snapshot(
+        let voiceNeedsSpeech = TheaterReadyGate.snapshot(
             engineSupportsSource: true,
             modelInstalled: true,
             sameLanguagePair: true,
             pack: .installed,
             microphone: .authorized,
             firstCaptionPrinted: false,
-            mode: .watch,
-            screenRecordingAllowed: false
+            mode: .transcription
         )
-        XCTAssertFalse(watchBlocked.canListen)
-        XCTAssertTrue(watchBlocked.nextAction.contains("restarting") || watchBlocked.nextAction.contains("reopen"))
+        XCTAssertTrue(voiceNeedsSpeech.canListen)
+        XCTAssertTrue(voiceNeedsSpeech.nextAction.contains("Listen"))
     }
 
     @MainActor
@@ -244,6 +311,21 @@ final class LiveTranslationQualityTests: XCTestCase {
                 "Today we trained the model.",
                 sourceText: "Today we trained the model.",
                 target: TranslationLanguageCatalog.korean
+            )
+        )
+        XCTAssertEqual(
+            LLMTranslationEngine.acceptedCommitTranslation(
+                "今日はモデルを学習しました。",
+                sourceText: "Today we trained the model.",
+                target: TranslationLanguageCatalog.japanese
+            ),
+            "今日はモデルを学習しました。"
+        )
+        XCTAssertNil(
+            LLMTranslationEngine.acceptedCommitTranslation(
+                "Today we trained the model.",
+                sourceText: "Today we trained the model.",
+                target: TranslationLanguageCatalog.japanese
             )
         )
         let prompt = LLMTranslationPrompt.translateMessages(

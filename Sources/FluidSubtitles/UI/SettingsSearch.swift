@@ -175,8 +175,9 @@ enum SettingsSearchIndex {
             target: .liveTranslation,
             title: "Theater",
             terms: [
-                "translate theater captions language pair apple translation korean english thai I speak",
-                "watch lectern check capture this mac",
+                "translate theater captions language pair apple translation korean english thai japanese I speak",
+                "voice transcription fluidvoice translate mode",
+                "voice engine speech to text translation engine apple translation",
             ]
         ),
         .init(
@@ -184,11 +185,12 @@ enum SettingsSearchIndex {
             title: "Theater Window",
             terms: [
                 "caption font size spoken line source translation theater window captions only dark light appearance theme",
+                "how new captions appear print-in flow word fade instant typewriter",
                 "popup pop-up transparent overlay board slides keynote see-through",
                 "hide from screen share zoom keynote recording capture projector OBS",
                 "also hear english korean thai questions whisper auto detect Q&A",
                 "clear captions board archive wipe reset high contrast",
-                "watch check capture this mac system audio screen recording lectern",
+                "voice transcription fluidvoice translate mode",
             ]
         ),
         .init(
@@ -199,7 +201,7 @@ enum SettingsSearchIndex {
         .init(
             target: .translateInsertShortcut,
             title: "Type into an App",
-            terms: ["insert hotkey shortcut type translation into app"]
+            terms: ["insert hotkey shortcut type caption into app"]
         ),
         .init(target: .general, title: "General", terms: ["app settings preferences startup menu bar dock"]),
         .init(

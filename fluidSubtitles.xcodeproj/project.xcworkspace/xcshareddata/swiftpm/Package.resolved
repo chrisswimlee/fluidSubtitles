@@ -45,14 +45,6 @@
       }
     },
     {
-      "identity" : "mediaremote-adapter",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ejbills/mediaremote-adapter",
-      "state" : {
-        "revision" : "78aae86c03adab11a7b352211cc82381737cf854"
-      }
-    },
-    {
       "identity" : "path.swift",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mxcl/Path.swift",

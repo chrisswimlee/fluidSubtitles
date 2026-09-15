@@ -25,6 +25,8 @@ extension ASRService {
                 return .failed
             }
         } else {
+            self.micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+            self.micPermissionGranted = self.micStatus == .authorized
             guard self.micStatus == .authorized else {
                 DebugLogger.shared.error("❌ START() blocked - mic not authorized", source: "ASRService")
                 return .failed

@@ -1,8 +1,8 @@
 import Carbon.HIToolbox
 import Foundation
 
-/// Korean and Thai IMEs treat `virtualKey 0` unicode CGEvents as composition.
-/// Infer IME kind from the selected input source; another app’s 조합 중 state
+/// Korean, Japanese, and Thai IMEs treat `virtualKey 0` unicode CGEvents as composition.
+/// Infer IME kind from the selected input source; another app’s composing state
 /// is not a public AX attribute.
 enum InsertIMEGuard {
     struct Snapshot: Equatable {
@@ -23,26 +23,31 @@ enum InsertIMEGuard {
 
     static func snapshotRequiresPaste(_ snapshot: Snapshot) -> Bool {
         if !snapshot.isASCIICapable { return true }
-        return self.isKoreanOrThaiInputSource(snapshot.identifier)
+        return self.isIMEInputSource(snapshot.identifier)
     }
 
     static func shouldPreferPasteForTheaterCaption() -> Bool {
         SettingsStore.shared.theaterListenUsed
-            && self.isKoreanOrThaiLanguage(SpokenLanguageResolver.targetLanguage().id)
+            && self.isIMELanguage(SpokenLanguageResolver.targetLanguage().id)
     }
 
-    static func isKoreanOrThaiLanguage(_ languageID: String) -> Bool {
+    static func isIMELanguage(_ languageID: String) -> Bool {
         switch TranslationClauseSegmenter.languageCode(from: languageID) {
-        case "ko", "th":
+        case "ko", "ja", "th":
             return true
         default:
             return false
         }
     }
 
-    static func isKoreanOrThaiInputSource(_ identifier: String) -> Bool {
+    static func isIMEInputSource(_ identifier: String) -> Bool {
         let id = identifier.lowercased()
         if id.contains("korean") || id.contains("hangul") { return true }
+        if id.contains("japanese") || id.contains("kotoeri") || id.contains("hiragana")
+            || id.contains("katakana")
+        {
+            return true
+        }
         if id.contains("thai") { return true }
         return false
     }

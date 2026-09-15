@@ -1,0 +1,22 @@
+title: "Idea: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Feature ideas start here. Maintainers may turn an accepted discussion
+        into a tracked issue. Keep Theater work in LiveTranslation/.
+  - type: textarea
+    id: idea
+    attributes:
+      label: Idea
+      description: What should Theater or dictation insert do among Korean, English, Thai, and Japanese?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: Who is in the room, and what fails today?
+    validations:
+      required: true

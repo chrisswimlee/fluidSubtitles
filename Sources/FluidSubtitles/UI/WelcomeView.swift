@@ -51,11 +51,11 @@ struct WelcomeView: View {
                                 step: 1,
                                 title: (self.asr.isAsrReady || self.asr.modelsExistOnDisk) ? "Voice Engine ready" : "Download a Voice Engine",
                                 description: self.asr.isAsrReady
-                                    ? "Speech recognition is loaded."
+                                    ? "Voice Engine is sharpening speech into text."
                                     : (
                                         self.asr.modelsExistOnDisk
-                                            ? "The speech model is on disk. It loads when you Listen."
-                                            : "Download a speech model for Korean, English, or Thai. Apple Speech is enough to try."
+                                            ? "The speech-to-text model is on disk. It loads when you Listen."
+                                            : "Download a speech-to-text model for Korean, English, Thai, or Japanese. Apple Speech is enough to try."
                                     ),
                                 status: (self.asr.isAsrReady || self.asr.modelsExistOnDisk) ? .completed : .pending,
                                 action: {
@@ -83,28 +83,12 @@ struct WelcomeView: View {
                                 showActionButton: self.asr.micStatus != .authorized
                             )
 
-                            SetupStepView(
-                                step: 3,
-                                title: ScreenRecordingAccess.isGranted
-                                    ? "Screen Recording allowed"
-                                    : "Allow Screen Recording for Watch",
-                                description: ScreenRecordingAccess.isGranted
-                                    ? TheaterReadiness.gettingStartedScreenRecordingReady
-                                    : TheaterReadiness.gettingStartedScreenRecording,
-                                status: ScreenRecordingAccess.isGranted ? .completed : .pending,
-                                action: {
-                                    _ = ScreenRecordingAccess.request()
-                                },
-                                actionButtonTitle: "Allow",
-                                showActionButton: !ScreenRecordingAccess.isGranted
-                            )
-
                             if self.needsTranslationPack {
                                 SetupStepView(
-                                    step: 4,
+                                    step: 3,
                                     title: self.isLanguagePackReady ? "Language pack ready" : "Download language pack",
                                     description: self.languagePackAvailability.isEmpty
-                                        ? "Apple Translation downloads the Korean, English, or Thai pack once."
+                                        ? "Translation Engine is Apple Translation. It downloads the Korean, English, Thai, or Japanese pack once."
                                         : self.languagePackAvailability,
                                     status: self.isLanguagePackReady ? .completed : .pending,
                                     action: {
@@ -120,18 +104,18 @@ struct WelcomeView: View {
                                             )
                                         }
                                     },
-                                    actionButtonTitle: "Download pack",
+                                    actionButtonTitle: TheaterReadiness.downloadPack,
                                     showActionButton: !self.isLanguagePackReady
                                 )
                             }
 
                             SetupStepView(
-                                step: self.needsTranslationPack ? 5 : 4,
+                                step: self.needsTranslationPack ? 4 : 3,
                                 title: TheaterAvailability.isSupported
                                     ? (self.settings.theaterListenUsed
                                         ? TheaterReadiness.gettingStartedReady
                                         : TheaterReadiness.gettingStartedOpen)
-                                    : "Theater needs macOS 26",
+                                    : TheaterAvailability.unsupportedCopy,
                                 description: TheaterAvailability.isSupported
                                     ? (self.settings.theaterListenUsed
                                         ? TheaterReadiness.gettingStartedReadyDetail
@@ -150,13 +134,13 @@ struct WelcomeView: View {
                             .accessibilityIdentifier("getting-started-theater")
 
                             SetupStepView(
-                                step: self.needsTranslationPack ? 6 : 5,
+                                step: self.needsTranslationPack ? 5 : 4,
                                 title: self.accessibilityEnabled
                                     ? "Type into app is ready"
                                     : "Optional: type into another app",
                                 description: self.accessibilityEnabled
-                                    ? "A translation can be typed into other apps. Theater captions do not need this."
-                                    : "Only if you want a translation typed into another app. Theater captions work without it.",
+                                    ? "A caption can be typed into other apps. Theater captions do not need this."
+                                    : "Only if you want a caption typed into another app. Theater captions work without it.",
                                 status: self.accessibilityEnabled ? .completed : .pending,
                                 action: {
                                     self.openAccessibilitySettings()

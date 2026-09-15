@@ -221,7 +221,7 @@ enum VoiceEngineLanguageCatalog {
     }
 
     /// en: Apple Speech Analyzer, then Apple Speech, then Flash (faster English), then the rest.
-    /// ko: Apple Speech Analyzer, Apple Speech, Cohere, Whisper, Nemotron. Never Parakeet.
+    /// ko / ja: Apple Speech Analyzer, Apple Speech, Cohere, Whisper, Nemotron. Never Parakeet.
     /// th: Apple Speech Analyzer, Apple Speech, Whisper, Nemotron last. Never Parakeet or Cohere.
     private static func preferredModelOrder(forLanguageID languageID: String) -> [SettingsStore.SpeechModel] {
         switch languageID {
@@ -238,7 +238,7 @@ enum VoiceEngineLanguageCatalog {
                 .nemotronOffline,
                 .cohereTranscribeSixBit,
             ]
-        case "ko":
+        case "ko", "ja":
             return [
                 .appleSpeechAnalyzer,
                 .appleSpeech,
@@ -363,12 +363,21 @@ enum VoiceEngineLanguageCatalog {
         VoiceEngineLanguageRoute(language: language, model: model, binding: binding)
     }
 
+    static func cohereLanguage(forLanguageID languageID: String) -> SettingsStore.CohereLanguage? {
+        self.cohereLanguageMap[self.languagePrefix(languageID)]
+    }
+
+    static func nemotronLanguage(forLanguageID languageID: String) -> SettingsStore.NemotronLanguage? {
+        self.nemotronLanguageMap[self.languagePrefix(languageID)]
+            ?? self.nemotronLanguageMap[languageID]
+    }
+
     private static func cohereLanguage(for languageID: String) -> SettingsStore.CohereLanguage? {
-        self.cohereLanguageMap[languageID]
+        self.cohereLanguage(forLanguageID: languageID)
     }
 
     private static func nemotronLanguage(for languageID: String) -> SettingsStore.NemotronLanguage? {
-        self.nemotronLanguageMap[languageID]
+        self.nemotronLanguage(forLanguageID: languageID)
     }
 
     static func whisperLanguageCode(for languageID: String) -> String? {
@@ -386,7 +395,7 @@ enum VoiceEngineLanguageCatalog {
     }
 
     /// SpeechAnalyzer compares BCP-47 IDs exactly. `en` is not `en-US`.
-    /// Pick a supported locale for I speak (Korean, English, or Thai).
+    /// Pick a supported locale for I speak (Korean, English, Japanese, or Thai).
     static func resolveAppleSpeechAnalyzerLocale(
         preferredIdentifier: String,
         languageID: String,
@@ -523,11 +532,16 @@ enum VoiceEngineLanguageCatalog {
     private static let whisperModelOrder: [SettingsStore.SpeechModel] = [
         .whisperSmall,
         .whisperLargeTurbo,
+        .whisperLarge,
+        .whisperMedium,
+        .whisperBase,
+        .whisperTiny,
     ]
 
     private static let appleSpeechAnalyzerLocaleMap: [String: String] = [
         "en": "en-US",
         "ko": "ko-KR",
+        "ja": "ja-JP",
         "th": "th-TH",
     ]
 

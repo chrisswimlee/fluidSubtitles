@@ -2,8 +2,8 @@
 """Score a Theater talk against a reference JSONL. Same 15% bar as TheaterQualityScore.
 
 Each line is one JSON object: languageID, reference, hypothesis.
-See docs/STAGE_SCORE.md for a three-line English plus Korean layout example.
-Do not check in a real talk or invented WER.
+See docs/STAGE_SCORE.md for an English, Korean, and Japanese layout example.
+Check in LastListenLatency.json from a real Mac. Do not invent WER.
 """
 
 from __future__ import annotations

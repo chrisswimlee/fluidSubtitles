@@ -339,8 +339,11 @@ final class WhisperProvider: TranscriptionProvider {
             return languageCodeOverride
         }
         let settings = SettingsStore.shared
+        let locked = VoiceEngineLanguageCatalog.whisperLanguageCode(
+            for: SpokenLanguageResolver.sourceLanguage(settings: settings).id
+        )
         return SpokenLanguageHints.whisperLanguageCode(
-            stored: settings.selectedWhisperLanguageCode,
+            stored: locked ?? settings.selectedWhisperLanguageCode,
             alsoHearOthers: settings.theaterAlsoHearOtherLanguages
         )
     }

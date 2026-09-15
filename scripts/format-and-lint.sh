@@ -15,3 +15,9 @@ if command -v swiftlint >/dev/null 2>&1; then
 else
     echo "swiftlint is not installed; skipping lint."
 fi
+
+if command -v node >/dev/null 2>&1; then
+    node --test .github/policy/github-policy.test.mjs
+else
+    echo "node is not installed; skipping PR policy tests."
+fi

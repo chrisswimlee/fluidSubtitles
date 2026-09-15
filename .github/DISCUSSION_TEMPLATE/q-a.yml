@@ -1,0 +1,22 @@
+title: "Help: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: >
+        First-hour questions belong in Q&A. Use a bug issue only when you can
+        reproduce a Theater or insert failure.
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What did you try (Release zip or ./build.sh), and what did Theater do?
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS and chip
+      placeholder: macOS 15, M2
+    validations:
+      required: true

@@ -5,7 +5,7 @@ enum FluidProduct {
     static let displayName = "fluidSubtitles"
     static let shortName = "Subtitles"
     static let bundleIdentifier = "com.fluidsubtitles.app"
-    static let tagline = "Captions after each sentence. Korean, English, and Thai."
+    static let tagline = "Captions after each sentence. Korean, English, Thai, and Japanese."
     static let manifesto = "Language is no longer a barrier."
 
     static let supportFolderName = "fluidSubtitles"
@@ -28,6 +28,7 @@ enum FluidProduct {
     static let githubRepo: String? = "fluidSubtitles"
     static let helpURL = URL(string: "https://github.com/chrisswimlee/fluidSubtitles/issues/new/choose")
     static let feedbackURL = URL(string: "https://github.com/chrisswimlee/fluidSubtitles/issues/new?labels=bug")
+    static let discussionsURL = URL(string: "https://github.com/chrisswimlee/fluidSubtitles/discussions")
     static let examplesURL = URL(string: "https://github.com/chrisswimlee/fluidSubtitles#theater-captions")
 
     static let authorName = "Chris Swim Lee"

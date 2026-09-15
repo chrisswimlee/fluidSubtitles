@@ -17,24 +17,33 @@ downloaded by the user through Apple’s frameworks.
 
 FluidAudio
 https://github.com/altic-dev/FluidAudio
-Used for on-device speech models. See that repository for its license.
+Apache License 2.0. Compatible with GPLv3; the combined work is GPLv3.
+Used for on-device speech models. Users download model weights themselves.
 
 DynamicNotchKit
 https://github.com/altic-dev/DynamicNotchKit
-See that repository for its license.
+MIT License. Compatible with GPLv3.
 
 transcribe-cpp-swift
 https://github.com/altic-dev/transcribe-cpp-swift
-See that repository for its license.
+MIT License (transcribe.cpp Swift bindings). Compatible with GPLv3.
 
-AppUpdater, PromiseKit, and their dependencies
-See Package.resolved for versions and each project’s license.
+AppUpdater
+https://github.com/mxcl/AppUpdater
+The Unlicense. Compatible with GPLv3.
 
-MediaRemoteAdapter
-https://github.com/ejbills/mediaremote-adapter
-Used to pause and resume other apps’ playback during dictation. That
-repository does not publish a license file. See that project and
-https://github.com/ungive/mediaremote-adapter for terms.
+PromiseKit
+https://github.com/mxcl/PromiseKit
+MIT License. Compatible with GPLv3.
+
+Transitive Swift package pins (EventSource, Path.swift, Version, yyjson,
+Hugging Face / Apple Swift packages used by FluidAudio) are listed in
+Package.resolved. Those pins are Apache-2.0, MIT, or Unlicense and are
+compatible with GPLv3. The combined work stays GPLv3.
+
+MediaRemoteAdapter is not linked. The ejbills fork published no LICENSE at
+the previously pinned revision, so pause-other-apps is omitted from this
+tree and from the public zip.
 
 NVIDIA Parakeet and Nemotron speech models
 Distributed by NVIDIA / Hugging Face under each model card’s license.

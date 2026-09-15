@@ -278,7 +278,7 @@ final class LiveTranslationLatencyTests: XCTestCase {
         XCTAssertTrue(subscriber.committedLines.isEmpty)
     }
 
-    func testEnglishEOUDoesNotCommitTheOpenTail() async {
+    func testEnglishEOUDoesNotCommitAThinOpenTail() async {
         let settings = SettingsStore.shared
         let originalSource = settings.translationSourceLanguageID
         let originalTarget = settings.translationTargetLanguageID

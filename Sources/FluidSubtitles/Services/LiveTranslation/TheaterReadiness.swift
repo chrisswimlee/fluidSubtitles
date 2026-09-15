@@ -4,22 +4,27 @@ import Foundation
 /// First-run and stage-call checks. Listen still gates on engine + pack.
 enum TheaterReadiness {
     static let captionsPrintAfterSentence =
-        "A sentence prints when it finishes. A long run-on starts printing while you talk."
+        "A sentence prints when it finishes. The next sentence starts on a new line while you talk."
 
     static let listeningStatus =
-        "Listening. The current sentence prints as you go."
+        "Listening. The current sentence prints as you go. The next one starts underneath."
 
     static let listeningEmpty =
-        "Listening… the current sentence prints as you go."
+        "Listening… the current sentence prints as you go. The next one starts underneath."
 
     static let pressListen =
-        "Press Listen. The current sentence prints as you go."
+        "Press Listen. The current sentence prints as you go. The next one starts underneath."
 
     static let stopHelp =
         "Stop. Printed lines stay."
 
+    static let pauseHelp =
+        "Pause. Printed lines stay."
+
     static let resumeHelp =
-        "Resume captions. Printed lines stay."
+        "Resume. Printed lines stay."
+
+    static let pausedStatus = "Paused."
 
     static let dictationBusy =
         "Stop dictation first"
@@ -33,61 +38,53 @@ enum TheaterReadiness {
         "Open Theater, press Listen, and say a sentence."
 
     static let historyEmpty =
-        "Open Theater and press Listen. Captions from this Mac will appear here."
+        "Open Theater and press Listen. Captions will appear here."
 
     static let gettingStartedReady = "Theater is ready"
 
-    static let gettingStartedOpen = "Open Theater and Listen"
+    static let gettingStartedOpen = "Open Theater"
 
     static let gettingStartedReadyDetail =
         "A caption appeared. Open Theater anytime from the sidebar."
 
     static let gettingStartedOpenDetail =
-        "Lectern needs the microphone. Watch needs Screen Recording (quit and reopen after you grant it). Open Theater, then press Listen until a caption appears."
-
-    static let gettingStartedScreenRecording =
-        "Watch captions another app. After you grant Screen Recording, quit and reopen FluidSubtitles."
-
-    static let gettingStartedScreenRecordingReady =
-        "Watch can capture system audio. Quit and reopen if Check capture still fails."
+        "Voice Engine sharpens speech into text. Translate uses Apple Translation on this Mac. Both use the microphone. Open Theater, pick Voice or Translate, then press Listen."
 
     static let gettingStartedMicrophone =
-        "Lectern Theater needs the microphone to caption speech."
+        "Theater needs the microphone to hear you."
 
     static let gettingStartedMicrophoneReady =
-        "Lectern can hear you. Watch uses Screen Recording instead."
+        "The microphone is allowed. Voice and Translate both use it."
 
     static let printedLinesStay =
         "A line already on screen stays. Pause and Stop do not rewrite it."
 
     static let clearCaptions =
-        "Clear removes the board and the session archive. Listen can keep going."
+        "Clear removes every caption. Listen can keep going."
 
     static let clearCaptionsConfirm =
-        "This removes every caption on the board and the session archive. Listen can keep going."
+        "This removes every caption. Listen can keep going."
 
     static let oneSpeakerCloseMic =
         "Best with one speaker and a close mic. Halls, PA bleed, and Q&A will miss words."
 
-    static let watchCopy =
-        "Watch captions what another app is playing. I speak is the language of the video — Korean, English, or Thai. This Mac is the default. Safari and Chrome helpers mix more than one tab. A virtual or aggregate output can loop the mix. DRM and some calls stay silent. Screen Recording is required; after you grant it, quit and reopen FluidSubtitles."
-
-    static let watchWaitingCopy = WatchCaptureStop.waitingCopy
-
-    static let watchNoAudio =
-        "Listening… play audio in another app. DRM and some calls cannot be captured."
-
-    static func watchListeningCopy(sourceTitle: String) -> String {
-        "Listening… play audio in \(sourceTitle). DRM and some calls cannot be captured."
-    }
-
-    static let watchFallbackCopy = WatchCaptureStop.fallbackCopy
+    static let transcriptionCopy =
+        "Voice Engine sharpens speech into text. Voice writes that text in the language you speak. Switch to Translate for Korean, English, Thai, or Japanese."
 
     static let insertIMECaveat =
-        "Type into app needs Accessibility. A Korean or Thai IME uses paste instead of keystrokes."
+        "Type into app needs Accessibility. A Korean, Japanese, or Thai IME uses paste instead of keystrokes."
 
     static let insertHelp =
-        "Types this Listen into the frontmost app. Copy takes the whole board. \(insertIMECaveat)"
+        "Types the current caption into the frontmost app. Copy takes every caption. \(insertIMECaveat)"
+
+    static let typeIntoAppLocked =
+        "Type into app is available after the first caption."
+
+    static let typeIntoAppBody =
+        "Click into an app, then use this shortcut to type the current caption. \(insertIMECaveat) Copy takes every caption."
+
+    static let typeIntoAppShortcutDetail =
+        "Separate from dictation. Types the current caption only."
 
     static let undoLastCaption =
         "Remove the last printed line. Older archive lines stay. Listen can keep going."
@@ -98,17 +95,36 @@ enum TheaterReadiness {
     static let closeWhileListeningConfirm =
         "This stops Listen and hides Theater. Printed lines come back when you open it again."
 
-    static let watchSourceStopsListen =
-        "This stops Listen and switches the Watch source."
+    static let closeWhileListeningTitle = "Stop and close Theater?"
+
+    static let closeWhileListeningButton = "Stop and Close"
 
     static let modeStopsListen =
-        "Changing Lectern or Watch stops Listen."
+        "Voice writes what you say. Translate turns each sentence into Korean, English, Thai, or Japanese with Apple Translation. Switching stops Listen."
 
     static let spokenLineSameLanguage =
         "Same-language captions already show the spoken line."
 
+    static let spokenLineTranslate =
+        "Show what you said under the translation, smaller and dimmer."
+
+    static let captionsOnlyWindow =
+        "On the Theater window, show captions only. Listen stays. Move the pointer to show languages and the rest."
+
+    static let howCaptionsAppear = "How new captions appear"
+
+    static let captionSize = "Caption size."
+
+    static let captionSizeSpoken =
+        "Spoken undertone size. The translated title is larger."
+
+    static let downloadPack = "Download pack"
+
+    static let allowMicrophone =
+        "Press Listen to allow the microphone."
+
     static let latencyHUD =
-        "mic is Listen to first audio (Watch uses cap). e2e is speech-start to the printed caption. ASR is the speech engine. MT is Apple Translation."
+        "mic is Listen to first audio. e2e is speech-start to the printed caption. ASR is the speech engine. MT is Apple Translation."
 
     static let timedExportHonesty =
         "SRT/VTT times are when the caption committed, not the spoken word."
@@ -117,7 +133,7 @@ enum TheaterReadiness {
         "Hide from screen share keeps Theater off Zoom, Keynote, and recordings. The window still shows on your display and on a wired projector."
 
     static let popupStyle =
-        "Pop-up is a solid floating board you can park over the lectern."
+        "Pop-up is a solid floating board you can place over slides or a second display."
 
     static let transparentStyle =
         "Transparent keeps the captions and hides the board, so slides show through."
@@ -126,11 +142,11 @@ enum TheaterReadiness {
         "Choose Pop-up or Transparent. Open Theater to show it; Close Theater to hide it."
 
     static let alsoHearOtherLanguages =
-        "Whisper can auto-detect English, Korean, and Thai questions. Apple Speech stays on I speak."
+        "Whisper can auto-detect English, Korean, Japanese, and Thai questions. Apple Speech stays on I speak."
 
     static var macOSNote: String {
         TheaterAvailability.isSupported
-            ? "macOS 26: Speech Analyzer and low-latency Apple Translation are available."
+            ? "This Mac can run Theater."
             : TheaterAvailability.unsupportedCopy
     }
 
@@ -143,16 +159,15 @@ enum TheaterReadiness {
 }
 
 enum TheaterAvailability {
-    static var isSupported: Bool {
-        if #available(macOS 26.0, *) { return true }
-        return false
-    }
+    /// Voice, Translate, and I speak / Show as. Apple Speech Analyzer stays macOS 26+.
+    static var isSupported: Bool { true }
 
     static let unsupportedCopy =
-        "Theater needs macOS 26. Dictation still works on this Mac."
+        "Theater is not available on this Mac."
 }
 
-/// Listen stays off until macOS 26, engine, pack, and the mode's capture permission are green.
+/// Listen stays off until the Voice Engine, pack, and microphone permission are green.
+/// An undetermined mic still allows Listen so the first press can show the system prompt.
 enum TheaterReadyGate {
     struct Snapshot: Equatable {
         var osSupported: Bool
@@ -179,17 +194,17 @@ enum TheaterReadyGate {
                 return "Download a Voice Engine for the language you speak. Apple Speech is enough to try."
             }
             if !self.captureAllowed {
-                if self.mode == .watch {
-                    return ScreenRecordingAccess.deniedCopy
-                }
-                return "Allow the microphone in System Settings."
+                return MicrophoneAccess.deniedCopy
+            }
+            if !self.microphoneAllowed {
+                return TheaterReadiness.allowMicrophone
             }
             if !self.languagePackReady {
-                return "Download the Apple Translation pack for this pair."
+                return "Download the language pack for this pair."
             }
             if !self.firstCaptionPrinted {
-                return self.mode == .watch
-                    ? "Press Listen and play one sentence."
+                return self.mode == .transcription
+                    ? "Press Listen and speak."
                     : "Press Listen and speak one sentence."
             }
             return "Ready."
@@ -203,19 +218,17 @@ enum TheaterReadyGate {
         pack: TranslationPackAvailability,
         microphone: AVAuthorizationStatus,
         firstCaptionPrinted: Bool,
-        mode: TheaterSessionMode = .lectern,
-        screenRecordingAllowed: Bool = false,
+        mode: TheaterSessionMode = .translation,
         osSupported: Bool = true
     ) -> Snapshot {
-        let micOK = microphone != .denied && microphone != .restricted
-        let packOK = sameLanguagePair || pack == .installed
-        let captureOK = mode == .watch ? screenRecordingAllowed : micOK
+        let canPromptMic = microphone != .denied && microphone != .restricted
+        let packOK = mode == .transcription || sameLanguagePair || pack == .installed
         return Snapshot(
             osSupported: osSupported,
             voiceEngineReady: engineSupportsSource && modelInstalled,
             languagePackReady: packOK,
-            microphoneAllowed: micOK,
-            captureAllowed: captureOK,
+            microphoneAllowed: microphone == .authorized,
+            captureAllowed: canPromptMic,
             firstCaptionPrinted: firstCaptionPrinted,
             mode: mode
         )
@@ -235,12 +248,11 @@ enum TheaterReadyGate {
             microphone: microphone,
             firstCaptionPrinted: firstCaptionPrinted,
             mode: SettingsStore.shared.theaterSessionMode,
-            screenRecordingAllowed: ScreenRecordingAccess.isGranted,
             osSupported: TheaterAvailability.isSupported
         )
     }
 
     static func microphoneAllowed(_ status: AVAuthorizationStatus) -> Bool {
-        status != .denied && status != .restricted
+        status == .authorized
     }
 }

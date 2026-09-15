@@ -115,13 +115,21 @@ final class AppleSpeechProvider: TranscriptionProvider {
     // MARK: - Helpers
 
     private func updateRecognizerIfNeeded() -> SFSpeechRecognizer? {
-        let locale = SettingsStore.shared.selectedAppleSpeechLocale
+        let locale = self.theaterSpeechLocale()
         let localeIdentifier = locale.identifier.replacingOccurrences(of: "_", with: "-")
         if self.recognizer == nil || self.recognizerLocaleIdentifier != localeIdentifier {
             self.recognizer = SFSpeechRecognizer(locale: locale)
             self.recognizerLocaleIdentifier = localeIdentifier
         }
         return self.recognizer
+    }
+
+    private func theaterSpeechLocale() -> Locale {
+        let sourceID = SpokenLanguageResolver.sourceLanguage().id
+        let identifier = VoiceEngineLanguageCatalog.preferredAppleSpeechAnalyzerLocale(
+            forLanguageID: sourceID
+        )
+        return Locale(identifier: identifier)
     }
 
     /// Converts raw [Float] samples (16kHz mono) to AVAudioPCMBuffer

@@ -30,9 +30,9 @@ enum WatchCaptureProbe {
             if WatchOutputRoute.looksLikeLoopbackOrAggregate() {
                 return "Heard system audio. \(WatchOutputRoute.warningCopy)"
             }
-            return "Heard system audio. Listen will caption Korean, English, or Thai."
+            return "Heard system audio. Listen will caption Korean, English, Thai, or Japanese."
         case .silent:
-            return "Capture is running but heard no audio. Play a Korean, English, or Thai video that is not DRM."
+            return "Capture is running but heard no audio. Play a Korean, English, Thai, or Japanese video that is not DRM."
         case .denied:
             return ScreenRecordingAccess.deniedCopy
         case .needsReopen:

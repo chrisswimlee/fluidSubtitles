@@ -8,6 +8,12 @@ enum TranslationClauseSegmenter {
         var tail: String
     }
 
+    /// Finished unread sentences on their own rows, plus the line still typing.
+    struct LivePreview: Equatable {
+        var pinned: [String]
+        var open: String
+    }
+
     enum CommitDecision: Equatable {
         case ignore
         case commitNow
@@ -127,15 +133,16 @@ enum TranslationClauseSegmenter {
         Self.thinEnglishStarters.contains(self.tokenKey(word))
     }
 
-    /// A paragraph with no period still has to move. One Theater line is enough.
+    /// Run-on backstop only. A title fires on sentence end or a pause, not at
+    /// a mid-phrase word count. One Theater line is enough if they never pause.
     static func shouldFollowAlong(_ text: String, languageID: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return false }
         if self.isTooThinToCommit(trimmed, languageID: languageID) { return false }
         if self.isCompactScript(languageID) {
-            return trimmed.count >= LiveTranslationTiming.followAlongCharacters
+            return trimmed.count >= LiveTranslationTiming.maxLineCharacters
         }
-        return self.tokens(trimmed).count >= LiveTranslationTiming.followAlongWords
+        return self.tokens(trimmed).count >= LiveTranslationTiming.maxLineWords
     }
 
     static func isInternalBoundary(_ text: String, languageID: String) -> Bool {
@@ -160,6 +167,15 @@ enum TranslationClauseSegmenter {
         if trimmed.count >= LiveTranslationTiming.maxDraftCharacters { return .commitNow }
         if self.shouldFollowAlong(trimmed, languageID: languageID) { return .commitNow }
         return .waitForStability
+    }
+
+    /// A finished sentence plus more speech — pin the first so the next line can type under it.
+    static func hasUnreadSpeechAfterCompleted(_ leftover: String, languageID: String) -> Bool {
+        let split = self.absorbThinCompleted(self.split(leftover, languageID: languageID), languageID: languageID)
+        guard let first = split.completed.first, !self.isTooThinToCommit(first, languageID: languageID) else {
+            return false
+        }
+        return split.completed.count > 1 || !split.tail.isEmpty
     }
 
     static func settleNanoseconds(unreadCount: Int, tail: String, languageID: String) -> UInt64 {
@@ -301,8 +317,13 @@ enum TranslationClauseSegmenter {
         }
         let leftover = self.leftoverTail(incoming, already: [previous])
         if leftover.isEmpty { return true }
+        if leftover.count < 3, leftover.allSatisfy({ $0.isNumber || $0.isPunctuation }) {
+            return false
+        }
         if ["en", "ko", "th", "ja"].contains(where: {
-            self.looksComplete(leftover, languageID: $0) || self.shouldFollowAlong(leftover, languageID: $0)
+            self.looksComplete(leftover, languageID: $0)
+                || self.shouldFollowAlong(leftover, languageID: $0)
+                || self.isPauseFinalizable(leftover, languageID: $0)
         }) {
             return false
         }
@@ -423,6 +444,34 @@ enum TranslationClauseSegmenter {
         }
         let open = split.tail.isEmpty ? trimmed : split.tail
         return self.currentSpokenLine(open, languageID: languageID)
+    }
+
+    /// Finished sentences stay on their own rows. The open line is the one still being said.
+    static func livePreview(_ leftover: String, languageID: String) -> LivePreview {
+        let trimmed = leftover.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return LivePreview(pinned: [], open: "") }
+        let split = self.absorbThinCompleted(self.split(trimmed, languageID: languageID), languageID: languageID)
+        let completed = split.completed.filter { !self.isTooThinToCommit($0, languageID: languageID) }
+        if completed.isEmpty {
+            let open = split.tail.isEmpty ? trimmed : split.tail
+            return LivePreview(pinned: [], open: self.currentSpokenLine(open, languageID: languageID))
+        }
+        if split.tail.isEmpty {
+            if completed.count == 1 {
+                return LivePreview(
+                    pinned: [],
+                    open: self.currentSpokenLine(completed[0], languageID: languageID)
+                )
+            }
+            return LivePreview(
+                pinned: Array(completed.dropLast()),
+                open: self.currentSpokenLine(completed.last ?? "", languageID: languageID)
+            )
+        }
+        return LivePreview(
+            pinned: completed,
+            open: self.currentSpokenLine(split.tail, languageID: languageID)
+        )
     }
 
     /// Next clause that is not already on Theater. Cumulative ASR still starts
@@ -1260,6 +1309,25 @@ struct LectureCaptionLog: Equatable {
             if TranslationClauseSegmenter.shouldIgnoreAsStalePrefix(previous: lastSource, incoming: cleanedSource) {
                 return nil
             }
+            let peeledSource = TranslationClauseSegmenter.leftoverTail(
+                cleanedSource,
+                already: [lastSource],
+                languageID: SpokenLanguageResolver.sourceLanguage().id
+            ).trimmingCharacters(in: .whitespacesAndNewlines)
+            let languageID = SpokenLanguageResolver.sourceLanguage().id
+            let leftoverIsNewClause = !peeledSource.isEmpty && peeledSource != cleanedSource
+                && (
+                    TranslationClauseSegmenter.looksComplete(peeledSource, languageID: languageID)
+                        || TranslationClauseSegmenter.isPauseFinalizable(peeledSource, languageID: languageID)
+                        || TranslationClauseSegmenter.shouldFollowAlong(peeledSource, languageID: languageID)
+                )
+            if leftoverIsNewClause {
+                return self.commit(
+                    source: peeledSource,
+                    translated: cleanedTranslation,
+                    mayReviseLast: false
+                )
+            }
             if TranslationClauseSegmenter.shouldReplaceLast(previous: lastSource, incoming: cleanedSource) {
                 self.entries[self.entries.count - 1].source = cleanedSource
                 self.entries[self.entries.count - 1].translated = cleanedTranslation
@@ -1267,11 +1335,24 @@ struct LectureCaptionLog: Equatable {
                 self.entries[self.entries.count - 1].committedAt = Date()
                 return (self.entries.last?.id ?? self.nextID, self.trimIfNeeded())
             }
+            if !peeledSource.isEmpty, peeledSource != cleanedSource {
+                return self.commit(
+                    source: peeledSource,
+                    translated: cleanedTranslation,
+                    mayReviseLast: false
+                )
+            }
+            if TranslationClauseSegmenter.isAlreadyPrintedSource(
+                cleanedSource,
+                already: [lastSource]
+            ) {
+                return nil
+            }
             if TranslationClauseSegmenter.shouldReviseCommitted(
                 previous: lastSource,
                 incoming: cleanedSource,
                 languageID: SpokenLanguageResolver.sourceLanguage().id
-            ) {
+            ), peeledSource != cleanedSource {
                 return nil
             }
         }
@@ -1339,11 +1420,11 @@ struct LectureCaptionLog: Equatable {
 }
 
 enum LiveTranslationConfirm {
-    /// Korean and Thai preview ticks are weak. Pause and Stop still take the
+    /// Korean, Japanese, and Thai preview ticks are weak. Pause and Stop still take the
     /// fuller 30-second decode for leftover speech. Mid-talk prints from the live stitch.
     static func requiresConfirmBeforePrint(languageID: String) -> Bool {
         switch TranslationClauseSegmenter.languageCode(from: languageID) {
-        case "ko", "th":
+        case "ko", "ja", "th":
             return true
         default:
             return false

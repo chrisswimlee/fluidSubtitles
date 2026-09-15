@@ -169,8 +169,6 @@ jobs:
           # Ad-hoc signing requires no certificate or secret, but gives macOS
           # TCC a valid code identity for permissions such as Accessibility.
           codesign --force --sign - --timestamp=none "$CTRANSCRIBE_FRAMEWORK"
-          codesign --force --sign - --timestamp=none \
-            "$APP_PATH/Contents/Frameworks/MediaRemoteAdapter.framework"
           codesign --force --sign - --timestamp=none --options runtime \
             --entitlements "$EFFECTIVE_ENTITLEMENTS" \
             --identifier "$BUNDLE_IDENTIFIER" \
@@ -179,7 +177,6 @@ jobs:
           test -d "$APP_PATH"
           test -f "$INFO_PLIST"
           test -x "$EXECUTABLE_PATH"
-          test -x "$APP_PATH/Contents/Frameworks/MediaRemoteAdapter.framework/Versions/A/MediaRemoteAdapter"
           test -L "$CTRANSCRIBE_FRAMEWORK/Versions/Current"
           test -L "$CTRANSCRIBE_FRAMEWORK/CTranscribe"
           test -L "$CTRANSCRIBE_FRAMEWORK/Resources"

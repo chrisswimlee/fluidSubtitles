@@ -281,14 +281,20 @@ final class LLMTranslationEngine: TranslationEngine {
     static func matchesTargetScript(_ text: String, target: TranslationLanguage) -> Bool {
         let hasHangul = text.unicodeScalars.contains { (0xAC00...0xD7A3).contains($0.value) }
         let hasThai = text.unicodeScalars.contains { (0x0E00...0x0E7F).contains($0.value) }
+        let hasKana = text.unicodeScalars.contains {
+            (0x3040...0x309F).contains($0.value) || (0x30A0...0x30FF).contains($0.value)
+        }
+        let hasKanji = text.unicodeScalars.contains { (0x4E00...0x9FFF).contains($0.value) }
         let hasLatin = text.contains { $0.isLetter && $0.isASCII }
         switch target.id {
         case "ko":
             return hasHangul
+        case "ja":
+            return hasKana || hasKanji
         case "th":
             return hasThai
         case "en":
-            return hasLatin && !hasHangul && !hasThai
+            return hasLatin && !hasHangul && !hasThai && !hasKana
         default:
             return true
         }
@@ -312,7 +318,7 @@ final class LLMTranslationEngine: TranslationEngine {
 
     private static let captionLabels: Set<String> = [
         "original", "translation", "translated", "source", "caption",
-        "output", "input", "english", "korean", "thai",
+        "output", "input", "english", "korean", "japanese", "thai",
         "原文", "訳文", "翻訳", "译文", "翻译",
         "원문", "번역", "번역문",
         "แปล",
@@ -484,11 +490,17 @@ enum LLMTranslationPrompt {
         if source.contains("korean") {
             return "Korean is verb-final. Resolve omitted subjects from prior sentences. Do not leave a hanging clause."
         }
+        if source.contains("japanese") {
+            return "Japanese is verb-final. Resolve omitted subjects from prior sentences. Do not leave a hanging clause."
+        }
         if source.contains("thai") {
             return "Thai has no spaces. Treat this as one finished clause."
         }
         if target.contains("korean") {
             return "Keep the speaker's politeness. Do not upgrade casual speech into lecture 합니다 form."
+        }
+        if target.contains("japanese") {
+            return "Keep the speaker's politeness. Do not upgrade casual speech into lecture です/ます form."
         }
         if target.contains("thai") {
             return "Keep natural spoken Thai. Keep ครับ/ค่ะ when the source is polite."

@@ -28,6 +28,8 @@ Closes #(issue number), or links to an accepted Discussion/roadmap item.
 ## Screenshots / Video
 Attach screenshots or a video for UI, UX, settings, onboarding, overlay, menu bar, or visual behavior changes.
 
+Docs-only and test-only PRs do not need screenshots or this checkbox. PRs that touch Theater chrome still do.
+
 - [ ] No UI/visual changes; screenshots/video are not applicable.
 
 ## Notes

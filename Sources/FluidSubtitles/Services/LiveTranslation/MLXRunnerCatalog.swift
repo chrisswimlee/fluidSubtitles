@@ -72,6 +72,7 @@ struct MLXRunnerModel: Codable, Equatable, Hashable, Identifiable {
                 switch code {
                 case "ko": return "Korean"
                 case "en": return "English"
+                case "ja": return "Japanese"
                 case "th": return "Thai"
                 default: return code
                 }
@@ -120,9 +121,9 @@ enum MLXRunnerCatalog {
                 size: "5.2 GB",
                 ramGB: 10,
                 quality: "recommended",
-                languages: ["ko", "en", "th"],
+                languages: ["ko", "en", "ja", "th"],
                 recommended: true,
-                detail: "Smallest model that still works for Korean / English / Thai language exchange. About 5 GB.",
+                detail: "Smallest model that still works for Korean / English / Japanese / Thai language exchange. About 5 GB.",
                 localHints: []
             ),
             MLXRunnerModel(
@@ -132,9 +133,9 @@ enum MLXRunnerCatalog {
                 size: "2.5 GB",
                 ramGB: 8,
                 quality: "gemma4",
-                languages: ["ko", "en", "th"],
+                languages: ["ko", "en", "ja", "th"],
                 recommended: false,
-                detail: "Smaller than E4B. Use only if you want the tiniest file; Korean/Thai get thinner.",
+                detail: "Smaller than E4B. Use only if you want the tiniest file; Korean/Japanese/Thai get thinner.",
                 localHints: []
             ),
             MLXRunnerModel(
@@ -144,9 +145,9 @@ enum MLXRunnerCatalog {
                 size: "15 GB",
                 ramGB: 24,
                 quality: "gemma4",
-                languages: ["ko", "en", "th"],
+                languages: ["ko", "en", "ja", "th"],
                 recommended: false,
-                detail: "Newer than Gemma 3. MoE, strong Korean / English / Thai. Reuses the copy already in LM Studio if present.",
+                detail: "Newer than Gemma 3. MoE, strong Korean / English / Japanese / Thai. Reuses the copy already in LM Studio if present.",
                 localHints: ["~/.lmstudio/models/lmstudio-community/gemma-4-26B-A4B-it-QAT-MLX-4bit"]
             ),
             MLXRunnerModel(
@@ -156,7 +157,7 @@ enum MLXRunnerCatalog {
                 size: "18 GB",
                 ramGB: 32,
                 quality: "gemma4",
-                languages: ["ko", "en", "th"],
+                languages: ["ko", "en", "ja", "th"],
                 recommended: false,
                 detail: "Largest Gemma 4 text model. Comfortable on a 48 GB Mac. Reuses the LM Studio copy if present.",
                 localHints: ["~/.lmstudio/models/lmstudio-community/gemma-4-31B-it-MLX-4bit"]
@@ -168,9 +169,9 @@ enum MLXRunnerCatalog {
                 size: "2.5 GB",
                 ramGB: 8,
                 quality: "fast",
-                languages: ["ko", "en", "th"],
+                languages: ["ko", "en", "ja", "th"],
                 recommended: false,
-                detail: "Fastest Gemma 3 download. Fine for short Korean and English captions; Thai is usable.",
+                detail: "Fastest Gemma 3 download. Fine for short Korean, English, and Japanese captions; Thai is usable.",
                 localHints: []
             ),
             MLXRunnerModel(
@@ -180,7 +181,7 @@ enum MLXRunnerCatalog {
                 size: "8 GB",
                 ramGB: 16,
                 quality: "larger",
-                languages: ["ko", "en", "th"],
+                languages: ["ko", "en", "ja", "th"],
                 recommended: false,
                 detail: "Step up from E4B if short language-exchange lines still come out thin.",
                 localHints: []
@@ -192,7 +193,7 @@ enum MLXRunnerCatalog {
                 size: "16 GB",
                 ramGB: 32,
                 quality: "highest",
-                languages: ["ko", "en", "th"],
+                languages: ["ko", "en", "ja", "th"],
                 recommended: false,
                 detail: "Highest quality Gemma 3. Use Gemma 4 26B/31B instead if those are already on disk.",
                 localHints: []
@@ -204,9 +205,9 @@ enum MLXRunnerCatalog {
                 size: "4.6 GB",
                 ramGB: 12,
                 quality: "korean",
-                languages: ["ko", "en", "th"],
+                languages: ["ko", "en", "ja", "th"],
                 recommended: false,
-                detail: "Strong Korean and English. Thai is weaker than Gemma 3 or 4.",
+                detail: "Strong Korean, Japanese, and English. Thai is weaker than Gemma 3 or 4.",
                 localHints: []
             ),
         ]
@@ -317,7 +318,7 @@ struct MLXRunnerSpec: Equatable {
             size: isFolder ? "On disk" : "Hugging Face",
             ramGB: 0,
             quality: self.kind.rawValue,
-            languages: ["ko", "en", "th"],
+            languages: ["ko", "en", "ja", "th"],
             recommended: false,
             detail: self.kind == .lmstudio
                 ? "Already downloaded in LM Studio. The runner uses this folder as-is."

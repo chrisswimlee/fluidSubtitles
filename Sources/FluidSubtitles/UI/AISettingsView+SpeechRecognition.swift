@@ -27,7 +27,7 @@ extension VoiceEngineSettingsView {
                 FluidPageHeader(
                     systemImage: "waveform",
                     title: "Voice Engine",
-                    subtitle: "Speech model for the language you speak. Apple Speech is enough to try."
+                    subtitle: "Sharpens speech into text. Pick a model for the language you speak. Apple Speech is enough to try."
                 )
 
                 // Stats Panel - Dynamic bars that update based on selected model
@@ -43,119 +43,115 @@ extension VoiceEngineSettingsView {
                             .shadow(color: self.theme.metrics.cardShadow.color.opacity(self.theme.metrics.cardShadow.opacity), radius: self.theme.metrics.cardShadow.radius, x: self.theme.metrics.cardShadow.x, y: self.theme.metrics.cardShadow.y)
                     )
 
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle")
+                        .font(self.theme.typography.bodySmall)
+                        .foregroundStyle(self.voiceEngineSecondaryText)
+                    Text("Click a row to preview. Press Activate to load the model.")
+                        .font(self.theme.typography.bodySmall)
+                        .foregroundStyle(self.voiceEngineSecondaryText)
+                    Spacer()
+                    Menu {
+                        ForEach(SpeechProviderFilter.allCases) { option in
+                            Button(option.rawValue) {
+                                self.viewModel.providerFilter = option
+                            }
+                        }
+                    } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "info.circle")
-                                .font(self.theme.typography.bodySmall)
-                                .foregroundStyle(self.voiceEngineSecondaryText)
-                            Text("Click a row to preview. Press Activate to load the model.")
-                                .font(self.theme.typography.bodySmall)
-                                .foregroundStyle(self.voiceEngineSecondaryText)
-                            Spacer()
-                            Menu {
-                                ForEach(SpeechProviderFilter.allCases) { option in
-                                    Button(option.rawValue) {
-                                        self.viewModel.providerFilter = option
-                                    }
-                                }
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "line.3.horizontal.decrease.circle")
-                                        .font(self.theme.typography.bodySmallStrong)
-                                    Text("Filter: \(self.viewModel.providerFilter.rawValue)")
-                                        .font(self.theme.typography.bodySmallStrong)
-                                }
-                                .foregroundStyle(self.voiceEngineTitleText)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 9)
-                                        .fill(self.theme.palette.cardBackground.opacity(0.8))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 9)
-                                                .stroke(self.theme.palette.cardBorder.opacity(0.5), lineWidth: 1)
-                                        )
-                                )
-                            }
-                            Menu {
-                                ForEach(ModelSortOption.allCases) { option in
-                                    Button(option.rawValue) {
-                                        self.viewModel.modelSortOption = option
-                                    }
-                                }
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Text("Sort by: \(self.viewModel.modelSortOption.rawValue)")
-                                        .font(self.theme.typography.bodySmallStrong)
-                                }
-                                .foregroundStyle(self.voiceEngineTitleText)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 9)
-                                        .fill(self.theme.palette.cardBackground.opacity(0.8))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 9)
-                                                .stroke(self.theme.palette.cardBorder.opacity(0.5), lineWidth: 1)
-                                        )
-                                )
-                            }
+                            Image(systemName: "line.3.horizontal.decrease.circle")
+                                .font(self.theme.typography.bodySmallStrong)
+                            Text("Filter: \(self.viewModel.providerFilter.rawValue)")
+                                .font(self.theme.typography.bodySmallStrong)
                         }
-
-                        // Active + Other models list
-                        VStack(alignment: .leading, spacing: 10) {
-                            if let activeModel {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text("Active Model")
-                                        .font(self.theme.typography.sectionTitle)
-                                        .foregroundStyle(self.voiceEngineTitleText)
-                                    self.speechModelCard(for: activeModel)
-                                }
-                            } else {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text("Active Model")
-                                        .font(self.theme.typography.sectionTitle)
-                                        .foregroundStyle(self.voiceEngineTitleText)
-                                    Label("No active model yet. Download and activate one below.", systemImage: "arrow.down.circle")
-                                        .font(self.theme.typography.bodySmall)
-                                        .foregroundStyle(self.voiceEngineSecondaryText)
-                                }
-                            }
-
-                            Divider().padding(.vertical, 2)
-
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(hasActiveModel ? "Other Models" : "Available Models")
-                                    .font(self.theme.typography.sectionTitle)
-                                    .foregroundStyle(self.voiceEngineTitleText)
-                                VStack(spacing: 8) {
-                                    ForEach(otherModels) { model in
-                                        self.speechModelCard(for: model)
-                                    }
-                                }
-                            }
-                        }
-                        .padding(12)
+                        .foregroundStyle(self.voiceEngineTitleText)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
                         .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(self.theme.palette.cardBackground.opacity(0.9))
+                            RoundedRectangle(cornerRadius: 9)
+                                .fill(self.theme.palette.cardBackground.opacity(0.8))
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(self.theme.palette.cardBorder.opacity(0.3), lineWidth: 1)
+                                    RoundedRectangle(cornerRadius: 9)
+                                        .stroke(self.theme.palette.cardBorder.opacity(0.5), lineWidth: 1)
                                 )
-                                .shadow(color: self.theme.metrics.cardShadow.color.opacity(self.theme.metrics.cardShadow.opacity), radius: self.theme.metrics.cardShadow.radius, x: self.theme.metrics.cardShadow.x, y: self.theme.metrics.cardShadow.y)
                         )
-
-                        Divider().padding(.vertical, 4)
-
-                        // Filler Words Section
-                        self.fillerWordsSection
+                    }
+                    Menu {
+                        ForEach(ModelSortOption.allCases) { option in
+                            Button(option.rawValue) {
+                                self.viewModel.modelSortOption = option
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text("Sort by: \(self.viewModel.modelSortOption.rawValue)")
+                                .font(self.theme.typography.bodySmallStrong)
+                        }
+                        .foregroundStyle(self.voiceEngineTitleText)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 9)
+                                .fill(self.theme.palette.cardBackground.opacity(0.8))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 9)
+                                        .stroke(self.theme.palette.cardBorder.opacity(0.5), lineWidth: 1)
+                                )
+                        )
                     }
                 }
+
+                // Active + Other models list
+                VStack(alignment: .leading, spacing: 10) {
+                    if let activeModel {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Active Model")
+                                .font(self.theme.typography.sectionTitle)
+                                .foregroundStyle(self.voiceEngineTitleText)
+                            self.speechModelCard(for: activeModel)
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Active Model")
+                                .font(self.theme.typography.sectionTitle)
+                                .foregroundStyle(self.voiceEngineTitleText)
+                            Label("No active model yet. Download and activate one below.", systemImage: "arrow.down.circle")
+                                .font(self.theme.typography.bodySmall)
+                                .foregroundStyle(self.voiceEngineSecondaryText)
+                        }
+                    }
+
+                    Divider().padding(.vertical, 2)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(hasActiveModel ? "Other Models" : "Available Models")
+                            .font(self.theme.typography.sectionTitle)
+                            .foregroundStyle(self.voiceEngineTitleText)
+                        VStack(spacing: 8) {
+                            ForEach(otherModels) { model in
+                                self.speechModelCard(for: model)
+                            }
+                        }
+                    }
+                }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(self.theme.palette.cardBackground.opacity(0.9))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(self.theme.palette.cardBorder.opacity(0.3), lineWidth: 1)
+                        )
+                        .shadow(color: self.theme.metrics.cardShadow.color.opacity(self.theme.metrics.cardShadow.opacity), radius: self.theme.metrics.cardShadow.radius, x: self.theme.metrics.cardShadow.x, y: self.theme.metrics.cardShadow.y)
+                )
+
+                Divider().padding(.vertical, 4)
+
+                // Filler Words Section
+                self.fillerWordsSection
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     /// Stats panel showing speed/accuracy bars that animate when model changes
@@ -545,118 +541,20 @@ extension VoiceEngineSettingsView {
 
     @ViewBuilder
     private func speechModelLanguagePicker(for model: SettingsStore.SpeechModel) -> some View {
-        if model.isWhisperModel {
-            self.whisperLanguagePickerButton
-        } else if model == .cohereTranscribeSixBit {
-            Menu {
-                ForEach(VoiceEngineLanguageCatalog.productCohereLanguages) { language in
-                    Button {
-                        guard language != self.settings.selectedCohereLanguage else { return }
-                        self.settings.selectedCohereLanguage = language
-                    } label: {
-                        HStack {
-                            Text(language.displayName)
-                            if language == self.settings.selectedCohereLanguage {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                }
-            } label: {
-                self.languageChipLabel(self.settings.selectedCohereLanguage.displayName)
-            }
-            .buttonStyle(.plain)
-        } else if model == .nemotronOffline || model == .nemotronStreaming || model == .nemotronStreaming320 {
-            self.nemotronLanguagePickerButton
-        }
-    }
-
-    private var whisperLanguagePickerButton: some View {
-        Button {
-            self.whisperLanguageSearchText = ""
-            self.isShowingWhisperLanguagePicker.toggle()
-        } label: {
-            self.languageChipLabel(self.selectedWhisperLanguageName)
-        }
-        .buttonStyle(.plain)
-        .popover(isPresented: self.$isShowingWhisperLanguagePicker, arrowEdge: .bottom) {
-            self.whisperLanguagePickerPopover
-        }
-    }
-
-    private var selectedWhisperLanguageName: String {
-        if let languageCode = self.settings.selectedWhisperLanguageCode,
-           let language = VoiceEngineLanguageCatalog.whisperLanguage(forCode: languageCode)
+        if model.isWhisperModel
+            || model == .cohereTranscribeSixBit
+            || model == .nemotronOffline
+            || model == .nemotronStreaming
+            || model == .nemotronStreaming320
+            || model == .appleSpeech
+            || model == .appleSpeechAnalyzer
         {
-            return language.displayName
+            self.languageChipLabel(SpokenLanguageResolver.sourceLanguage().displayName)
+                .help("Locked to I speak on Theater.")
+                .accessibilityLabel("Listening language")
+                .accessibilityValue(SpokenLanguageResolver.sourceLanguage().displayName)
+                .accessibilityHint("Change I speak on Theater. Voice Engine stays on this language.")
         }
-        return SpokenLanguageResolver.sourceLanguage().displayName
-    }
-
-    private var filteredWhisperLanguages: [VoiceEngineLanguage] {
-        let query = self.normalizedWhisperLanguageSearchText
-        guard !query.isEmpty else { return VoiceEngineLanguageCatalog.whisperLanguages }
-        return VoiceEngineLanguageCatalog.whisperLanguages.filter { language in
-            language.displayName.lowercased().contains(query) ||
-                language.id.lowercased().contains(query) ||
-                language.aliases.contains { $0.lowercased().contains(query) }
-        }
-    }
-
-    private var normalizedWhisperLanguageSearchText: String {
-        self.whisperLanguageSearchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-    }
-
-    private var whisperLanguagePickerPopover: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(self.voiceEngineTertiaryText)
-                TextField("Search languages", text: self.$whisperLanguageSearchText)
-                    .textFieldStyle(.plain)
-            }
-            .padding(.horizontal, 12)
-            .frame(height: 36)
-
-            Divider()
-
-            ScrollView(.vertical, showsIndicators: true) {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(self.filteredWhisperLanguages) { language in
-                        let languageCode = VoiceEngineLanguageCatalog.whisperLanguageCode(for: language.id)
-                        Button {
-                            self.settings.selectedWhisperLanguageCode = languageCode
-                            self.isShowingWhisperLanguagePicker = false
-                        } label: {
-                            self.whisperLanguagePickerRow(
-                                title: language.displayName,
-                                isSelected: languageCode == self.settings.selectedWhisperLanguageCode
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.vertical, 6)
-            }
-        }
-        .frame(width: 280, height: 420)
-    }
-
-    private func whisperLanguagePickerRow(title: String, isSelected: Bool) -> some View {
-        HStack(spacing: 8) {
-            Text(title)
-                .font(self.theme.typography.bodySmall)
-                .foregroundStyle(.primary)
-            Spacer(minLength: 12)
-            if isSelected {
-                Image(systemName: "checkmark")
-                    .font(self.theme.typography.bodySmall)
-                    .foregroundStyle(self.theme.palette.accent)
-            }
-        }
-        .contentShape(Rectangle())
-        .padding(.horizontal, 12)
-        .frame(height: 28)
     }
 
     private func languageChipLabel(_ title: String) -> some View {
@@ -667,7 +565,7 @@ extension VoiceEngineSettingsView {
             Text(title)
                 .lineLimit(1)
                 .fontWeight(.semibold)
-            Image(systemName: "chevron.down")
+            Image(systemName: "lock.fill")
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(self.voiceEngineTertiaryText)
         }
@@ -691,49 +589,6 @@ extension VoiceEngineSettingsView {
         default:
             return model.displayName
         }
-    }
-
-    private var nemotronLanguagePickerButton: some View {
-        Button {
-            self.isShowingNemotronLanguagePicker.toggle()
-        } label: {
-            self.languageChipLabel(self.settings.selectedNemotronLanguage.compactDisplayName)
-        }
-        .buttonStyle(.plain)
-        .popover(isPresented: self.$isShowingNemotronLanguagePicker, arrowEdge: .bottom) {
-            self.nemotronLanguagePickerPopover
-        }
-    }
-
-    private var nemotronLanguagePickerPopover: some View {
-        ScrollView(.vertical, showsIndicators: true) {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(VoiceEngineLanguageCatalog.productNemotronLanguages) { language in
-                    Button {
-                        self.settings.selectedNemotronLanguage = language
-                        self.isShowingNemotronLanguagePicker = false
-                    } label: {
-                        HStack(spacing: 8) {
-                            Text(language.displayName)
-                                .font(self.theme.typography.bodySmall)
-                                .foregroundStyle(.primary)
-                            Spacer(minLength: 12)
-                            if language == self.settings.selectedNemotronLanguage {
-                                Image(systemName: "checkmark")
-                                    .font(self.theme.typography.bodySmall)
-                                    .foregroundStyle(self.theme.palette.accent)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                        .padding(.horizontal, 12)
-                        .frame(height: 26)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.vertical, 6)
-        }
-        .frame(width: 260, height: 532)
     }
 
     var modelStatusView: some View {

@@ -88,17 +88,42 @@ jobs:
     - name: Show Xcode version
       run: xcodebuild -version
       
-    # Hosted CI is Xcode 26 on macos-15. It cannot prove Watch or a live Theater
-    # listen. Prove those on a Mac with docs/WATCH_PROOF.md and docs/STAGE_SCORE.md.
+    # Hosted CI is Xcode 26 on macos-15. It cannot prove a live Theater listen.
+    # Prove a talk on a Mac with docs/STAGE_SCORE.md. Do not invent HUD numbers.
     # Tiny Whisper GGUF output is nondeterministic on hosted macOS runners.
     # Keep this E2E assertion in the suite for local validation, but skip it in CI.
-    - name: Build and test (excluding flaky Tiny Whisper E2E)
+    - name: Build and test (excluding UITests and flaky Tiny Whisper E2E)
       run: |
         set -o pipefail
         xcodebuild test \
           -project fluidSubtitles.xcodeproj \
           -scheme fluidSubtitles \
           -destination 'platform=macOS,arch=arm64' \
+          -skip-testing:FluidSubtitlesUITests \
           -skip-testing:FluidSubtitlesIntegrationTests/DictationE2ETests/testDictationEndToEnd_whisperTiny_transcribesFixture \
           CODE_SIGN_IDENTITY="-" \
           | xcpretty
+
+  ci-ok:
+    name: Build and Test
+    if: always() && (github.event_name == 'push' || github.event.pull_request.draft == false)
+    needs: [changes, lint, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require lint and tests when sources changed
+        run: |
+          set -euo pipefail
+          if [ "${{ needs.changes.outputs.relevant }}" != "true" ]; then
+            echo "No build-relevant paths. Build and Test is green."
+            exit 0
+          fi
+          if [ "${{ needs.lint.result }}" != "success" ]; then
+            echo "SwiftLint failed."
+            exit 1
+          fi
+          if [ "${{ needs.build.result }}" != "success" ]; then
+            echo "Build and test failed."
+            exit 1
+          fi
+

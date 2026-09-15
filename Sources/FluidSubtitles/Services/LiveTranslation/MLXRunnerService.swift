@@ -414,7 +414,7 @@ final class MLXRunnerService: ObservableObject {
                 size: row["size"] as? String ?? "On disk",
                 ramGB: row["ram_gb"] as? Int ?? 0,
                 quality: row["quality"] as? String ?? "local",
-                languages: row["languages"] as? [String] ?? ["ko", "en", "th"],
+                languages: row["languages"] as? [String] ?? ["ko", "en", "ja", "th"],
                 recommended: row["recommended"] as? Bool ?? false,
                 detail: row["detail"] as? String ?? "",
                 localHints: row["local_hints"] as? [String] ?? [],
