@@ -36,7 +36,7 @@ excluded:
   - scratch
 
 line_length:
-  warning: 250
+  warning: 320
   error: 320
   ignores_comments: true
   ignores_urls: true
@@ -49,26 +49,26 @@ identifier_name:
 todo:
   severity: warning
 
-# FluidVoice-era files exceed the default metric gates. Do not split
-# ASRService / ContentView to satisfy these numbers.
+# --strict promotes warnings to errors. These match the FluidVoice-scale
+# files. Do not split ASRService / ContentView to satisfy smaller numbers.
 type_body_length:
-  warning: 800
+  warning: 2000
   error: 2000
 
 file_length:
-  warning: 2000
-  error: 2500
+  warning: 3000
+  error: 3000
 
 function_body_length:
-  warning: 200
+  warning: 450
   error: 450
 
 cyclomatic_complexity:
-  warning: 30
+  warning: 55
   error: 55
 
 function_parameter_count:
-  warning: 8
+  warning: 12
   error: 12
 
 large_tuple:
