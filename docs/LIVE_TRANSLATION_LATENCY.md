@@ -15,7 +15,7 @@ End-to-end is speech-start to the printed caption. `MT` is Apple Translation onl
 
 The HUD stays visible when chrome is hidden.
 
-`TranslationSession.preferredStrategy = .lowLatency` is a **macOS 26.4** API. On 26.0–26.3 the same warm session is used without that flag. Theater translates a clause when it commits, not on every ASR partial. A speculative Apple-only prefetch may start at a clause-boundary approximation (unread completed clause or a tail that is ready to commit). The HUD `MT` value is still the commit-path wait: 0 on a cache hit, otherwise the remaining Apple call. Prefetch does not use local MLX and must not starve a queued commit.
+Apple Translation uses a warm `TranslationSession`. Hosted CI builds with the Xcode 26.3 SDK, so the later `preferredStrategy` API is not linked. Theater translates a clause when it commits, not on every ASR partial. A speculative Apple-only prefetch may start at a clause-boundary approximation (unread completed clause or a tail that is ready to commit). The HUD `MT` value is still the commit-path wait: 0 on a cache hit, otherwise the remaining Apple call. Prefetch does not use local MLX and must not starve a queued commit.
 
 Apple Translation is warmed when the language pair changes (swap or I-speak / caption pickers) and again on Listen. The first clause still includes pack-ready plus `TranslationSession.prepareTranslation()` if those have not finished. That setup cost is not the per-clause `MT` readout.
 

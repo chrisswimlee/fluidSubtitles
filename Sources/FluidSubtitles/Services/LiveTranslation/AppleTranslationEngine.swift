@@ -37,12 +37,10 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
         }
         self.lastPair = pair
         self.mailbox.cancelAll(TranslationEngineError(message: "Language pair changed."))
-        var configuration = TranslationSession.Configuration(
+        self.configuration = TranslationSession.Configuration(
             source: sourceLanguage,
             target: targetLanguage
         )
-        Self.applyLowLatencyStrategy(&configuration)
-        self.configuration = configuration
     }
 
     func warm(source: TranslationLanguage, target: TranslationLanguage) async {
@@ -235,20 +233,8 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
         source: Locale.Language,
         target: Locale.Language
     ) -> TranslationSession {
-        if #available(macOS 26.4, *) {
-            return TranslationSession(
-                installedSource: source,
-                target: target,
-                preferredStrategy: .lowLatency
-            )
-        }
+        // preferredStrategy is a later SDK. Hosted CI is Xcode 26.3.
         return TranslationSession(installedSource: source, target: target)
-    }
-
-    private static func applyLowLatencyStrategy(_ configuration: inout TranslationSession.Configuration) {
-        if #available(macOS 26.4, *) {
-            configuration.preferredStrategy = .lowLatency
-        }
     }
 
     private func serve(session: TranslationSession, mailbox: TranslationRequestMailbox) async {
@@ -300,6 +286,18 @@ enum TranslationPackAvailability: Equatable {
     case unknown
 
     var isReady: Bool { self == .installed }
+
+    static func stricter(_ lhs: Self, _ rhs: Self) -> Self {
+        func rank(_ value: Self) -> Int {
+            switch value {
+            case .installed: return 0
+            case .unknown: return 1
+            case .supported: return 2
+            case .unsupported: return 3
+            }
+        }
+        return rank(lhs) >= rank(rhs) ? lhs : rhs
+    }
 }
 
 /// Visible window so Apple’s language-pack sheet is not attached to a 1×1 hidden panel.
