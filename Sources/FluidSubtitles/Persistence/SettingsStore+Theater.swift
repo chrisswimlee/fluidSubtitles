@@ -18,17 +18,25 @@ extension SettingsStore {
         static let watchAppBundleID = "TheaterWatchAppBundleID"
         static let minimized = "TheaterMinimized"
         static let expandedWindowFrame = "TheaterExpandedWindowFrame"
+        static let captionPrintStyle = "TheaterCaptionPrintStyle"
+        static let lastTranslateTarget = "TheaterLastTranslateTargetLanguageID"
     }
 
     var theaterSessionMode: TheaterSessionMode {
         get {
-            TheaterSessionMode(
-                rawValue: self.defaults.string(forKey: TheaterDefaults.sessionMode) ?? ""
-            ) ?? .lectern
+            TheaterSessionMode.resolved(self.defaults.string(forKey: TheaterDefaults.sessionMode))
         }
         set {
             objectWillChange.send()
             self.defaults.set(newValue.rawValue, forKey: TheaterDefaults.sessionMode)
+        }
+    }
+
+    var theaterLastTranslateTargetLanguageID: String {
+        get { self.defaults.string(forKey: TheaterDefaults.lastTranslateTarget) ?? "" }
+        set {
+            objectWillChange.send()
+            self.defaults.set(newValue, forKey: TheaterDefaults.lastTranslateTarget)
         }
     }
 
@@ -69,17 +77,7 @@ extension SettingsStore {
     }
 
     var theaterCaptureSource: TheaterCaptureSource {
-        switch self.theaterSessionMode {
-        case .lectern:
-            return .lecternMicrophone
-        case .watch:
-            if self.theaterWatchTarget == .app,
-               !self.theaterWatchAppBundleID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            {
-                return .watchApp
-            }
-            return .watchThisMac
-        }
+        .lecternMicrophone
     }
 
     /// Pop-up is a solid board. Transparent lets slides show through.
@@ -112,7 +110,20 @@ extension SettingsStore {
         }
     }
 
-    /// Whisper auto-detects English, Korean, and Thai for Q&A. Apple Speech stays on I speak.
+    /// How the live Theater row appears. Flow and Word type the current title through commit.
+    var theaterCaptionPrintStyle: TheaterCaptionPrintStyle {
+        get {
+            TheaterCaptionPrintStyle.resolved(
+                self.defaults.string(forKey: TheaterDefaults.captionPrintStyle)
+            )
+        }
+        set {
+            objectWillChange.send()
+            self.defaults.set(newValue.rawValue, forKey: TheaterDefaults.captionPrintStyle)
+        }
+    }
+
+    /// Whisper auto-detects English, Korean, Japanese, and Thai for Q&A. Apple Speech stays on I speak.
     var theaterAlsoHearOtherLanguages: Bool {
         get { self.defaults.bool(forKey: TheaterDefaults.alsoHearOtherLanguages) }
         set {

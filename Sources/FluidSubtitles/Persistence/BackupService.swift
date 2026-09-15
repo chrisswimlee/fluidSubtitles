@@ -121,6 +121,7 @@ struct SettingsBackupPayload: Codable, Equatable {
     let theaterPresentationStyle: String?
     let theaterHideFromScreenShare: Bool?
     let theaterAlsoHearOtherLanguages: Bool?
+    let theaterCaptionPrintStyle: String?
 }
 
 struct AppBackupDocument: Codable, Equatable {

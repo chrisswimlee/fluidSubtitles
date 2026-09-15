@@ -9,9 +9,9 @@
       "size": "5.2 GB",
       "ram_gb": 10,
       "quality": "recommended",
-      "languages": ["ko", "en", "th"],
+      "languages": ["ko", "en", "ja", "th"],
       "recommended": true,
-      "detail": "Smallest model that still works for Korean / English / Thai language exchange. About 5 GB.",
+      "detail": "Smallest model that still works for Korean / English / Japanese / Thai language exchange. About 5 GB.",
       "local_hints": []
     },
     {
@@ -21,9 +21,9 @@
       "size": "2.5 GB",
       "ram_gb": 8,
       "quality": "gemma4",
-      "languages": ["ko", "en", "th"],
+      "languages": ["ko", "en", "ja", "th"],
       "recommended": false,
-      "detail": "Smaller than E4B. Use only if you want the tiniest file; Korean/Thai get thinner.",
+      "detail": "Smaller than E4B. Use only if you want the tiniest file; Korean/Japanese/Thai get thinner.",
       "local_hints": []
     },
     {
@@ -33,9 +33,9 @@
       "size": "15 GB",
       "ram_gb": 24,
       "quality": "gemma4",
-      "languages": ["ko", "en", "th"],
+      "languages": ["ko", "en", "ja", "th"],
       "recommended": false,
-      "detail": "Newer than Gemma 3. MoE, strong Korean / English / Thai. Reuses the copy already in LM Studio if present.",
+      "detail": "Newer than Gemma 3. MoE, strong Korean / English / Japanese / Thai. Reuses the copy already in LM Studio if present.",
       "local_hints": [
         "~/.lmstudio/models/lmstudio-community/gemma-4-26B-A4B-it-QAT-MLX-4bit"
       ]
@@ -47,7 +47,7 @@
       "size": "18 GB",
       "ram_gb": 32,
       "quality": "gemma4",
-      "languages": ["ko", "en", "th"],
+      "languages": ["ko", "en", "ja", "th"],
       "recommended": false,
       "detail": "Largest Gemma 4 text model. Comfortable on a 48 GB Mac. Reuses the LM Studio copy if present.",
       "local_hints": [
@@ -61,9 +61,9 @@
       "size": "2.5 GB",
       "ram_gb": 8,
       "quality": "fast",
-      "languages": ["ko", "en", "th"],
+      "languages": ["ko", "en", "ja", "th"],
       "recommended": false,
-      "detail": "Fastest Gemma 3 download. Fine for short Korean and English captions; Thai is usable.",
+      "detail": "Fastest Gemma 3 download. Fine for short Korean, English, and Japanese captions; Thai is usable.",
       "local_hints": []
     },
     {
@@ -73,7 +73,7 @@
       "size": "8 GB",
       "ram_gb": 16,
       "quality": "larger",
-      "languages": ["ko", "en", "th"],
+      "languages": ["ko", "en", "ja", "th"],
       "recommended": false,
       "detail": "Step up from E4B if short language-exchange lines still come out thin.",
       "local_hints": []
@@ -85,7 +85,7 @@
       "size": "16 GB",
       "ram_gb": 32,
       "quality": "highest",
-      "languages": ["ko", "en", "th"],
+      "languages": ["ko", "en", "ja", "th"],
       "recommended": false,
       "detail": "Highest quality Gemma 3. Use Gemma 4 26B/31B instead if those are already on disk.",
       "local_hints": []
@@ -97,9 +97,9 @@
       "size": "4.6 GB",
       "ram_gb": 12,
       "quality": "korean",
-      "languages": ["ko", "en", "th"],
+      "languages": ["ko", "en", "ja", "th"],
       "recommended": false,
-      "detail": "Strong Korean and English. Thai is weaker than Gemma 3 or 4.",
+      "detail": "Strong Korean, Japanese, and English. Thai is weaker than Gemma 3 or 4.",
       "local_hints": []
     }
   ]

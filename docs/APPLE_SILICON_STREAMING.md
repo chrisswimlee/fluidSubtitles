@@ -1,6 +1,6 @@
 # Optimizing Local Streaming Translation on Apple Silicon: Speech Edges, Context Windows, and CoreAudio Latency
 
-fluidSubtitles is a local Theater caption app for Korean, English, and Thai. Theater needs macOS 26. Speech recognition and the macOS shell come from [FluidVoice](https://github.com/altic-dev/FluidVoice). This branch adds clause-level Apple Translation, a measured latency clock, and a bounded 3-hour caption budget.
+fluidSubtitles is a local Theater caption app for Korean, English, Thai, and Japanese. Theater runs on macOS 15 and later. Apple Speech Analyzer stays macOS 26+. Speech recognition and the macOS shell come from [FluidVoice](https://github.com/altic-dev/FluidVoice). This branch adds clause-level Apple Translation, a measured latency clock, and a bounded 3-hour caption budget.
 
 This note is the systems story, not a pitch. Numbers in the Theater HUD are measured. Numbers in tables below are budgets until you fill them from a recording.
 
@@ -20,12 +20,12 @@ flowchart TD
   window --> archive[JSONL overflow]
 ```
 
-1. Direct Core Audio captures one input stream. Packets carry `inputHostTime`. Watch instead starts an `SCStream` with `capturesAudio`, 48 kHz / 2 ch, a 2×2 1 fps dummy video output, and PID exclusion of this process. App capture includes browser helpers (Safari → WebKit, Chrome helpers). Multi-channel float or int16 buffers are downmixed to mono. A howl gate then drops packets that look like a delayed copy of the same capture (virtual/aggregate loopback). It does not subtract the hardware output mix — that mix is the program. Then the same 16 kHz pipeline. Pause drops packets before `handle` and resets the sample-time anchor on resume so a hole does not look like silence. A dead stream calls `handleWatchCaptureStopped` and clears Listen. **Check capture** and the Watch probe test start a real stream when Screen Recording is granted.
+1. Direct Core Audio captures one microphone input stream. Packets carry `inputHostTime`. Multi-channel float or int16 buffers are downmixed to mono. Pause drops packets before `handle` and resets the sample-time anchor on resume so a hole does not look like silence. Then the same 16 kHz pipeline. Leftover Watch / `SCStream` app-audio capture is not the product path and is not part of first-hour Theater.
 2. PCM is resampled to 16 kHz and kept in a 30-second ring. Hours of audio are not retained.
 3. ASR ticks on a timer (Parakeet Flash: 200 ms). The first tick is not gated. After 400 ms of RMS silence, later ticks are skipped.
 4. The growing transcript is split into finished clauses plus an open tail. Already-committed prefixes are stripped so the whole talk is not re-translated. During Theater, the live stitch is capped to the newest ~2,400 characters so a long listen cannot feed hours of text into every tick. Dictation Stop still stitches the full listen.
-5. Theater holds the open clause off screen. Apple Translation runs when a clause commits, then the translated sentence types out. Same-language pairs print the spoken sentence without a pack.
-6. English, Thai, and Korean wait for a strong ending plus a language confirm (1.0 / 1.5 / 2.0 s). A long unpunctuated tail prints once it has about eight English words or 36 Korean/Thai characters. Thin starters like “It.” do not print. Korean/Thai 30-second confirm runs on Pause and Stop, not on each mid-talk line. Parakeet end-of-utterance does not dump the open tail.
+5. The current spoken clause can print while you talk. Apple Translation runs when a clause commits, then the Show-as title types out. Same-language pairs print the spoken sentence without a pack.
+6. English, Thai, Korean, and Japanese wait for a finished sentence plus a short land (0.5 / 0.8 / 1.0 s) or a natural pause (~400 ms). A run-on with no period and no pause cuts at about twelve English words. Thin starters like “It.” do not print. Korean/Japanese/Thai 30-second confirm runs on Pause and Stop leftover only. A caption already on the board stays.
 
 ## Why first words are not VAD-gated
 
@@ -34,14 +34,14 @@ A neural VAD in front of first words adds “did speech start?” delay and anot
 What we do instead:
 
 - **RMS hold** using the existing capture `silenceThreshold`. First tick is immediate. After 400 ms below threshold, skip ASR ticks and start a new e2e measurement on the next voiced packet.
-- **English Flash EOU** is already computed by `StreamingEouAsrManager`. A rising edge is a pause, not a commit. Theater holds 400 ms so the last ASR tick can land, then restarts settle. The clause still waits for a strong ending or the open-thought timeout.
-- **Partial correction** is a fuller re-decode of the retained 30-second window. It runs on Stop and once per pause after the RMS hold, so a revised last sentence can replace the line already on the board. It does not run on every ASR tick.
+- **English Flash EOU** is already computed by `StreamingEouAsrManager`. A rising edge is a breath. Theater holds 400 ms so the last ASR tick can land, then commits leftover speech that is a real clause. Thin leftovers stay open.
+- **Partial correction** is a fuller re-decode of the retained 30-second window. It runs on Stop and once per pause after the RMS hold for leftover speech only. A caption already on the board stays. It does not run on every ASR tick.
 
 Word-by-word Apple Translation stays out. The Neural Engine translates one finished clause at a time.
 
 ## Context windows
 
-The live Apple path still has no prompt. On commit, Theater sends the last 4 source clauses from this Listen plus the new one, then peels the new caption. A clause-boundary approximation may prefetch that same payload so the print is already warm. Pronoun and zero-subject Korean can still drift. Do not describe this as a streaming context window on the Neural Engine.
+The live Apple path still has no prompt. On commit, Theater sends the last 4 source clauses from this Listen plus the new one, then peels the new caption. A clause-boundary approximation may prefetch that same payload so the print is already warm. Pronoun and zero-subject Korean or Japanese can still drift. Do not describe this as a streaming context window on the Neural Engine.
 
 ## CoreAudio
 
@@ -67,7 +67,7 @@ Theater status becomes `Showing last 200 of N` after overflow. Bilingual export 
 
 ## Quantization and weights
 
-Voice engines (Parakeet, Nemotron, Cohere, Whisper) download at first use. Apple Translation downloads a language pack the first time a pair is used. Listen is gated until the pack reports `.installed`. Theater keeps the Voice Engine you picked, except on **critical** thermal: that Listen can fall back to Apple Speech without writing the setting, then restore the user engine on Stop. English-only Parakeet cannot hear Korean or Thai; Listen stays off until you switch engine. No API key is required for the live Theater path.
+Voice engines (Parakeet, Nemotron, Cohere, Whisper) download at first use. Apple Translation downloads a language pack the first time a pair is used. Listen is gated until the pack reports `.installed`. Theater keeps the Voice Engine you picked, except on **critical** thermal: that Listen can fall back to Apple Speech without writing the setting, then restore the user engine on Stop. English-only Parakeet cannot hear Korean, Japanese, or Thai; Listen stays off until you switch engine. No API key is required for the live Theater path.
 
 ## Thermal
 
@@ -77,7 +77,7 @@ Voice engines (Parakeet, Nemotron, Cohere, Whisper) download at first use. Apple
 
 Record raw. No deck.
 
-1. Open Theater on Apple Silicon. Pair English → Korean or English → Thai.
+1. Open Theater on Apple Silicon. Pair English → Korean, English → Thai, or English → Japanese.
 2. Press Listen. No API key, no cloud indicator.
 3. Speak a short clause. Show the HUD: `e2e · ASR · MT · thermal`.
 4. Hide chrome. The compact `Nms` readout stays in the corner.
@@ -88,6 +88,6 @@ Fill the HUD numbers from that recording into this note before you publish the r
 
 ## What this is not
 
-- Not a general translator. Product languages are Korean, English, and Thai.
+- Not a general translator. Product languages are Korean, English, Thai, and Japanese.
 - Not TestFlight or the Mac App Store. Distribution is a Developer ID zip on GitHub Releases. See the README.
 - Not a claim that classic VAD, CoreAudio p99 jitter, or thermal throttling are solved.

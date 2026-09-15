@@ -1,11 +1,7 @@
 import Foundation
 
 extension ASRService {
-    var isWatchCaptionCapture: Bool {
-        !self.isDictionaryTrainingCaptureActive
-            && LiveTranslationController.shared.listenKind == .captions
-            && SettingsStore.shared.theaterSessionMode == .watch
-    }
+    var isWatchCaptionCapture: Bool { false }
 
     func setCapturePaused(_ paused: Bool) {
         self.audioCapturePipeline.setCapturePaused(paused)

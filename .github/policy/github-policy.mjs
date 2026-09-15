@@ -96,6 +96,22 @@ export function findVisualFiles(files = []) {
   });
 }
 
+const DOCS_OR_TEST_ONLY_PATTERNS = [
+  /^docs\//,
+  /^Tests\//,
+  /^\.github\//,
+  /^scripts\//,
+  /^(README|CHANGELOG|CONTRIBUTING|NOTICE|SECURITY|CODE_OF_CONDUCT|AGENTS|LICENSE)(\.md)?$/,
+];
+
+export function isDocsOrTestOnly(files = []) {
+  if (!files.length) return false;
+  return files.every((file) => {
+    if (file.startsWith(".github/screenshots/")) return false;
+    return DOCS_OR_TEST_ONLY_PATTERNS.some((pattern) => pattern.test(file));
+  });
+}
+
 export function hasTestingEvidence(value = "") {
   const text = normalizeText(value);
   const containsCheckbox = /^[-*]\s*\[[ xX]\]\s+\S+/m.test(text);
@@ -111,7 +127,8 @@ export function validatePullRequest({ body = "", changedFiles = [] } = {}) {
   const screenshots = section(body, "Screenshots / Video");
   const visualFiles = findVisualFiles(changedFiles);
   const attestsNoVisualChange = hasNoVisualChangeAttestation(screenshots);
-  const requiresMedia = visualFiles.length > 0 && !attestsNoVisualChange;
+  const docsOrTestOnly = isDocsOrTestOnly(changedFiles);
+  const requiresMedia = visualFiles.length > 0 && !attestsNoVisualChange && !docsOrTestOnly;
 
   const checks = [
     ["Description", hasNonPlaceholderContent(description)],
@@ -121,7 +138,7 @@ export function validatePullRequest({ body = "", changedFiles = [] } = {}) {
     ["Testing", hasTestingEvidence(testing)],
     [
       "Screenshots / Video",
-      attestsNoVisualChange || hasMedia(screenshots),
+      docsOrTestOnly || attestsNoVisualChange || hasMedia(screenshots),
     ],
   ];
 

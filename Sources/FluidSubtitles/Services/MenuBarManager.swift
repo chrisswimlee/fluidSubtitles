@@ -515,7 +515,7 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
 
         let theaterMenu = NSMenu(title: "Theater")
         let openHomeItem = NSMenuItem(
-            title: "Open Theater home",
+            title: "Theater Home",
             action: #selector(openLiveTranslation),
             keyEquivalent: ""
         )
@@ -523,7 +523,7 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         theaterMenu.addItem(openHomeItem)
 
         let theaterItem = NSMenuItem(
-            title: SettingsStore.shared.theaterWindowEnabled ? "Hide Theater" : "Show Theater",
+            title: SettingsStore.shared.theaterWindowEnabled ? "Close Theater" : "Open Theater",
             action: #selector(toggleTheater),
             keyEquivalent: ""
         )
@@ -622,23 +622,23 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
             ? (SettingsStore.shared.captionListenHotkeyShortcut?.displayString ?? "")
             : ""
         let hotkeyInfo = listenHotkey.isEmpty ? "" : " (\(listenHotkey))"
-        let statusTitle: String
-        if !TheaterAvailability.isSupported {
-            statusTitle = TheaterAvailability.unsupportedCopy
-        } else if isCaptionListening || self.isRecording {
-            statusTitle = "Listening…\(hotkeyInfo)"
-        } else {
-            statusTitle = "Theater ready\(hotkeyInfo)"
-        }
-        self.statusMenuItem?.title = statusTitle
-        self.theaterMenuItem?.title = SettingsStore.shared.theaterWindowEnabled ? "Hide Theater" : "Show Theater"
-        self.theaterMenuItem?.isEnabled = TheaterAvailability.isSupported
-        self.listenMenuItem?.title = isCaptionListening ? "Stop" : "Listen"
         let ready = TheaterReadyGate.liveSnapshot(
             pack: LiveTranslationController.shared.packAvailability,
             microphone: AppServices.shared.asr.micStatus,
             firstCaptionPrinted: SettingsStore.shared.theaterListenUsed
         )
+        let statusTitle: String
+        if !TheaterAvailability.isSupported {
+            statusTitle = TheaterAvailability.unsupportedCopy
+        } else if isCaptionListening {
+            statusTitle = "Listening…\(hotkeyInfo)"
+        } else {
+            statusTitle = "\(ready.nextAction)\(hotkeyInfo)"
+        }
+        self.statusMenuItem?.title = statusTitle
+        self.theaterMenuItem?.title = SettingsStore.shared.theaterWindowEnabled ? "Close Theater" : "Open Theater"
+        self.theaterMenuItem?.isEnabled = TheaterAvailability.isSupported
+        self.listenMenuItem?.title = isCaptionListening ? "Stop" : "Listen"
         let dictationBusy = AppServices.shared.asr.isRunningOrStarting && !isCaptionListening
         self.listenMenuItem?.isEnabled = TheaterAvailability.isSupported
             && (isCaptionListening || (ready.canListen && !dictationBusy))

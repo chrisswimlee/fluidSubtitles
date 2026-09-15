@@ -1339,41 +1339,33 @@ extension ContentView {
             LiveTranslationController.shared.reportListenFailure(TheaterAvailability.unsupportedCopy)
             return
         }
-        if SettingsStore.shared.theaterSessionMode == .watch {
-            if !ScreenRecordingAccess.isGranted {
-                LiveTranslationController.shared.reportListenFailure(ScreenRecordingAccess.deniedCopy)
-                return
-            }
-        } else if self.asr.micStatus == .denied {
-            LiveTranslationController.shared.reportListenFailure(
-                "Microphone access is denied. Allow it in System Settings."
-            )
+        MicrophoneAccess.refresh(self.asr)
+        if MicrophoneAccess.isDenied(self.asr.micStatus) {
+            LiveTranslationController.shared.reportListenFailure(MicrophoneAccess.deniedCopy)
             return
         }
         if !self.asr.isAsrReady && !self.asr.modelsExistOnDisk {
             LiveTranslationController.shared.reportListenFailure("Download a Voice Engine first.")
             return
         }
-        LiveTranslationController.shared.beginSession(kind: .captions)
-        self.setActiveRecordingMode(.dictate)
         Task {
+            let granted = await MicrophoneAccess.authorize(updating: self.asr)
+            if !granted {
+                LiveTranslationController.shared.reportListenFailure(MicrophoneAccess.deniedCopy)
+                return
+            }
+            LiveTranslationController.shared.beginSession(kind: .captions)
+            self.setActiveRecordingMode(.dictate)
             let startOutcome = await self.asr.start(onCaptureStarted: {
                 TranscriptionSoundPlayer.shared.playStartSound()
             })
             if startOutcome == .failed {
-                let existing = LiveTranslationController.shared.subscriber.statusText
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
                 LiveTranslationController.shared.cancelSession()
-                if SettingsStore.shared.theaterSessionMode == .watch {
-                    let watchError = existing.isEmpty || existing == "Listening…"
-                        ? ScreenRecordingAccess.deniedCopy
-                        : existing
-                    LiveTranslationController.shared.reportListenFailure(watchError)
-                } else {
-                    LiveTranslationController.shared.reportListenFailure(
-                        "Could not start listening. Check the microphone and Voice Engine."
-                    )
-                }
+                LiveTranslationController.shared.reportListenFailure(
+                    MicrophoneAccess.isAuthorized(self.asr.micStatus)
+                        ? "Could not start listening. Check the microphone and Voice Engine."
+                        : MicrophoneAccess.deniedCopy
+                )
             }
         }
         Task {

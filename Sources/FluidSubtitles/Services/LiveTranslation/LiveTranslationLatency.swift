@@ -140,7 +140,7 @@ struct LiveTranslationLatencySample: Equatable {
     var displayText: String {
         var parts: [String] = []
         if let micMilliseconds {
-            let label = SettingsStore.shared.theaterSessionMode == .watch ? "cap" : "mic"
+            let label = "mic"
             parts.append("\(label) \(micMilliseconds)")
         }
         if let endToEndMilliseconds {

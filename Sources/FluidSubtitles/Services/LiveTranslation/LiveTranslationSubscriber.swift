@@ -63,6 +63,7 @@ final class LiveTranslationSubscriber: ObservableObject {
 
     var committedSourceLines: [String] { self.captionLog.sourceLines }
     var committedLineIDs: [UInt64] { self.captionLog.lineIDs }
+    var nextCaptionID: UInt64 { self.captionLog.nextID }
     var captionPairs: [CaptionHistoryPair] { self.captionLog.captionPairs }
     var exportCaptionPairs: [CaptionHistoryPair] {
         TheaterCaptionExport.pairs(from: self.archive.loadAll()) + self.captionLog.captionPairs
@@ -85,9 +86,21 @@ final class LiveTranslationSubscriber: ObservableObject {
     /// Current unread clause so Theater can follow along before the line commits.
     var liveSpokenText: String {
         let languageID = SpokenLanguageResolver.sourceLanguage().id
-        let open = TranslationClauseSegmenter.liveOpenText(self.sourceDraft, languageID: languageID)
+        let leftover = TranslationClauseSegmenter.leftoverTail(
+            self.sourceDraft,
+            already: self.printedSources,
+            languageID: languageID
+        )
+        let open = TranslationClauseSegmenter.livePreview(leftover, languageID: languageID).open
         if open.isEmpty { return "" }
-        if TranslationClauseSegmenter.isTooThinToCommit(open, languageID: languageID) {
+        if CaptionJunkGate.shouldDrop(open) {
+            return ""
+        }
+        if TranslationClauseSegmenter.isAlreadyPrintedSource(
+            open,
+            already: self.printedSources,
+            languageID: languageID
+        ) {
             return ""
         }
         if self.captionLog.sourceLines.dropLast().contains(where: {
@@ -113,8 +126,29 @@ final class LiveTranslationSubscriber: ObservableObject {
         return open
     }
 
-    /// Unpublished clauses stay in the private buffer, not on the board.
-    var pendingSpokenLines: [String] { [] }
+    /// Finished unread sentences already on their own row while the next line types.
+    var pendingSpokenLines: [String] {
+        let languageID = SpokenLanguageResolver.sourceLanguage().id
+        let leftover = TranslationClauseSegmenter.leftoverTail(
+            self.sourceDraft,
+            already: self.printedSources,
+            languageID: languageID
+        )
+        let pinned = TranslationClauseSegmenter.livePreview(leftover, languageID: languageID).pinned
+        var lines: [String] = []
+        for line in self.inFlightSources + pinned {
+            let cleaned = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !cleaned.isEmpty else { continue }
+            if lines.contains(where: { TranslationClauseSegmenter.isSameClause($0, cleaned) }) {
+                continue
+            }
+            if self.listenSourceLines.contains(where: { TranslationClauseSegmenter.isSameClause($0, cleaned) }) {
+                continue
+            }
+            lines.append(cleaned)
+        }
+        return lines
+    }
 
     /// This Listen only. A new Listen can repeat the last greeting.
     private var listenSourceLines: [String] {
@@ -350,10 +384,9 @@ final class LiveTranslationSubscriber: ObservableObject {
     }
 
     func handleEndOfUtterance() {
-        // Parakeet EOU is a pause, not a sentence. Hold briefly so the last ASR
-        // tick can land, then restart settle. Do not commit the open tail.
+        // A natural pause. Hold so the last ASR tick can land, then commit a
+        // real leftover clause. Thin leftovers stay open.
         let token = self.generation
-        let languageID = SpokenLanguageResolver.sourceLanguage().id
         self.completedSettleTask?.cancel()
         self.tailSettleTask?.cancel()
         self.eouHoldTask?.cancel()
@@ -364,7 +397,7 @@ final class LiveTranslationSubscriber: ObservableObject {
         self.eouHoldTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: LiveTranslationTiming.eouHoldNanoseconds)
             guard !Task.isCancelled else { return }
-            await self?.restartSettlesAfterHold(generation: token, languageID: languageID)
+            await self?.flushSettled(generation: token, isFinal: false, reason: .pauseConfirm)
         }
     }
 
@@ -524,6 +557,21 @@ final class LiveTranslationSubscriber: ObservableObject {
         }
 
         let token = self.generation
+        if TranslationClauseSegmenter.hasUnreadSpeechAfterCompleted(leftover, languageID: languageID) {
+            self.commitNextSettledUnit(
+                remaining: leftover,
+                languageID: languageID,
+                allowPauseFinalize: false,
+                forceOpenTail: false,
+                generation: token
+            )
+            self.schedulePrefetchIfNeeded(
+                leftover: self.sourceDraft,
+                languageID: languageID,
+                generation: token
+            )
+            return
+        }
         switch TranslationClauseSegmenter.decision(forTail: split.tail, languageID: languageID) {
         case .commitNow:
             Task { [weak self] in
@@ -622,7 +670,7 @@ final class LiveTranslationSubscriber: ObservableObject {
         self.commitNextSettledUnit(
             remaining: remaining,
             languageID: languageID,
-            allowPauseFinalize: reason == .openTailAged,
+            allowPauseFinalize: reason == .openTailAged || reason == .pauseConfirm,
             forceOpenTail: false,
             generation: token
         )
@@ -721,7 +769,7 @@ final class LiveTranslationSubscriber: ObservableObject {
         }
         if let last = self.listenSourceLines.last {
             if TranslationClauseSegmenter.isSameClause(last, unit),
-               !TranslationClauseSegmenter.shouldReplaceLast(previous: last, incoming: unit)
+               !self.mayReplaceLastCommitted(with: unit)
             {
                 return true
             }
@@ -729,19 +777,28 @@ final class LiveTranslationSubscriber: ObservableObject {
                 previous: last,
                 incoming: unit,
                 languageID: languageID
-            ), !TranslationClauseSegmenter.shouldReplaceLast(previous: last, incoming: unit) {
+            ), !self.mayReplaceLastCommitted(with: unit) {
                 return true
             }
         }
         if self.listenSourceLines.contains(where: {
             TranslationClauseSegmenter.isSameClause($0, unit)
         }) {
-            return !TranslationClauseSegmenter.shouldReplaceLast(
-                previous: self.listenSourceLines.last ?? "",
-                incoming: unit
-            )
+            return !self.mayReplaceLastCommitted(with: unit)
         }
         return false
+    }
+
+    /// English may correct before the title starts. After a translation is on
+    /// the board, leftover speech is the next row.
+    private func mayReplaceLastCommitted(with incoming: String) -> Bool {
+        guard let last = self.listenSourceLines.last else { return false }
+        guard TranslationClauseSegmenter.shouldReplaceLast(previous: last, incoming: incoming) else {
+            return false
+        }
+        let lastTranslation = self.captionLog.translatedLines.last?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return lastTranslation.isEmpty
     }
 
     /// Commit leftover clauses one pause at a time. Never drain the rest of the
@@ -834,9 +891,7 @@ final class LiveTranslationSubscriber: ObservableObject {
         var cleaned = source.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
         if CaptionJunkGate.shouldDrop(cleaned) { return }
-        let replaceLast = self.listenSourceLines.last.map {
-            TranslationClauseSegmenter.shouldReplaceLast(previous: $0, incoming: cleaned)
-        } ?? false
+        let replaceLast = self.mayReplaceLastCommitted(with: cleaned)
         if !replaceLast,
            let unit = TranslationClauseSegmenter.printableCommitUnit(
                cleaned,
@@ -901,9 +956,7 @@ final class LiveTranslationSubscriber: ObservableObject {
         if self.revisesEarlierPrintedLine(cleaned, languageID: languageID) {
             return
         }
-        let replaceLast = self.listenSourceLines.last.map {
-            TranslationClauseSegmenter.shouldReplaceLast(previous: $0, incoming: cleaned)
-        } ?? false
+        let replaceLast = self.mayReplaceLastCommitted(with: cleaned)
         if !replaceLast, self.listenSourceLines.last == cleaned {
             return
         }
@@ -929,7 +982,7 @@ final class LiveTranslationSubscriber: ObservableObject {
             guard let committed = self.captionLog.commit(
                 source: cleaned,
                 translated: resolved,
-                mayReviseLast: !self.listenSourceLines.isEmpty
+                mayReviseLast: replaceLast
             ) else { return }
             self.archiveOverflow(committed.overflow)
             self.adjustIndexes(trimmedCount: committed.overflow.count)

@@ -12,6 +12,7 @@ import SwiftUI
 struct FillerWordsEditor: View {
     @State private var fillerWords: [String] = SettingsStore.shared.fillerWords
     @State private var newWord: String = ""
+    @FocusState private var isAddWordFocused: Bool
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -48,6 +49,7 @@ struct FillerWordsEditor: View {
                 TextField("Add word", text: self.$newWord)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 100)
+                    .focused(self.$isAddWordFocused)
                     .onSubmit { self.addWord() }
 
                 Button("Add") { self.addWord() }
@@ -64,6 +66,9 @@ struct FillerWordsEditor: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
             }
+        }
+        .onAppear {
+            self.isAddWordFocused = false
         }
     }
 

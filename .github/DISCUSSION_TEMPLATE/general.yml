@@ -1,0 +1,14 @@
+title: ""
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: >
+        General conversation about fluidSubtitles. Bugs still need an issue.
+        Ideas still need the Ideas category.
+  - type: textarea
+    id: note
+    attributes:
+      label: Note
+    validations:
+      required: true

@@ -30,7 +30,13 @@ enum TheaterQualityScore {
         expectedUnit: "วันนี้เราฝึกโมเดลครับ"
     )
 
-    static let stageLanguages: [Fixture] = [Self.english, Self.korean, Self.thai]
+    static let japanese = Fixture(
+        languageID: "ja",
+        spoken: "今日はモデルを学習しました",
+        expectedUnit: "今日はモデルを学習しました"
+    )
+
+    static let stageLanguages: [Fixture] = [Self.english, Self.korean, Self.thai, Self.japanese]
 
     struct PairFixture: Equatable {
         let sourceLanguageID: String
@@ -60,10 +66,26 @@ enum TheaterQualityScore {
         referenceCaption: "วันนี้เราฝึกโมเดลครับ"
     )
 
+    static let englishToJapanese = PairFixture(
+        sourceLanguageID: "en",
+        targetLanguageID: "ja",
+        source: "Today we trained the model.",
+        referenceCaption: "今日はモデルを学習しました。"
+    )
+
+    static let japaneseToEnglish = PairFixture(
+        sourceLanguageID: "ja",
+        targetLanguageID: "en",
+        source: "今日はモデルを学習しました",
+        referenceCaption: "Today we trained the model."
+    )
+
     static let stagePairs: [PairFixture] = [
         Self.englishToKorean,
         Self.koreanToEnglish,
         Self.englishToThai,
+        Self.englishToJapanese,
+        Self.japaneseToEnglish,
     ]
 
     struct LineScore: Equatable {

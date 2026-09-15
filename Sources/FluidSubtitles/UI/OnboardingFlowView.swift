@@ -112,9 +112,9 @@ struct OnboardingFlowView: View {
             case .landing:
                 return "Theater captions on your screen, or typed translation into an app."
             case .language:
-                return "Korean, English, and Thai. Pick the one you speak, then the one you want."
+                return "Korean, English, Thai, and Japanese. Pick the one you speak, then the one you want."
             case .voiceModel:
-                return "Download the speech engine for Korean, English, or Thai."
+                return "Download the speech engine for Korean, English, Thai, or Japanese."
             case .permissions:
                 return "Microphone is required. Accessibility is only if you want a translation typed into other apps."
             case .playground:

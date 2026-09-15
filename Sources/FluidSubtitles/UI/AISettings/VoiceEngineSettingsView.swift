@@ -4,9 +4,6 @@ struct VoiceEngineSettingsView: View {
     @ObservedObject var viewModel: VoiceEngineSettingsViewModel
     @ObservedObject var settings: SettingsStore
     @Environment(\.colorScheme) var colorScheme
-    @State var isShowingNemotronLanguagePicker = false
-    @State var isShowingWhisperLanguagePicker = false
-    @State var whisperLanguageSearchText = ""
     let theme: AppTheme
 
     var voiceEngineTitleText: Color {
@@ -22,10 +19,13 @@ struct VoiceEngineSettingsView: View {
     }
 
     var body: some View {
-        self.speechRecognitionCard
-            .onAppear { self.viewModel.onAppear() }
-            .onChange(of: self.settings.selectedSpeechModel) { _, newValue in
-                self.viewModel.handleSelectedSpeechModelChange(newValue)
-            }
+        VStack(alignment: .leading, spacing: 16) {
+            TheaterEngineCards(showsVoiceSection: false, showsVoiceCustomize: false)
+            self.speechRecognitionCard
+        }
+        .onAppear { self.viewModel.onAppear() }
+        .onChange(of: self.settings.selectedSpeechModel) { _, newValue in
+            self.viewModel.handleSelectedSpeechModelChange(newValue)
+        }
     }
 }

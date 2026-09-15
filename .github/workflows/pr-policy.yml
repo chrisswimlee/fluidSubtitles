@@ -28,6 +28,9 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Unit-test PR policy
+        run: node --test .github/policy/github-policy.test.mjs
+
       - name: Validate PR template and visual evidence
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -18,9 +18,9 @@ extension OnboardingFlowView {
                     FluidOnboardingLandingHero(
                         eyebrow: FluidProduct.displayName,
                         title: "Captions after each sentence.",
-                        accentTitle: "Korean, English, and Thai.",
+                        accentTitle: "Korean, English, Thai, and Japanese.",
                         firstDetail: FluidProduct.manifesto,
-                        secondDetail: "Theater needs macOS 26 and Apple Silicon. Open Theater, then press Listen."
+                        secondDetail: "Theater runs on macOS 15 and later. Swap I speak and Show as, then press Listen."
                     ) {
                         FluidOnboardingLandingPrimaryButton(title: "Next") {
                             self.goNext()
@@ -117,7 +117,7 @@ extension OnboardingFlowView {
                                 .lineSpacing(4)
                                 .padding(.bottom, 18)
 
-                            Text("fluidSubtitles works among Korean, English, and Thai. Pick the language you speak. You can swap direction anytime.")
+                            Text("fluidSubtitles works among Korean, English, Thai, and Japanese. Pick the language you speak. You can swap direction anytime.")
                                 .font(.system(size: 15, weight: .medium))
                                 .foregroundStyle(Color.white.opacity(0.62))
                                 .multilineTextAlignment(.center)
@@ -127,7 +127,6 @@ extension OnboardingFlowView {
                                 columns: [
                                     GridItem(.fixed(166), spacing: 16),
                                     GridItem(.fixed(166), spacing: 16),
-                                    GridItem(.fixed(166), spacing: 16),
                                 ],
                                 spacing: 16
                             ) {
@@ -135,7 +134,7 @@ extension OnboardingFlowView {
                                     self.languageChoiceCard(for: language)
                                 }
                             }
-                            .frame(width: 530)
+                            .frame(width: 348)
 
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Translate into")
@@ -681,7 +680,7 @@ extension OnboardingFlowView {
                             FluidOnboardingCompactAppIconMark(size: 66)
                                 .padding(.bottom, 22)
 
-                            Text(TheaterAvailability.isSupported ? "Try a Theater caption." : "Theater needs macOS 26.")
+                            Text(TheaterAvailability.isSupported ? "Try a Theater caption." : TheaterAvailability.unsupportedCopy)
                                 .font(.system(size: 28, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .multilineTextAlignment(.center)
@@ -732,7 +731,7 @@ extension OnboardingFlowView {
                             } label: {
                                 HStack(spacing: 8) {
                                     Image(systemName: "rectangle.on.rectangle")
-                                    Text("Open Theater")
+                                    Text("Listen")
                                 }
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(.white)

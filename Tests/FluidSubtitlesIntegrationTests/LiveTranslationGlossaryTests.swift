@@ -44,17 +44,18 @@ final class LiveTranslationGlossaryTests: XCTestCase {
     func testLanguageMatching() {
         XCTAssertEqual(TranslationLanguageCatalog.language(matchingSpokenID: "th-TH").id, "th")
         XCTAssertEqual(TranslationLanguageCatalog.language(matchingSpokenID: "ko-KR").id, "ko")
+        XCTAssertEqual(TranslationLanguageCatalog.language(matchingSpokenID: "ja-JP").id, "ja")
         XCTAssertEqual(TranslationLanguageCatalog.language(matchingSpokenID: "en").id, "en")
     }
 
     func testUnsupportedSpokenLanguagesFallBackToEnglish() {
-        XCTAssertNil(TranslationLanguageCatalog.language(id: "ja"))
         XCTAssertNil(TranslationLanguageCatalog.language(id: "zh-TW"))
-        XCTAssertEqual(TranslationLanguageCatalog.language(matchingSpokenID: "ja-JP").id, "en")
+        XCTAssertNil(TranslationLanguageCatalog.language(id: "vi"))
         XCTAssertEqual(TranslationLanguageCatalog.language(matchingSpokenID: "zh-CN").id, "en")
+        XCTAssertEqual(TranslationLanguageCatalog.language(matchingSpokenID: "vi-VN").id, "en")
     }
 
-    func testLanguagesFromAppleListStayKoreanEnglishThai() {
+    func testLanguagesFromAppleListStayKoreanEnglishThaiJapanese() {
         let languages = TranslationLanguageCatalog.languages(from: [
             Locale.Language(identifier: "en-IN"),
             Locale.Language(identifier: "en"),
@@ -63,13 +64,13 @@ final class LiveTranslationGlossaryTests: XCTestCase {
             Locale.Language(identifier: "ja"),
             Locale.Language(identifier: "vi"),
         ])
-        XCTAssertEqual(languages.map(\.id), ["en", "ko", "th"])
+        XCTAssertEqual(languages.map(\.id), ["en", "ko", "ja", "th"])
     }
 
-    func testVoiceEngineLanguagesAreKoreanEnglishThai() {
+    func testVoiceEngineLanguagesAreKoreanEnglishThaiJapanese() {
         XCTAssertEqual(
             Set(VoiceEngineLanguageCatalog.allLanguages().map(\.id)),
-            ["en", "ko", "th"]
+            ["en", "ko", "ja", "th"]
         )
     }
 
@@ -85,6 +86,10 @@ final class LiveTranslationGlossaryTests: XCTestCase {
         XCTAssertEqual(
             TranslationLanguageCatalog.defaultTarget(forSource: TranslationLanguageCatalog.thai).id,
             "th"
+        )
+        XCTAssertEqual(
+            TranslationLanguageCatalog.defaultTarget(forSource: TranslationLanguageCatalog.japanese).id,
+            "ja"
         )
     }
 
@@ -242,7 +247,7 @@ final class LiveTranslationGlossaryTests: XCTestCase {
 
         XCTAssertEqual(
             TranslationLanguageCatalog.targets(excluding: TranslationLanguageCatalog.korean).map(\.id),
-            ["en", "ko", "th"]
+            ["en", "ko", "ja", "th"]
         )
 
         SpokenLanguageResolver.setSourceLanguage(TranslationLanguageCatalog.korean, settings: settings)
@@ -471,6 +476,7 @@ final class LiveTranslationGlossaryTests: XCTestCase {
             "Thai speech works best with Apple Speech or Whisper."
         )
         XCTAssertNil(TranslationLanguageCatalog.theaterEngineHint(forSource: TranslationLanguageCatalog.korean))
+        XCTAssertNil(TranslationLanguageCatalog.theaterEngineHint(forSource: TranslationLanguageCatalog.japanese))
         XCTAssertNil(TranslationLanguageCatalog.theaterEngineHint(forSource: TranslationLanguageCatalog.english))
     }
 
@@ -501,6 +507,13 @@ final class LiveTranslationGlossaryTests: XCTestCase {
         XCTAssertEqual(
             SpokenLanguageResolver.voiceEngineMismatchMessage(settings: settings),
             "Parakeet TDT v3 does not hear Korean. Switch to Apple Speech, Cohere, or Whisper."
+        )
+
+        settings.translationSourceLanguageID = "ja"
+        XCTAssertFalse(VoiceEngineLanguageCatalog.supports(.parakeetTDT, languageID: "ja"))
+        XCTAssertEqual(
+            SpokenLanguageResolver.voiceEngineMismatchMessage(settings: settings),
+            "Parakeet TDT v3 does not hear Japanese. Switch to Apple Speech, Cohere, or Whisper."
         )
     }
 
@@ -586,7 +599,7 @@ final class LiveTranslationGlossaryTests: XCTestCase {
         )
         XCTAssertEqual(
             SpokenLanguageHints.orderedIDs(primaryID: "ko", alsoHearOthers: true),
-            ["ko", "en", "th"]
+            ["ko", "en", "ja", "th"]
         )
         XCTAssertNil(SpokenLanguageHints.whisperLanguageCode(stored: "ko", alsoHearOthers: true))
         XCTAssertEqual(SpokenLanguageHints.whisperLanguageCode(stored: "ko", alsoHearOthers: false), "ko")

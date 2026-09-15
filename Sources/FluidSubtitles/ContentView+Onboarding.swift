@@ -124,7 +124,7 @@ extension ContentView {
     ) {
         DebugLogger.shared.debug("Begin dictation recording for slot \(slot.rawValue)", source: "ContentView")
         self.appBench("begin_recording slot=\(slot.rawValue) mode=\(mode.rawValue)")
-        SpokenLanguageResolver.pinSpokenEngineToSource()
+        LiveTranslationController.shared.alignSpokenEngineWithTheater()
         if self.isOnboardingVoicePlaygroundStepActive {
             self.asr.finalText = ""
             self.settings.onboardingPlaygroundValidated = false
@@ -269,13 +269,13 @@ extension ContentView {
         var missing: [String] = []
 
         if !self.onboardingVoiceModelReady {
-            missing.append("voice model")
+            missing.append("Voice Engine")
         }
         if !self.onboardingMicrophoneReady {
-            missing.append("microphone access")
+            missing.append("microphone")
         }
         if !self.onboardingPlaygroundReady {
-            missing.append("test or skip")
+            missing.append("Try Theater")
         }
 
         return missing
@@ -287,7 +287,7 @@ extension ContentView {
             "Onboarding completion blocked; missing=\(missingText)",
             source: "ContentView"
         )
-        self.asr.errorTitle = "Setup Isn't Complete"
+        self.asr.errorTitle = "Setup isn't complete"
         self.asr.errorMessage = "Finish \(missingText) to continue."
         self.asr.showError = true
     }

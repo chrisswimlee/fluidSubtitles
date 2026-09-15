@@ -688,7 +688,7 @@ struct SettingsView: View {
                                         .font(self.theme.typography.bodySmallStrong)
                                         .foregroundStyle(self.settingsTitleText)
 
-                                    Text("Listening starts from the Theater page. A keyboard shortcut is optional.")
+                                    Text("Dictation starts from a shortcut. Theater Listen is on the Theater page.")
                                         .font(.caption)
                                         .foregroundStyle(self.settingsTertiaryText)
 

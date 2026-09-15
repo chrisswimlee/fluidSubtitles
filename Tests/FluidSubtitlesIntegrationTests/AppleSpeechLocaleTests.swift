@@ -2,11 +2,12 @@
 import XCTest
 
 final class AppleSpeechLocaleTests: XCTestCase {
-    func testAnalyzerLocalesAreKoreanEnglishThai() {
+    func testAnalyzerLocalesAreKoreanEnglishThaiJapanese() {
         XCTAssertEqual(VoiceEngineLanguageCatalog.preferredAppleSpeechAnalyzerLocale(forLanguageID: "en"), "en-US")
         XCTAssertEqual(VoiceEngineLanguageCatalog.preferredAppleSpeechAnalyzerLocale(forLanguageID: "ko"), "ko-KR")
         XCTAssertEqual(VoiceEngineLanguageCatalog.preferredAppleSpeechAnalyzerLocale(forLanguageID: "th"), "th-TH")
-        XCTAssertEqual(VoiceEngineLanguageCatalog.appleSpeechAnalyzerLocaleIdentifier(for: "ja"), nil)
+        XCTAssertEqual(VoiceEngineLanguageCatalog.preferredAppleSpeechAnalyzerLocale(forLanguageID: "ja"), "ja-JP")
+        XCTAssertEqual(VoiceEngineLanguageCatalog.appleSpeechAnalyzerLocaleIdentifier(for: "ja"), "ja-JP")
     }
 
     func testAnalyzerMatchesLanguagePrefixNotExactMacLocale() {
@@ -83,5 +84,37 @@ final class AppleSpeechLocaleTests: XCTestCase {
         settings.selectedAppleSpeechLocaleIdentifier = "sv-SE"
         SpokenLanguageResolver.pinAppleSpeechToSpokenSource(settings: settings)
         XCTAssertEqual(settings.selectedAppleSpeechLocaleIdentifier, "ko-KR")
+
+        settings.translationSourceLanguageID = "ja"
+        settings.selectedAppleSpeechLocaleIdentifier = "en-US"
+        SpokenLanguageResolver.pinAppleSpeechToSpokenSource(settings: settings)
+        XCTAssertEqual(settings.selectedAppleSpeechLocaleIdentifier, "ja-JP")
+
+        settings.selectedSpeechModel = .whisperSmall
+        settings.translationSourceLanguageID = "th"
+        settings.selectedAppleSpeechLocaleIdentifier = "en-US"
+        SpokenLanguageResolver.pinAppleSpeechToSpokenSource(settings: settings)
+        XCTAssertEqual(settings.selectedAppleSpeechLocaleIdentifier, "th-TH")
+    }
+
+    func testAppleSpeechEnUSIsTheSameLanguageAsISpeakEnglish() {
+        let settings = SettingsStore.shared
+        let originalModel = settings.selectedSpeechModel
+        let originalSource = settings.translationSourceLanguageID
+        let originalLocale = settings.selectedAppleSpeechLocaleIdentifier
+        defer {
+            settings.selectedSpeechModel = originalModel
+            settings.translationSourceLanguageID = originalSource
+            settings.selectedAppleSpeechLocaleIdentifier = originalLocale
+        }
+
+        settings.selectedSpeechModel = .appleSpeech
+        settings.translationSourceLanguageID = "en"
+        settings.selectedAppleSpeechLocaleIdentifier = "en-US"
+
+        XCTAssertEqual(SpokenLanguageResolver.spokenLanguageID(settings: settings), "en")
+        XCTAssertEqual(SpokenLanguageResolver.heardLanguage(settings: settings)?.id, "en")
+        XCTAssertTrue(SpokenLanguageResolver.voiceEngineSupportsSource(settings: settings))
+        XCTAssertNil(SpokenLanguageResolver.voiceEngineMismatchMessage(settings: settings))
     }
 }

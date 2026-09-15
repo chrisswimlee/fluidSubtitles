@@ -24,6 +24,8 @@ final class LiveTranslationController: ObservableObject {
     private var stopToken: UInt64 = 0
     private var cancellables: Set<AnyCancellable> = []
     private var pendingThermalDowngrade = false
+    private var didStartFreshThisProcess = false
+    private var needsSpokenEngineReload = false
 
     var shouldHandleTranslationStop: Bool {
         self.isSessionActive || self.abandonCaptionSession
@@ -62,13 +64,16 @@ final class LiveTranslationController: ObservableObject {
     }
 
     func beginSession(kind: TranslationListenKind) {
-        SpokenLanguageResolver.pinSpokenEngineToSource()
+        self.alignSpokenEngineWithTheater()
         self.sessionToken += 1
         self.abandonCaptionSession = false
         self.isSessionActive = true
         self.isPaused = false
         self.listenKind = kind
         PresenterCaptionController.shared.commitEdits()
+        if kind == .captions {
+            self.startFreshTheaterBoard()
+        }
         self.subscriber.beginListening()
         self.warmAppleTranslation()
         if kind == .captions, !SettingsStore.shared.theaterWindowEnabled {
@@ -191,9 +196,36 @@ final class LiveTranslationController: ObservableObject {
         self.finishLanguageChange()
     }
 
+    func applyTheaterSessionMode(_ mode: TheaterSessionMode) {
+        let settings = SettingsStore.shared
+        let current = settings.theaterSessionMode
+        if current == mode { return }
+        if current == .translation, mode == .transcription {
+            settings.theaterLastTranslateTargetLanguageID = SpokenLanguageResolver.targetLanguage(
+                settings: settings
+            ).id
+            settings.translationTargetLanguageID = SpokenLanguageResolver.sourceLanguage(settings: settings).id
+        }
+        if current == .transcription, mode == .translation {
+            let remembered = settings.theaterLastTranslateTargetLanguageID
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !remembered.isEmpty, remembered != SpokenLanguageResolver.sourceLanguage(settings: settings).id {
+                settings.translationTargetLanguageID = remembered
+            }
+        }
+        settings.theaterSessionMode = mode
+        if self.isSessionActive, self.listenKind == .captions {
+            self.stopListening()
+        }
+        self.finishLanguageChange()
+    }
+
     func applySourceLanguage(_ id: String) {
         guard let language = TranslationLanguageCatalog.language(id: id) else { return }
         SpokenLanguageResolver.setSourceLanguage(language)
+        if SettingsStore.shared.theaterSessionMode == .transcription {
+            SettingsStore.shared.translationTargetLanguageID = language.id
+        }
         self.finishLanguageChange()
     }
 
@@ -204,15 +236,39 @@ final class LiveTranslationController: ObservableObject {
     }
 
     private func finishLanguageChange() {
+        if self.isSessionActive {
+            self.stopListening()
+        }
+        self.alignSpokenEngineWithTheater()
         let source = SpokenLanguageResolver.sourceLanguage()
         let target = SpokenLanguageResolver.targetLanguage()
-        VoiceEngineLanguageCatalog.ensureCompatibleEngine(forLanguageID: source.id)
         self.warmAppleTranslation(source: source, target: target)
         self.subscriber.noteLanguagePairChanged()
         if let mismatch = SpokenLanguageResolver.voiceEngineMismatchMessage() {
             self.subscriber.reportFailure(mismatch)
         }
         self.refreshPresenter()
+    }
+
+    /// I speak owns the Voice Engine listening language. Leftover locales crash
+    /// Speech Analyzer / Apple Translation when Translate starts on a new pair.
+    func alignSpokenEngineWithTheater() {
+        let changed = SpokenLanguageResolver.syncSpokenEngineToTheater()
+        VoiceEngineLanguageCatalog.ensureCompatibleEngine(
+            forLanguageID: SpokenLanguageResolver.sourceLanguage().id
+        )
+        self.reloadSpokenEngineIfNeeded(changed)
+    }
+
+    private func reloadSpokenEngineIfNeeded(_ changed: Bool) {
+        if changed {
+            self.needsSpokenEngineReload = true
+        }
+        guard self.needsSpokenEngineReload else { return }
+        let asr = AppServices.shared.asr
+        guard !asr.isRunningOrStarting else { return }
+        asr.resetTranscriptionProvider()
+        self.needsSpokenEngineReload = false
     }
 
     /// Starts Apple Translation before the first clause: pair change and Listen both hit this.
@@ -304,8 +360,7 @@ final class LiveTranslationController: ObservableObject {
         }
         let source = SpokenLanguageResolver.sourceLanguage()
         let target = SpokenLanguageResolver.targetLanguage()
-        VoiceEngineLanguageCatalog.ensureCompatibleEngine(forLanguageID: source.id)
-        SpokenLanguageResolver.pinSpokenEngineToSource()
+        self.alignSpokenEngineWithTheater()
         if !SpokenLanguageResolver.voiceEngineSupportsSource() {
             self.subscriber.reportFailure(
                 SpokenLanguageResolver.voiceEngineMismatchMessage()
@@ -323,24 +378,13 @@ final class LiveTranslationController: ObservableObject {
             return false
         }
         self.applyThermalDowngradeIfNeeded(immediate: true)
-        if SettingsStore.shared.theaterSessionMode == .watch {
-            if !ScreenRecordingAccess.isGranted {
-                _ = ScreenRecordingAccess.request()
-            }
-            let access = await ScreenRecordingAccess.resolve()
-            if access != .granted {
-                self.subscriber.reportFailure(ScreenRecordingAccess.message(for: access))
-                self.refreshPresenter()
-                return false
-            }
-        } else if AppServices.shared.asr.micStatus == .denied
-            || AppServices.shared.asr.micStatus == .restricted
-        {
-            self.subscriber.reportFailure("Allow microphone access in System Settings.")
+        let granted = await MicrophoneAccess.authorize(updating: AppServices.shared.asr)
+        if !granted {
+            self.subscriber.reportFailure(MicrophoneAccess.deniedCopy)
             self.refreshPresenter()
             return false
         }
-        if source.id == target.id {
+        if SettingsStore.shared.theaterSessionMode == .transcription || source.id == target.id {
             self.packAvailability = .installed
             return true
         }
@@ -476,14 +520,21 @@ final class LiveTranslationController: ObservableObject {
     }
 
     func clearBoard() {
-        PresenterCaptionController.shared.cancelEditing()
-        self.subscriber.reset(clearArchive: true)
-        self.persistBoard()
+        self.startFreshTheaterBoard()
         if self.isSessionActive {
             self.subscriber.beginListening()
         }
-        self.refreshPresenter()
         self.objectWillChange.send()
+    }
+
+    /// Empty Theater and the session archive. A crash leftover or last talk
+    /// must not come back on launch or a new caption Listen.
+    func startFreshTheaterBoard() {
+        PresenterCaptionController.shared.cancelEditing()
+        self.subscriber.reset(clearArchive: true)
+        self.persistBoard()
+        PresenterCaptionController.shared.clearDisplay()
+        self.refreshPresenter()
     }
 
     func refreshPackAvailability(
@@ -506,26 +557,23 @@ final class LiveTranslationController: ObservableObject {
             Task { await self.refreshPackAvailability() }
             return
         }
+        self.alignSpokenEngineWithTheater()
         TranslationSessionHostController.install()
         let wasEnabled = SettingsStore.shared.theaterWindowEnabled
         if wasEnabled {
             SettingsStore.shared.theaterWindowEnabled = false
         }
-        self.subscriber.recountArchive()
-        if let snapshot = SettingsStore.shared.theaterBoardSnapshot {
-            self.subscriber.restore(snapshot)
+        if !self.didStartFreshThisProcess {
+            self.didStartFreshThisProcess = true
+            self.startFreshTheaterBoard()
         }
+        self.subscriber.recountArchive()
         PresenterCaptionController.shared.orderOutIfClosed()
         Task { await self.refreshPackAvailability() }
     }
 
     func restoreBoardIfNeeded() {
         self.subscriber.recountArchive()
-        if self.subscriber.committedLines.isEmpty,
-           let snapshot = SettingsStore.shared.theaterBoardSnapshot
-        {
-            self.subscriber.restore(snapshot)
-        }
     }
 
     private func refreshPresenter() {
@@ -534,14 +582,6 @@ final class LiveTranslationController: ObservableObject {
         var statusKind = self.subscriber.statusKind
         if self.isPaused {
             status = "Paused"
-            statusKind = .info
-        } else if status.isEmpty, self.isSessionActive,
-                  SettingsStore.shared.theaterSessionMode == .watch,
-                  self.subscriber.lastLatencySample.micMilliseconds == nil
-        {
-            status = TheaterReadiness.watchListeningCopy(
-                sourceTitle: WatchSourceSettings.displayTitle(SettingsStore.shared)
-            )
             statusKind = .info
         } else if status.isEmpty, let window = self.subscriber.lineWindowStatus {
             status = window
@@ -552,6 +592,7 @@ final class LiveTranslationController: ObservableObject {
             draft: self.subscriber.liveCaptionText,
             committed: self.subscriber.committedLines,
             committedIDs: self.subscriber.committedLineIDs,
+            nextCaptionID: self.subscriber.nextCaptionID,
             committedSources: self.subscriber.committedSourceLines,
             pendingSources: self.subscriber.pendingSpokenLines,
             pairLabel: SpokenLanguageResolver.pairLabel(),

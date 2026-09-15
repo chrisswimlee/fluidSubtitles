@@ -173,7 +173,9 @@ run_release_build() {
 
     rm -f "${zip_path}"
     ditto -c -k --keepParent "${app_path}" "${zip_path}"
+    (cd "${PROJECT_DIR}/dist" && shasum -a 256 "${zip_name}" > SHA256SUMS)
     echo "Release zip: ${zip_path}"
+    echo "Checksums: ${PROJECT_DIR}/dist/SHA256SUMS"
 }
 
 case "${PROFILE}" in

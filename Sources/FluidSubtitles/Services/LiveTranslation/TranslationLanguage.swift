@@ -25,14 +25,16 @@ struct TranslationLanguage: Identifiable, Hashable, Sendable {
 enum TranslationLanguageCatalog {
     static let english = TranslationLanguage(id: "en", displayName: "English", appleLanguageCode: "en")
     static let korean = TranslationLanguage(id: "ko", displayName: "Korean", appleLanguageCode: "ko")
+    static let japanese = TranslationLanguage(id: "ja", displayName: "Japanese", appleLanguageCode: "ja")
     static let thai = TranslationLanguage(id: "th", displayName: "Thai", appleLanguageCode: "th")
 
-    /// fluidSubtitles only translates among these three languages.
-    /// Theater speech: Korean works with Apple Speech, Cohere, or Whisper.
+    /// fluidSubtitles only translates among these four languages.
+    /// Theater speech: Korean and Japanese work with Apple Speech, Cohere, or Whisper.
     /// Thai works best with Apple Speech or Whisper; Nemotron Thai is experimental.
     static let all: [TranslationLanguage] = [
         Self.english,
         Self.korean,
+        Self.japanese,
         Self.thai,
     ]
 

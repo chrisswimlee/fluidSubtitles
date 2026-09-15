@@ -2,7 +2,7 @@ import XCTest
 @testable import FluidSubtitles_Debug
 
 final class MLXRunnerCatalogTests: XCTestCase {
-    func testCatalogOffersKoreanEnglishThaiModels() {
+    func testCatalogOffersKoreanEnglishThaiJapaneseModels() {
         let catalog = MLXRunnerCatalog.load()
         XCTAssertEqual(catalog.defaultModelID, "gemma4-e4b")
         XCTAssertFalse(catalog.models.isEmpty)
@@ -12,6 +12,7 @@ final class MLXRunnerCatalogTests: XCTestCase {
         for model in catalog.models {
             XCTAssertTrue(model.languages.contains("ko"), model.id)
             XCTAssertTrue(model.languages.contains("en"), model.id)
+            XCTAssertTrue(model.languages.contains("ja"), model.id)
             XCTAssertTrue(model.languages.contains("th"), model.id)
             XCTAssertFalse(model.repo.isEmpty, model.id)
         }

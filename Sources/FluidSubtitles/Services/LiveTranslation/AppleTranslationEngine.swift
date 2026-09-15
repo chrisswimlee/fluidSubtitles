@@ -180,12 +180,12 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
         }
         switch status {
         case .installed:
-            return "Ready on this Mac — using the \(source.displayName) pack already on this computer"
+            return "Ready — \(source.displayName) pack is installed."
         case .supported:
             if englishIsPresent, source.id == "en" {
-                return "English is already on this Mac. Download \(target.displayName) once before presenting."
+                return "Download the \(target.displayName) pack before you Listen."
             }
-            return "Supported — download the language pack once before presenting"
+            return "Download the language pack before you Listen."
         case .unsupported:
             return "This pair is not supported by Apple Translation"
         case .unknown:

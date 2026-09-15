@@ -326,7 +326,10 @@ struct TranscriptionHistoryView: View {
             }
 
             if self.searchQuery.isEmpty {
-                OpenTheaterButton()
+                HStack(spacing: 8) {
+                    OpenTheaterButton()
+                    TheaterListenButton()
+                }
             }
 
             Spacer()

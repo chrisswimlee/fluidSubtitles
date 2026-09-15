@@ -5,49 +5,62 @@ import XCTest
 @testable import FluidSubtitles_Debug
 
 final class WatchOverlayTests: XCTestCase {
-    func testReadyGateWatchIgnoresMicrophoneAndNeedsScreenRecording() {
-        let watchDenied = TheaterReadyGate.snapshot(
+    func testReadyGateVoiceAndTranslateUseTheMicrophone() {
+        let voiceDenied = TheaterReadyGate.snapshot(
             engineSupportsSource: true,
             modelInstalled: true,
             sameLanguagePair: true,
             pack: .unknown,
             microphone: .denied,
             firstCaptionPrinted: false,
-            mode: .watch,
-            screenRecordingAllowed: false
+            mode: .transcription
         )
-        XCTAssertFalse(watchDenied.canListen)
-        XCTAssertTrue(watchDenied.nextAction.contains("Screen Recording"))
-        XCTAssertTrue(watchDenied.nextAction.contains("reopen"))
-        XCTAssertTrue(TheaterReadiness.gettingStartedOpenDetail.contains("Screen Recording"))
-        XCTAssertTrue(TheaterReadiness.gettingStartedMicrophone.contains("Lectern"))
+        XCTAssertFalse(voiceDenied.canListen)
+        XCTAssertTrue(voiceDenied.nextAction.contains("microphone"))
+        XCTAssertTrue(TheaterReadiness.gettingStartedOpenDetail.contains("Voice"))
+        XCTAssertTrue(TheaterReadiness.gettingStartedMicrophone.contains("microphone"))
 
-        let watchReady = TheaterReadyGate.snapshot(
+        let voiceReady = TheaterReadyGate.snapshot(
             engineSupportsSource: true,
             modelInstalled: true,
             sameLanguagePair: true,
             pack: .unknown,
-            microphone: .denied,
+            microphone: .authorized,
             firstCaptionPrinted: true,
-            mode: .watch,
-            screenRecordingAllowed: true
+            mode: .transcription
         )
-        XCTAssertTrue(watchReady.canListen)
-        XCTAssertTrue(watchReady.isFullyReady)
+        XCTAssertTrue(voiceReady.canListen)
+        XCTAssertTrue(voiceReady.isFullyReady)
 
-        let needsMacOS26 = TheaterReadyGate.snapshot(
+        let osBlocked = TheaterReadyGate.snapshot(
             engineSupportsSource: true,
             modelInstalled: true,
             sameLanguagePair: true,
             pack: .installed,
             microphone: .authorized,
             firstCaptionPrinted: true,
-            mode: .watch,
-            screenRecordingAllowed: true,
+            mode: .translation,
             osSupported: false
         )
-        XCTAssertFalse(needsMacOS26.canListen)
-        XCTAssertEqual(needsMacOS26.nextAction, TheaterAvailability.unsupportedCopy)
+        XCTAssertFalse(osBlocked.canListen)
+        XCTAssertEqual(osBlocked.nextAction, TheaterAvailability.unsupportedCopy)
+
+        let lecternUndetermined = TheaterReadyGate.snapshot(
+            engineSupportsSource: true,
+            modelInstalled: true,
+            sameLanguagePair: true,
+            pack: .installed,
+            microphone: .notDetermined,
+            firstCaptionPrinted: false
+        )
+        XCTAssertTrue(lecternUndetermined.canListen)
+        XCTAssertFalse(lecternUndetermined.microphoneAllowed)
+        XCTAssertEqual(lecternUndetermined.nextAction, TheaterReadiness.allowMicrophone)
+        XCTAssertFalse(MicrophoneAccess.isAuthorized(.notDetermined))
+        XCTAssertFalse(MicrophoneAccess.isDenied(.notDetermined))
+        XCTAssertTrue(MicrophoneAccess.isDenied(.denied))
+        XCTAssertTrue(MicrophoneAccess.isDenied(.restricted))
+        XCTAssertEqual(MicrophoneAccess.deniedCopy, "Allow the microphone in System Settings.")
     }
 
     func testJunkGateDropsBoilerplateAndPhraseLoops() {
@@ -273,8 +286,8 @@ final class WatchOverlayTests: XCTestCase {
         XCTAssertEqual(WatchCaptureStop.userFacingStatus("   "), "Capture stopped.")
         XCTAssertEqual(WatchCaptureStop.userFacingStatus("The stream was stopped"), "The stream was stopped")
         XCTAssertEqual(WatchCaptureStop.userFacingStatus("The target app closed"), "Target app closed.")
-        XCTAssertEqual(WatchCaptureStop.fallbackCopy, TheaterReadiness.watchFallbackCopy)
-        XCTAssertEqual(WatchCaptureStop.waitingCopy, TheaterReadiness.watchWaitingCopy)
+        XCTAssertFalse(WatchCaptureStop.fallbackCopy.isEmpty)
+        XCTAssertFalse(WatchCaptureStop.waitingCopy.isEmpty)
         XCTAssertFalse(WatchCaptureStop.shouldFallbackToThisMacOnSilence())
         XCTAssertTrue(WatchCaptureStop.helperHonestyCopy.contains("This Mac"))
         XCTAssertTrue(WatchCaptureStop.helperHonestyCopy.contains("WebKit"))
@@ -299,29 +312,17 @@ final class WatchOverlayTests: XCTestCase {
         XCTAssertEqual(kept.first?.title, "Browser")
     }
 
-    func testWatchCaptureSourceFollowsPicker() {
+    func testTheaterCaptureSourceStaysOnTheMicrophone() {
         let settings = SettingsStore.shared
         let originalMode = settings.theaterSessionMode
-        let originalTarget = settings.theaterWatchTarget
-        let originalBundle = settings.theaterWatchAppBundleID
-        defer {
-            settings.theaterSessionMode = originalMode
-            settings.theaterWatchTarget = originalTarget
-            settings.theaterWatchAppBundleID = originalBundle
-        }
+        defer { settings.theaterSessionMode = originalMode }
 
-        settings.theaterSessionMode = .watch
-        settings.theaterWatchTarget = .thisMac
-        settings.theaterWatchAppBundleID = ""
-        XCTAssertEqual(settings.theaterCaptureSource, .watchThisMac)
-
-        settings.theaterWatchTarget = .app
-        settings.theaterWatchAppBundleID = "com.apple.Safari"
-        XCTAssertEqual(settings.theaterCaptureSource, .watchApp)
-
-        settings.theaterWatchTarget = .app
-        settings.theaterWatchAppBundleID = ""
-        XCTAssertEqual(settings.theaterCaptureSource, .watchThisMac)
+        settings.theaterSessionMode = .transcription
+        XCTAssertEqual(settings.theaterCaptureSource, .lecternMicrophone)
+        settings.theaterSessionMode = .translation
+        XCTAssertEqual(settings.theaterCaptureSource, .lecternMicrophone)
+        XCTAssertEqual(TheaterSessionMode.resolved("watch"), .transcription)
+        XCTAssertEqual(TheaterSessionMode.resolved("lectern"), .translation)
     }
 
     @MainActor
@@ -413,10 +414,7 @@ final class WatchOverlayTests: XCTestCase {
             ScreenRecordingAccess.message(for: .needsReopen),
             ScreenRecordingAccess.reopenCopy
         )
-        XCTAssertEqual(
-            TheaterReadiness.watchListeningCopy(sourceTitle: "Safari"),
-            "Listening… play audio in Safari. DRM and some calls cannot be captured."
-        )
+        XCTAssertTrue(WatchCaptureStop.waitingCopy.contains("Waiting for audio"))
     }
 
     @MainActor

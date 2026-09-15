@@ -2,7 +2,7 @@
 //  TheaterSmokeTests.swift
 //  Fluid
 //
-//  Launch smoke: sidebar Theater shows languages, Watch source, and Theater chrome.
+//  Launch smoke: sidebar Theater shows languages, Voice / Translate, and Theater chrome.
 //  Do not click Listen or start live audio. Pause exists only after Listen.
 //
 
@@ -23,33 +23,29 @@ final class TheaterSmokeTests: XCTestCase {
         XCTAssertTrue(sidebarTheater.waitForExistence(timeout: 8), "Theater sidebar item")
         sidebarTheater.click()
 
-        if ProcessInfo.processInfo.operatingSystemVersion.majorVersion < 26 {
-            XCTAssertTrue(
-                app.descendants(matching: .any)["theater.needsMacOS26"].waitForExistence(timeout: 8),
-                "Theater requires macOS 26"
-            )
-            return
-        }
-
         let languages = app.descendants(matching: .any)["theater.languages"]
         XCTAssertTrue(languages.waitForExistence(timeout: 8), "Home language card")
 
         let mode = app.descendants(matching: .any)["theater.mode"]
-        XCTAssertTrue(mode.waitForExistence(timeout: 4), "Lectern / Watch")
+        XCTAssertTrue(mode.waitForExistence(timeout: 4), "Voice / Translate")
 
-        let watchButton = app.segmentedControls["theater.mode"].buttons["Watch"]
-        if watchButton.waitForExistence(timeout: 2) {
-            watchButton.click()
+        let voiceButton = app.segmentedControls["theater.mode"].buttons["Voice"]
+        if voiceButton.waitForExistence(timeout: 2) {
+            voiceButton.click()
         } else {
-            app.buttons["Watch"].firstMatch.click()
+            app.buttons["Voice"].firstMatch.click()
         }
         XCTAssertTrue(
-            app.descendants(matching: .any)["theater.watchSource"].waitForExistence(timeout: 4),
-            "Watch capture picker"
+            app.descendants(matching: .any)["theater.voiceEngine"].waitForExistence(timeout: 4),
+            "Voice Engine is speech to text"
         )
         XCTAssertTrue(
-            app.descendants(matching: .any)["theater.checkCapture"].waitForExistence(timeout: 4),
-            "Check capture"
+            app.descendants(matching: .any)["theater.customizeVoiceEngine"].waitForExistence(timeout: 4),
+            "Voice Engine in Voice mode"
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["theater.translationEngine"].waitForExistence(timeout: 4),
+            "Translation Engine names Apple Translation"
         )
 
         let listen = app.descendants(matching: .any)["theater.listen"]
@@ -64,12 +60,8 @@ final class TheaterSmokeTests: XCTestCase {
             "Theater window languages"
         )
         XCTAssertTrue(
-            app.descendants(matching: .any)["theater.window.watchSource"].waitForExistence(timeout: 4),
-            "Theater window capture source"
-        )
-        XCTAssertTrue(
             app.descendants(matching: .any)["theater.window.mode"].waitForExistence(timeout: 4),
-            "Lectern / Watch is on Theater chrome"
+            "Voice / Translate is on Theater chrome"
         )
         XCTAssertTrue(
             app.descendants(matching: .any)["theater.window.listen"].waitForExistence(timeout: 4),
@@ -82,10 +74,6 @@ final class TheaterSmokeTests: XCTestCase {
         XCTAssertTrue(
             app.descendants(matching: .any)["theater.window.clear"].waitForExistence(timeout: 4),
             "Clear captions is on Theater chrome"
-        )
-        XCTAssertTrue(
-            app.descendants(matching: .any)["theater.window.checkCapture"].waitForExistence(timeout: 4),
-            "Check capture is on Theater chrome in Watch"
         )
         XCTAssertTrue(
             app.descendants(matching: .any)["theater.status"].waitForExistence(timeout: 4),
