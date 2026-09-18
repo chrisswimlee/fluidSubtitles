@@ -21,7 +21,7 @@ nonisolated enum TheaterTalkPack {
         var errorDescription: String? {
             switch self {
             case .empty:
-                return "That file has no names Theater can keep."
+                return "That file has no names Theater can keep. A scanned PDF has no text to read; add names by hand below."
             case .unreadable:
                 return "Theater could not read that file on this Mac."
             }

@@ -34,6 +34,25 @@ extension SettingsStore {
         self.theaterTalkPackTerms = document.terms
     }
 
+    /// A name the presenter typed. Skips import heuristics (it was chosen on
+    /// purpose) but keeps the cap and ignores a case-insensitive duplicate.
+    @discardableResult
+    func addTheaterTalkPackTerm(_ raw: String) -> Bool {
+        let term = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        var terms = self.theaterTalkPackTerms
+        guard !term.isEmpty,
+              terms.count < TheaterTalkPack.maxTerms,
+              !terms.contains(where: { $0.caseInsensitiveCompare(term) == .orderedSame })
+        else { return false }
+        terms.append(term)
+        self.theaterTalkPackTerms = terms
+        return true
+    }
+
+    func removeTheaterTalkPackTerm(_ term: String) {
+        self.theaterTalkPackTerms = self.theaterTalkPackTerms.filter { $0 != term }
+    }
+
     func clearTheaterTalkPack() {
         self.theaterTalkPackFileName = ""
         self.theaterTalkPackTerms = []

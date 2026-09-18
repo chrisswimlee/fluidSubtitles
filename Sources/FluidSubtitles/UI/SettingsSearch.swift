@@ -186,7 +186,8 @@ enum SettingsSearchIndex {
             terms: [
                 "caption font size spoken line source translation theater window captions only dark light appearance theme",
                 "how new captions appear print-in flow word fade instant typewriter",
-                "popup pop-up transparent overlay board slides keynote see-through",
+                "popup pop-up transparent overlay board slides keynote see-through caption bar caption plate",
+                "menu bar theater font size plate theme position overlay tools",
                 "hide from screen share zoom keynote recording capture projector OBS",
                 "also hear english korean thai questions whisper auto detect Q&A",
                 "clear captions board archive wipe reset high contrast",
@@ -202,8 +203,8 @@ enum SettingsSearchIndex {
         ),
         .init(
             target: .translateInsertShortcut,
-            title: "Type into an App",
-            terms: ["insert hotkey shortcut type caption into app"]
+            title: "Listen and Type",
+            terms: ["listen and type insert hotkey shortcut speak translate type into app"]
         ),
         .init(target: .general, title: "General", terms: ["app settings preferences startup menu bar dock"]),
         .init(

@@ -41,7 +41,7 @@ Word-by-word Apple Translation stays out. The Neural Engine translates one finis
 
 ## Context windows
 
-The live Apple path still has no prompt. On commit, Theater sends the last 4 source clauses from this Listen plus the new one, then peels the new caption. A clause-boundary approximation may prefetch that same payload so the print is already warm. Pronoun and zero-subject Korean or Japanese can still drift. Do not describe this as a streaming context window on the Neural Engine.
+The live Apple path still has no prompt. On commit, Theater sends the last 4 source clauses from this Listen plus the new one, then peels the new caption. Those four live in a short sliding window; older clauses drop as new ones commit. A clause-boundary approximation may prefetch that same payload so the print is already warm. Pronoun and zero-subject Korean or Japanese can still drift. Do not describe this as a streaming context window on the Neural Engine.
 
 ## CoreAudio
 

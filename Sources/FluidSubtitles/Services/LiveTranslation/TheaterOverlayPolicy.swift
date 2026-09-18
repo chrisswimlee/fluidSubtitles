@@ -1,0 +1,95 @@
+import AppKit
+
+/// Overlay is text on slides. Pop-up is a boxed board.
+/// Idle Overlay hides chrome and click-through; pinned Overlay shows tools.
+enum TheaterOverlayPolicy {
+    static let overlayMinSize = NSSize(width: 480, height: 140)
+    static let popupMinSize = NSSize(width: 640, height: 260)
+    static let plateHorizontalInset: CGFloat = 10
+    static let plateVerticalInset: CGFloat = 3
+    static let plateCornerRadius: CGFloat = 8
+    static let plateFillAlpha: CGFloat = 0.58
+
+    static func isOverlay(_ presentation: TheaterPresentationStyle) -> Bool {
+        presentation == .transparent
+    }
+
+    static func hidesAllChrome(
+        presentation: TheaterPresentationStyle,
+        toolsPinned: Bool
+    ) -> Bool {
+        Self.isOverlay(presentation) && !toolsPinned
+    }
+
+    static func usesCaptionsOnlyChrome(
+        presentation: TheaterPresentationStyle,
+        hideChrome: Bool
+    ) -> Bool {
+        presentation == .popup && hideChrome
+    }
+
+    static func ignoresMouseEvents(
+        presentation: TheaterPresentationStyle,
+        toolsPinned: Bool,
+        minimized: Bool
+    ) -> Bool {
+        !minimized && Self.hidesAllChrome(presentation: presentation, toolsPinned: toolsPinned)
+    }
+
+    static func hidesTitlebarButtons(
+        presentation: TheaterPresentationStyle,
+        toolsPinned: Bool
+    ) -> Bool {
+        Self.hidesAllChrome(presentation: presentation, toolsPinned: toolsPinned)
+    }
+
+    static func movableByBackground(
+        presentation: TheaterPresentationStyle,
+        toolsPinned: Bool,
+        minimized: Bool
+    ) -> Bool {
+        if minimized { return false }
+        if presentation == .popup { return true }
+        return toolsPinned
+    }
+
+    static func minSize(for presentation: TheaterPresentationStyle) -> NSSize {
+        Self.isOverlay(presentation) ? Self.overlayMinSize : Self.popupMinSize
+    }
+
+    static func shouldClearPin(
+        presentation: TheaterPresentationStyle,
+        minimized: Bool,
+        windowEnabled: Bool
+    ) -> Bool {
+        presentation == .popup || minimized || !windowEnabled
+    }
+
+    static func showsCaptionPlate(
+        presentation: TheaterPresentationStyle,
+        backingBar: Bool
+    ) -> Bool {
+        Self.isOverlay(presentation) && backingBar
+    }
+
+    static func plateColor() -> NSColor {
+        NSColor.black.withAlphaComponent(Self.plateFillAlpha)
+    }
+
+    /// Overlay stays over slides. Pop-up only floats when another app is
+    /// front, so Home and Settings can sit on top of the boxed board.
+    static func windowLevel(
+        presentation: TheaterPresentationStyle,
+        appIsActive: Bool
+    ) -> NSWindow.Level {
+        if presentation == .transparent { return .floating }
+        return appIsActive ? .normal : .floating
+    }
+
+    static func isFloatingPanel(
+        presentation: TheaterPresentationStyle,
+        appIsActive: Bool
+    ) -> Bool {
+        Self.windowLevel(presentation: presentation, appIsActive: appIsActive) == .floating
+    }
+}

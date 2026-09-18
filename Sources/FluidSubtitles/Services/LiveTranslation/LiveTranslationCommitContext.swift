@@ -53,14 +53,52 @@ enum LiveTranslationCommitContext {
     }
 
     static func leftoverContainsPriorCaption(_ leftover: String, priors: [String]) -> Bool {
-        priors.contains { prior in
+        let haystack = leftover.folding(
+            options: [.caseInsensitive, .diacriticInsensitive],
+            locale: .current
+        )
+        return priors.contains { prior in
             let trimmed = prior.trimmingCharacters(in: .whitespacesAndNewlines)
             guard trimmed.count >= 2 else { return false }
-            return leftover.range(
-                of: trimmed,
-                options: [.caseInsensitive, .diacriticInsensitive]
-            ) != nil
+            let needle = trimmed.folding(
+                options: [.caseInsensitive, .diacriticInsensitive],
+                locale: .current
+            )
+            return Self.containsPriorTokens(haystack, prior: needle)
         }
+    }
+
+    /// Spaced scripts match whole words ("OK" is not inside "Okay").
+    /// Japanese, Chinese, and Thai have no word spaces, so they match a
+    /// substring of at least `unspacedPriorMinimumLength` characters.
+    static func containsPriorTokens(_ leftover: String, prior: String) -> Bool {
+        if TranslationClauseSegmenter.hasUnspacedScript(prior) {
+            let needle = Self.captionToken(prior)
+            guard needle.count >= Self.unspacedPriorMinimumLength else { return false }
+            return leftover.contains(needle)
+        }
+        let hay = leftover
+            .split(whereSeparator: { $0.isWhitespace || $0.isNewline })
+            .map { Self.captionToken(String($0)) }
+        let needle = prior
+            .split(whereSeparator: { $0.isWhitespace || $0.isNewline })
+            .map { Self.captionToken(String($0)) }
+        guard !needle.isEmpty, needle.allSatisfy({ !$0.isEmpty }) else { return false }
+        if hay.count >= needle.count {
+            let limit = hay.count - needle.count
+            if (0...limit).contains(where: { start in
+                hay[start..<(start + needle.count)].elementsEqual(needle)
+            }) {
+                return true
+            }
+        }
+        return false
+    }
+
+    static let unspacedPriorMinimumLength = 4
+
+    private static func captionToken(_ text: String) -> String {
+        text.trimmingCharacters(in: CharacterSet.punctuationCharacters.union(.symbols))
     }
 
     static func shouldPreferConfirmation(

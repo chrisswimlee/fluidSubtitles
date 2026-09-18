@@ -71,9 +71,12 @@ final class LiveTranslationSubscriber: ObservableObject {
 
     /// Every pair printed this session, in memory only (an hour is ~100 KB).
     private var sessionEntries: [LectureCaptionEntry] = []
+    /// Sliding window for leftover peel and last-4 MT priors. Oldest drop.
+    private var listenHistory: [LectureCaptionEntry] = []
 
     func startSessionRecord() {
         self.sessionEntries = []
+        self.listenHistory = []
     }
 
     /// Mirror the board log into the session record: new pairs append, a
@@ -90,6 +93,33 @@ final class LiveTranslationSubscriber: ObservableObject {
             }) {
                 self.sessionEntries.append(entry)
             }
+        }
+    }
+
+    private func rememberListenEntry(_ entry: LectureCaptionEntry) {
+        if let index = self.listenHistory.lastIndex(where: { $0.id == entry.id }) {
+            self.listenHistory[index] = entry
+        } else {
+            self.listenHistory.append(entry)
+        }
+        let overflow = self.listenHistory.count - LiveTranslationTiming.maxListenHistory
+        if overflow > 0 {
+            self.listenHistory.removeFirst(overflow)
+        }
+    }
+
+    private func forgetListenEntry(_ entry: LectureCaptionEntry) {
+        self.listenHistory.removeAll { $0.id == entry.id }
+    }
+
+    /// Board edits only touch clauses this Listen already holds. Lines from an
+    /// earlier Listen and hand-typed lines never join the peel window; a line
+    /// the presenter deleted leaves it.
+    private func applyEditsToListenHistory(removedFrom boardBefore: Set<UInt64>, edited: [LectureCaptionEntry]) {
+        let byID = Dictionary(edited.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+        self.listenHistory = self.listenHistory.compactMap { entry in
+            if let updated = byID[entry.id] { return updated }
+            return boardBefore.contains(entry.id) ? nil : entry
         }
     }
 
@@ -147,12 +177,12 @@ final class LiveTranslationSubscriber: ObservableObject {
         }
         if TranslationClauseSegmenter.isAlreadyPrintedSource(
             open,
-            already: self.listenSourceLines,
+            already: self.peelSources,
             languageID: languageID
         ) {
             return nil
         }
-        if self.captionLog.sourceLines.dropLast().contains(where: {
+        if self.peelSources.dropLast().contains(where: {
             TranslationClauseSegmenter.isSameClause($0, open)
                 || self.revisesPrinted(
                     previous: $0,
@@ -162,7 +192,7 @@ final class LiveTranslationSubscriber: ObservableObject {
         }) {
             return nil
         }
-        if let last = self.captionLog.sourceLines.last {
+        if let last = self.peelSources.last {
             if TranslationClauseSegmenter.isSameClause(last, open) { return nil }
             if self.revisesPrinted(
                 previous: last,
@@ -193,7 +223,7 @@ final class LiveTranslationSubscriber: ObservableObject {
             if lines.contains(where: { TranslationClauseSegmenter.isSameClause($0, cleaned) }) {
                 continue
             }
-            if self.listenSourceLines.contains(where: { TranslationClauseSegmenter.isSameClause($0, cleaned) }) {
+            if self.peelSources.contains(where: { TranslationClauseSegmenter.isSameClause($0, cleaned) }) {
                 continue
             }
             lines.append(cleaned)
@@ -218,8 +248,20 @@ final class LiveTranslationSubscriber: ObservableObject {
         return Array(self.captionLog.sourceLines.dropFirst(start))
     }
 
+    /// Recent this-Listen clauses. Older than `maxListenHistory` are gone.
+    private var peelSources: [String] {
+        self.listenHistory.isEmpty ? self.listenSourceLines : self.listenHistory.map(\.source)
+    }
+
+    /// Last-four MT priors from the sliding window, not only the three board rows.
+    private var listenContextEntries: [LectureCaptionEntry] {
+        if !self.listenHistory.isEmpty { return self.listenHistory }
+        let start = min(max(self.listenBatchStart, 0), self.captionLog.entries.count)
+        return Array(self.captionLog.entries.dropFirst(start))
+    }
+
     private var printedSources: [String] {
-        self.listenSourceLines + self.inFlightSources
+        self.peelSources + self.inFlightSources
     }
 
     /// Peel this Listen first. A restitch that still starts with a printed
@@ -228,7 +270,7 @@ final class LiveTranslationSubscriber: ObservableObject {
     private func leftoverSpeech(_ text: String, languageID: String) -> String {
         let listenLeftover = TranslationClauseSegmenter.leftoverTail(
             text,
-            already: self.listenSourceLines,
+            already: self.peelSources,
             languageID: languageID
         )
         let boardLeftover = TranslationClauseSegmenter.leftoverTail(
@@ -272,7 +314,7 @@ final class LiveTranslationSubscriber: ObservableObject {
                 languageID: languageID,
                 allowPauseFinalize: false
             )?.unit else { break }
-            let printed = self.captionLog.sourceLines.contains { line in
+            let printed = (self.peelSources + self.captionLog.sourceLines).contains { line in
                 TranslationClauseSegmenter.isSameClause(line, first)
                     || (
                         self.revisesPrinted(
@@ -296,7 +338,7 @@ final class LiveTranslationSubscriber: ObservableObject {
     }
 
     private func revisesEarlierPrintedLine(_ unit: String, languageID: String) -> Bool {
-        self.captionLog.sourceLines.dropLast().contains { printed in
+        self.peelSources.dropLast().contains { printed in
             TranslationClauseSegmenter.isSameClause(printed, unit)
                 || self.revisesPrinted(
                     previous: printed,
@@ -330,6 +372,8 @@ final class LiveTranslationSubscriber: ObservableObject {
         self.translatedDraft = ""
         self.committedLines = []
         self.captionLog = LectureCaptionLog()
+        self.sessionEntries = []
+        self.listenHistory = []
         if clearArchive {
             self.archive.reset()
         }
@@ -381,6 +425,7 @@ final class LiveTranslationSubscriber: ObservableObject {
         self.didAutoRetryFailure = false
         self.llmEngine.resetListenEchoTally()
         self.listenBatchStart = self.captionLog.sourceLines.count
+        self.listenHistory = []
         self.latencyTracker.resetUtterance()
         self.latencyTracker.markListenStart(ProcessInfo.processInfo.systemUptime)
         self.objectWillChange.send()
@@ -401,6 +446,7 @@ final class LiveTranslationSubscriber: ObservableObject {
         self.lastFailedSource = nil
         self.llmEngine.resetListenEchoTally()
         self.listenBatchStart = self.captionLog.sourceLines.count
+        self.listenHistory = []
         self.objectWillChange.send()
     }
 
@@ -504,6 +550,7 @@ final class LiveTranslationSubscriber: ObservableObject {
         self.captionLog.restore(snapshot)
         self.committedLines = self.captionLog.translatedLines
         self.listenBatchStart = self.captionLog.sourceLines.count
+        self.listenHistory = []
         self.postedLineCount = self.committedLines.count
         self.translatedDraftSource = ""
         self.sourceDraft = ""
@@ -545,6 +592,7 @@ final class LiveTranslationSubscriber: ObservableObject {
     func removeLastCommittedLine() {
         guard let removed = self.captionLog.popLast() else { return }
         self.sessionEntries.removeAll { $0.id == removed.id && $0.committedAt == removed.committedAt }
+        self.forgetListenEntry(removed)
         self.committedLines = self.captionLog.translatedLines
         self.listenBatchStart = min(self.listenBatchStart, self.committedLines.count)
         self.postedLineCount = min(self.postedLineCount, self.committedLines.count)
@@ -555,8 +603,10 @@ final class LiveTranslationSubscriber: ObservableObject {
     }
 
     func applyEditedLines(_ lines: [String]) {
+        let boardBefore = Set(self.captionLog.entries.map(\.id))
         let overflow = self.captionLog.replaceTranslatedLines(lines)
         self.recordSessionEntries()
+        self.applyEditsToListenHistory(removedFrom: boardBefore, edited: self.captionLog.entries + overflow)
         self.archiveOverflow(overflow)
         self.committedLines = self.captionLog.translatedLines
         self.listenBatchStart = min(self.listenBatchStart, self.committedLines.count)
@@ -575,6 +625,10 @@ final class LiveTranslationSubscriber: ObservableObject {
 
     func seedCommittedForTesting(source: String, translated: String) {
         if let committed = self.captionLog.commit(source: source, translated: translated) {
+            self.recordSessionEntries()
+            if let entry = self.captionLog.entries.first(where: { $0.id == committed.id }) {
+                self.rememberListenEntry(entry)
+            }
             self.archiveOverflow(committed.overflow)
             self.adjustIndexes(trimmedCount: committed.overflow.count)
         }
@@ -799,7 +853,7 @@ final class LiveTranslationSubscriber: ObservableObject {
         if self.revisesEarlierPrintedLine(unit, languageID: languageID) {
             return true
         }
-        if let last = self.listenSourceLines.last {
+        if let last = self.peelSources.last {
             if TranslationClauseSegmenter.isSameClause(last, unit),
                !self.mayReplaceLastCommitted(with: unit)
             {
@@ -813,7 +867,7 @@ final class LiveTranslationSubscriber: ObservableObject {
                 return true
             }
         }
-        if self.listenSourceLines.contains(where: {
+        if self.peelSources.contains(where: {
             TranslationClauseSegmenter.isSameClause($0, unit)
         }) {
             return !self.mayReplaceLastCommitted(with: unit)
@@ -838,9 +892,14 @@ final class LiveTranslationSubscriber: ObservableObject {
         let unitStart = Self.droppingTerminalPunctuation(unit)
         guard !unitStart.isEmpty else { return nil }
         let hypothesis = Self.collapsedSpacing(self.latestHypothesis)
-        let joined = Self.collapsedSpacing(stem + " " + unitStart)
-        guard hypothesis.range(of: joined, options: [.caseInsensitive]) != nil else { return nil }
-        return Self.collapsedSpacing(stem + " " + unit.trimmingCharacters(in: .whitespacesAndNewlines))
+        // Japanese and Chinese run sentences together with no space.
+        for joiner in [" ", ""] {
+            let joined = Self.collapsedSpacing(stem + joiner + unitStart)
+            if hypothesis.range(of: joined, options: [.caseInsensitive]) != nil {
+                return Self.collapsedSpacing(stem + joiner + unit.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+        }
+        return nil
     }
 
     private func reviseNewestLine(to revised: String, generation: UInt64) async {
@@ -862,6 +921,9 @@ final class LiveTranslationSubscriber: ObservableObject {
             }
             guard self.captionLog.reviseNewest(source: revised, translated: resolved) else { return }
             self.recordSessionEntries()
+            if let newest = self.captionLog.entries.last {
+                self.rememberListenEntry(newest)
+            }
             self.committedLines = self.captionLog.translatedLines
             self.translatedDraft = resolved
             self.translatedDraftSource = revised
@@ -999,7 +1061,7 @@ final class LiveTranslationSubscriber: ObservableObject {
         if self.inFlightSources.contains(where: { TranslationClauseSegmenter.isSameClause($0, cleaned) }) {
             return
         }
-        if let last = self.listenSourceLines.last,
+        if let last = self.peelSources.last,
            TranslationClauseSegmenter.isSameClause(last, cleaned),
            !TranslationClauseSegmenter.shouldReplaceLast(previous: last, incoming: cleaned)
         {
@@ -1053,7 +1115,7 @@ final class LiveTranslationSubscriber: ObservableObject {
             return
         }
         let replaceLast = self.mayReplaceLastCommitted(with: cleaned)
-        if !replaceLast, self.listenSourceLines.last == cleaned {
+        if !replaceLast, self.peelSources.last == cleaned {
             return
         }
 
@@ -1081,6 +1143,9 @@ final class LiveTranslationSubscriber: ObservableObject {
                 mayReviseLast: replaceLast
             ) else { return }
             self.recordSessionEntries()
+            if let entry = self.captionLog.entries.first(where: { $0.id == committed.id }) {
+                self.rememberListenEntry(entry)
+            }
             self.archiveOverflow(committed.overflow)
             self.adjustIndexes(trimmedCount: committed.overflow.count)
             self.committedLines = self.captionLog.translatedLines
@@ -1345,17 +1410,19 @@ final class LiveTranslationSubscriber: ObservableObject {
         self.priorClausesForContextualTranslation(incoming: incoming)
     }
 
+    var listenHistoryCountForTesting: Int { self.listenHistory.count }
+
     private func priorClausesForContextualTranslation(
         incoming: String,
         excludingNewestLine: Bool = false
     ) -> (sources: [String], translations: [String]) {
         // Fixing the newest line in place: its old text is not context.
-        let entries = excludingNewestLine
-            ? Array(self.captionLog.entries.dropLast())
-            : self.captionLog.entries
+        let context = excludingNewestLine
+            ? Array(self.listenContextEntries.dropLast())
+            : self.listenContextEntries
         let prior = Self.priorClauses(
-            entries: entries,
-            listenBatchStart: self.listenBatchStart,
+            entries: context,
+            listenBatchStart: 0,
             incoming: incoming
         )
         guard SpokenLanguageResolver.isDynamicPairingEnabled() else { return prior }

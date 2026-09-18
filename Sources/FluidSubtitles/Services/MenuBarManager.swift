@@ -559,6 +559,7 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         listenItem.target = self
         theaterMenu.addItem(listenItem)
         self.listenMenuItem = listenItem
+        TheaterMenuBarController.shared.install(into: theaterMenu)
 
         let theaterGroup = NSMenuItem(title: "Theater", action: nil, keyEquivalent: "")
         theaterGroup.submenu = theaterMenu
@@ -661,6 +662,7 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
             && (isCaptionListening || (ready.canListen && !dictationBusy))
         self.copyLastTranscriptMenuItem?.isEnabled = self.canCopyLastTranscript
         self.microphoneMenuItem?.isEnabled = true
+        TheaterMenuBarController.shared.refresh()
 
         // Update rollback availability text
         self.rollbackMenuItem?.isEnabled = SimpleUpdater.shared.hasRollbackBackup()
@@ -670,6 +672,7 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         if menu === self.menu {
             self.updateMenuItemsText()
             self.refreshMicrophoneMenu()
+            TheaterMenuBarController.shared.refresh()
         }
     }
 

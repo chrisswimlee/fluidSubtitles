@@ -7,6 +7,8 @@ struct TheaterTalkPackCard: View {
     @Environment(\.theme) private var theme
     @ObservedObject private var settings = SettingsStore.shared
     @State private var loadError: String?
+    @State private var newTerm = ""
+    @State private var showsAllTerms = false
 
     var body: some View {
         ThemedCard(style: .standard, hoverEffect: false) {
@@ -49,6 +51,7 @@ struct TheaterTalkPackCard: View {
                         }
                     }
                 }
+                self.termInspector
                 if let loadError {
                     Text(loadError)
                         .font(self.theme.typography.caption)
@@ -60,6 +63,66 @@ struct TheaterTalkPackCard: View {
         }
         .help(TheaterReadiness.talkPack)
         .accessibilityIdentifier("theater.talkPack")
+    }
+
+    /// Every name, one-by-one delete, and a field to add a name the file missed.
+    private var termInspector: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !self.settings.theaterTalkPackTerms.isEmpty {
+                DisclosureGroup(
+                    "All names (\(self.settings.theaterTalkPackTerms.count))",
+                    isExpanded: self.$showsAllTerms
+                ) {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(self.settings.theaterTalkPackTerms, id: \.self) { term in
+                                HStack {
+                                    Text(term)
+                                        .font(self.theme.typography.bodySmall)
+                                        .lineLimit(1)
+                                    Spacer(minLength: 8)
+                                    Button {
+                                        self.settings.removeTheaterTalkPackTerm(term)
+                                    } label: {
+                                        Image(systemName: "minus.circle")
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .accessibilityLabel("Remove \(term)")
+                                }
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .frame(maxHeight: 180)
+                }
+                .accessibilityIdentifier("theater.talkPack.allNames")
+            }
+            HStack(spacing: 8) {
+                TextField("Add a name", text: self.$newTerm)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { self.addTerm() }
+                    .accessibilityIdentifier("theater.talkPack.addField")
+                Button("Add") { self.addTerm() }
+                    .buttonStyle(.bordered)
+                    .disabled(
+                        self.newTerm.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            || self.settings.theaterTalkPackTerms.count >= TheaterTalkPack.maxTerms
+                    )
+                    .accessibilityIdentifier("theater.talkPack.add")
+            }
+            if self.settings.hasTheaterTalkPack {
+                Text(TheaterReadiness.talkPackCarryOver)
+                    .font(self.theme.typography.caption)
+                    .foregroundStyle(self.theme.palette.secondaryText)
+            }
+        }
+    }
+
+    private func addTerm() {
+        if self.settings.addTheaterTalkPackTerm(self.newTerm) {
+            self.newTerm = ""
+            self.loadError = nil
+        }
     }
 
     private var statusLine: String {

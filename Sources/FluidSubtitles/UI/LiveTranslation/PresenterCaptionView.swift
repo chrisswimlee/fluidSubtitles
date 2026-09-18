@@ -40,7 +40,9 @@ private final class TheaterAppearanceHostView: NSView {
 /// Reserved chrome so hover tools and the titlebar do not collide with captions.
 private enum TheaterChromeLayout {
     static let titlebarClearance: CGFloat = 36
+    static let overlayIdleClearance: CGFloat = 10
     static let hoverToolsTop: CGFloat = 88
+    static let overlayHoverToolsTop: CGFloat = 12
     static let languageHit: CGFloat = 32
 }
 
@@ -88,7 +90,18 @@ struct PresenterCaptionView: View {
             .background(TranslationSessionHost())
             .background(TheaterWindowAppearanceBridge(appearance: self.appearance))
             .onHover { hovering in
+                if self.overlayHidesChrome { return }
                 self.chromeRevealed = hovering
+            }
+            .onChange(of: self.model.overlayToolsPinned) { _, pinned in
+                if self.presentationStyle == .transparent, !pinned {
+                    self.chromeRevealed = false
+                }
+            }
+            .onChange(of: self.presentationStyle) { _, style in
+                if style == .transparent, !self.model.overlayToolsPinned {
+                    self.chromeRevealed = false
+                }
             }
             .onReceive(NotificationCenter.default.publisher(for: NSMenu.didBeginTrackingNotification)) { _ in
                 self.chromePinned = true
@@ -122,10 +135,10 @@ struct PresenterCaptionView: View {
 
     private var theaterContent: some View {
         ZStack(alignment: .topLeading) {
-            VStack(alignment: .leading, spacing: self.settings.theaterHideChrome ? 8 : self.theme.metrics.spacing.md) {
+            VStack(alignment: .leading, spacing: self.usesCaptionsOnlyChrome ? 8 : self.theme.metrics.spacing.md) {
                 self.primaryChrome
                 if !self.settings.theaterMinimized {
-                    if !self.settings.theaterHideChrome {
+                    if self.showsExtendedChrome {
                         self.extendedChrome
                     }
                     if self.model.isEditing {
@@ -142,14 +155,14 @@ struct PresenterCaptionView: View {
                 }
             }
             .padding(.horizontal, self.theme.metrics.spacing.xxl)
-            .padding(.top, TheaterChromeLayout.titlebarClearance)
+            .padding(.top, self.topChromeClearance)
             .padding(.bottom, self.theme.metrics.spacing.md)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             if self.showsHoverTools {
                 self.hoverTools
                     .padding(.horizontal, self.theme.metrics.spacing.xxl)
-                    .padding(.top, TheaterChromeLayout.hoverToolsTop)
+                    .padding(.top, self.hoverToolsTop)
                     .transition(.opacity)
             }
         }
@@ -162,18 +175,50 @@ struct PresenterCaptionView: View {
         .animation(.easeOut(duration: 0.12), value: self.showsHoverTools)
     }
 
-    /// Captions-only keeps the Listen row in-flow so hover tools can overlay without moving the board.
+    /// Overlay idle hides every control. Pop-up captions-only keeps Listen in-flow.
     @ViewBuilder
     private var primaryChrome: some View {
-        if self.settings.theaterHideChrome {
+        if self.overlayHidesChrome {
+            EmptyView()
+        } else if self.usesCaptionsOnlyChrome {
             self.captionsOnlyChrome
         } else {
             self.persistentChrome
         }
     }
 
+    private var overlayHidesChrome: Bool {
+        TheaterOverlayPolicy.hidesAllChrome(
+            presentation: self.presentationStyle,
+            toolsPinned: self.model.overlayToolsPinned
+        )
+    }
+
+    private var usesCaptionsOnlyChrome: Bool {
+        TheaterOverlayPolicy.usesCaptionsOnlyChrome(
+            presentation: self.presentationStyle,
+            hideChrome: self.settings.theaterHideChrome
+        )
+    }
+
+    private var showsExtendedChrome: Bool {
+        !self.overlayHidesChrome && !self.usesCaptionsOnlyChrome
+    }
+
+    private var topChromeClearance: CGFloat {
+        self.overlayHidesChrome
+            ? TheaterChromeLayout.overlayIdleClearance
+            : TheaterChromeLayout.titlebarClearance
+    }
+
+    private var hoverToolsTop: CGFloat {
+        self.presentationStyle == .transparent
+            ? TheaterChromeLayout.overlayHoverToolsTop
+            : TheaterChromeLayout.hoverToolsTop
+    }
+
     private var showsHoverTools: Bool {
-        self.settings.theaterHideChrome
+        self.usesCaptionsOnlyChrome
             && !self.settings.theaterMinimized
             && (self.chromeRevealed || self.chromePinned || self.model.isEditing)
     }
@@ -190,10 +235,17 @@ struct PresenterCaptionView: View {
     private var theaterFill: Color {
         switch self.presentationStyle {
         case .transparent:
-            return self.settings.theaterBackingBar ? Color.black.opacity(0.58) : Color.clear
+            return Color.clear
         case .popup:
             return self.theme.palette.windowBackground.opacity(self.settings.theaterHighContrast ? 1 : 0.94)
         }
+    }
+
+    private var showsCaptionPlate: Bool {
+        TheaterOverlayPolicy.showsCaptionPlate(
+            presentation: self.presentationStyle,
+            backingBar: self.settings.theaterBackingBar
+        )
     }
 
     private var typeface: TheaterTypeface {
@@ -237,7 +289,7 @@ struct PresenterCaptionView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
                 .disabled(SpokenLanguageResolver.isSameLanguagePair())
-                .help("Swap spoken and translated languages")
+                .theaterTag(TheaterChromeHelp.swapLanguages)
                 .accessibilityLabel("Swap languages")
 
                 if showsLabels {
@@ -298,7 +350,7 @@ struct PresenterCaptionView: View {
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .help(title)
+        .theaterTag(title == "I speak" ? TheaterChromeHelp.iSpeak : TheaterChromeHelp.showAs)
         .accessibilityLabel(title)
         .accessibilityValue(selectedName)
     }
@@ -361,7 +413,9 @@ struct PresenterCaptionView: View {
                 pauseIdentifier: "theater.pause"
             )
             .layoutPriority(1)
-            self.captionsOnlyButton
+            if self.presentationStyle == .popup {
+                self.captionsOnlyButton
+            }
             self.minimizeButton
         }
     }
@@ -400,7 +454,7 @@ struct PresenterCaptionView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.regular)
-            .help("Retry the last failed translation.")
+            .theaterTag(TheaterChromeHelp.retry)
             if !SpokenLanguageResolver.isSameLanguagePair() {
                 Button(TheaterReadiness.downloadPack) {
                     PresenterCaptionController.shared.performChromeAction {
@@ -409,7 +463,7 @@ struct PresenterCaptionView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
-                .help("Download the language pack for this pair.")
+                .theaterTag(TheaterChromeHelp.downloadPack)
             }
         }
     }
@@ -417,7 +471,7 @@ struct PresenterCaptionView: View {
     @ViewBuilder
     private var paceCueReadout: some View {
         if !self.model.paceCueLabel.isEmpty {
-            let text = self.settings.theaterHideChrome
+            let text = self.usesCaptionsOnlyChrome
                 ? self.model.paceCueCompactLabel
                 : self.model.paceCueLabel
             HStack(spacing: 6) {
@@ -434,9 +488,21 @@ struct PresenterCaptionView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
             }
-            .help(TheaterReadiness.paceCue)
+            .theaterTag(TheaterChromeHelp.paceCue)
             .accessibilityLabel(self.model.paceCueLabel)
             .accessibilityIdentifier("theater.paceCue")
+        }
+    }
+
+    @ViewBuilder
+    private var hiddenFromZoomBadge: some View {
+        if self.settings.theaterHideFromScreenShare {
+            Label(TheaterReadiness.hiddenFromZoomBadge, systemImage: "eye.slash")
+                .font(self.theme.typography.caption)
+                .foregroundStyle(self.captionColors.chrome)
+                .lineLimit(1)
+                .theaterTag(TheaterReadiness.hideFromScreenShare)
+                .accessibilityIdentifier("theater.hiddenFromZoom")
         }
     }
 
@@ -448,9 +514,14 @@ struct PresenterCaptionView: View {
                 .font(self.theme.typography.caption)
                 .foregroundStyle(self.captionColors.chrome)
                 .lineLimit(1)
-                .help(self.settings.theaterTalkPackFileName.isEmpty
-                    ? TheaterReadiness.talkPack
-                    : self.settings.theaterTalkPackFileName)
+                .theaterTag(
+                    self.settings.theaterTalkPackFileName.isEmpty
+                        ? TheaterChromeHelp.talkNotes
+                        : TheaterChromeHelp.tag(
+                            self.settings.theaterTalkPackFileName,
+                            does: TheaterReadiness.talkPack
+                        )
+                )
                 .accessibilityIdentifier("theater.talkPack.chip")
         }
     }
@@ -463,7 +534,7 @@ struct PresenterCaptionView: View {
                     .font(self.theme.typography.codeCaption)
                     .foregroundStyle(self.captionColors.chrome)
                     .lineLimit(1)
-                    .help(TheaterReadiness.latencyHUD)
+                    .theaterTag(TheaterChromeHelp.latency)
             }
             Spacer(minLength: self.theme.metrics.spacing.sm)
             TheaterListenButton(
@@ -495,7 +566,7 @@ struct PresenterCaptionView: View {
         .pickerStyle(.segmented)
         .controlSize(.regular)
         .frame(minWidth: 168, minHeight: TheaterChromeLayout.languageHit)
-        .help(TheaterReadiness.modeStopsListen)
+        .theaterTag(TheaterChromeHelp.mode)
         .accessibilityLabel("Theater mode")
         .accessibilityIdentifier("theater.window.mode")
     }
@@ -513,13 +584,14 @@ struct PresenterCaptionView: View {
         HStack(spacing: self.theme.metrics.spacing.sm) {
             self.paceCueReadout
             self.talkPackChip
+            self.hiddenFromZoomBadge
             if showsLatency, !self.model.latencyReadout.isEmpty {
                 Text(self.model.latencyReadout)
                     .font(self.theme.typography.codeCaption)
                     .foregroundStyle(self.captionColors.chrome)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
-                    .help(TheaterReadiness.latencyHUD)
+                    .theaterTag(TheaterChromeHelp.latency)
             }
             if !self.model.status.isEmpty {
                 Text(self.model.status)
@@ -531,6 +603,7 @@ struct PresenterCaptionView: View {
                     )
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
+                    .theaterTag(TheaterChromeHelp.status)
                     .accessibilityIdentifier("theater.status")
             }
             Spacer(minLength: self.theme.metrics.spacing.sm)
@@ -568,7 +641,7 @@ struct PresenterCaptionView: View {
             .labelsHidden()
             .pickerStyle(.segmented)
             .frame(width: 140)
-            .help("Theater theme. Dark or Light, independent of the main window.")
+            .theaterTag(TheaterChromeHelp.theme)
             .accessibilityLabel("Theater theme")
             .accessibilityIdentifier("theater.appearance")
         }
@@ -582,31 +655,33 @@ struct PresenterCaptionView: View {
             Button(self.model.isEditing ? "Done" : "Edit captions") {
                 self.toggleEditing()
             }
+            .help(self.model.isEditing ? TheaterChromeHelp.doneEditing : TheaterChromeHelp.editCaptions)
             Menu("Export") {
                 Button("Bilingual text") {
                     PresenterCaptionController.shared.exportCaptions(format: .bilingualText)
                 }
+                .help(TheaterChromeHelp.exportBilingual)
                 Button("SRT") {
                     PresenterCaptionController.shared.exportCaptions(format: .srt)
                 }
-                .help(TheaterReadiness.timedExportHonesty)
+                .help(TheaterChromeHelp.exportSRT)
                 Button("VTT") {
                     PresenterCaptionController.shared.exportCaptions(format: .vtt)
                 }
-                .help(TheaterReadiness.timedExportHonesty)
+                .help(TheaterChromeHelp.exportVTT)
             }
             .disabled(self.model.committed.isEmpty)
             Divider()
             Button("Close Theater") {
                 PresenterCaptionController.shared.requestClose()
             }
-            .help(TheaterReadiness.closeWhileListening)
+            .help(TheaterChromeHelp.closeTheater)
         } label: {
             Image(systemName: "ellipsis")
                                 .font(.system(size: 16, weight: .semibold))
                 .frame(width: 40, height: 40)
         }
-        .help("More")
+        .theaterTag(TheaterChromeHelp.more)
         .accessibilityLabel("More")
         .menuIndicator(.hidden)
         .buttonStyle(SquareIconButtonStyle())
@@ -625,7 +700,7 @@ struct PresenterCaptionView: View {
         }
         .buttonStyle(SquareIconButtonStyle())
         .controlSize(.regular)
-        .help(self.settings.theaterMinimized ? TheaterReadiness.expandTheaterHelp : TheaterReadiness.minimizeHelp)
+        .theaterTag(self.settings.theaterMinimized ? TheaterChromeHelp.expand : TheaterChromeHelp.minimize)
         .accessibilityLabel(self.settings.theaterMinimized ? "Expand Theater" : "Minimize Theater")
         .accessibilityIdentifier("theater.minimize")
     }
@@ -642,10 +717,10 @@ struct PresenterCaptionView: View {
         }
         .buttonStyle(SquareIconButtonStyle())
         .controlSize(.regular)
-        .help(
+        .theaterTag(
             self.settings.theaterHideChrome
-                ? "Show all controls"
-                : "Captions only. Listen stays. Move the pointer to show languages without moving the captions."
+                ? TheaterChromeHelp.showAllControls
+                : TheaterChromeHelp.captionsOnly
         )
         .accessibilityLabel(self.settings.theaterHideChrome ? "Show all controls" : "Captions only")
         .accessibilityIdentifier("theater.window.captionsOnly")
@@ -672,7 +747,7 @@ struct PresenterCaptionView: View {
                 .font(.system(size: 16, weight: .semibold))
                 .frame(width: 40, height: 40)
             }
-            .help("Caption font. \(self.typeface.displayName).")
+            .theaterTag(TheaterChromeHelp.tag("Caption font", does: "\(self.typeface.displayName)."))
             .accessibilityLabel("Caption font")
             .menuIndicator(.hidden)
 
@@ -684,7 +759,7 @@ struct PresenterCaptionView: View {
                 .frame(width: 40, height: 40)
             }
             .disabled(self.settings.presenterFontSize <= SettingsStore.presenterFontSizeRange.lowerBound)
-            .help("Smaller spoken line. Translation stays larger. \(self.settings.presenterFontSize) pt.")
+            .theaterTag(TheaterChromeHelp.smaller)
             .accessibilityLabel("Smaller spoken line")
 
             Button {
@@ -695,7 +770,7 @@ struct PresenterCaptionView: View {
                 .frame(width: 40, height: 40)
             }
             .disabled(self.settings.presenterFontSize >= SettingsStore.presenterFontSizeRange.upperBound)
-            .help("Larger spoken line. Translation stays larger. \(self.settings.presenterFontSize) pt.")
+            .theaterTag(TheaterChromeHelp.larger)
             .accessibilityLabel("Larger spoken line")
 
             Button {
@@ -706,7 +781,7 @@ struct PresenterCaptionView: View {
                 .frame(width: 40, height: 40)
             }
             .disabled(self.deliveryIsEmpty)
-            .help("Copy all")
+            .theaterTag(TheaterChromeHelp.copyAll)
             .accessibilityLabel("Copy all")
             .accessibilityIdentifier("theater.window.copy")
 
@@ -718,7 +793,11 @@ struct PresenterCaptionView: View {
                 .frame(width: 40, height: 40)
             }
             .disabled(self.insertIsEmpty)
-            .help(TheaterReadiness.insertHelp)
+            .theaterTag(
+                self.insertIsEmpty && !self.deliveryIsEmpty
+                    ? TheaterChromeHelp.tag("Type into app", does: TheaterReadiness.insertAlreadyTyped)
+                    : TheaterChromeHelp.insert
+            )
             .accessibilityLabel("Type into app")
             .accessibilityIdentifier("theater.window.insert")
 
@@ -732,7 +811,7 @@ struct PresenterCaptionView: View {
                 .frame(width: 40, height: 40)
             }
             .disabled(!self.controller.hasUndoableCaption || self.model.isEditing)
-            .help(TheaterReadiness.undoLastCaption)
+            .theaterTag(TheaterChromeHelp.undo)
             .accessibilityLabel("Undo last caption")
             .accessibilityIdentifier("theater.window.undo")
 
@@ -744,7 +823,7 @@ struct PresenterCaptionView: View {
                 .frame(width: 40, height: 40)
             }
             .disabled(!self.controller.hasClearableBoard)
-            .help(TheaterReadiness.clearCaptions)
+            .theaterTag(TheaterChromeHelp.clear)
             .accessibilityLabel("Clear captions")
             .accessibilityIdentifier("theater.window.clear")
 
@@ -772,7 +851,7 @@ struct PresenterCaptionView: View {
             .help(
                 SpokenLanguageResolver.isSameLanguagePair()
                     ? TheaterReadiness.spokenLineSameLanguage
-                    : "Show what you said under the translation so both rooms can follow."
+                    : TheaterChromeHelp.spokenLine
             )
 
             Menu("Caption print-in") {
@@ -791,7 +870,7 @@ struct PresenterCaptionView: View {
                     .help(style.help)
                 }
             }
-            .help("How the live caption appears.")
+            .help(TheaterChromeHelp.printIn)
 
             Button {
                 PresenterCaptionController.shared.performChromeAction {
@@ -804,6 +883,7 @@ struct PresenterCaptionView: View {
                     Text("High contrast")
                 }
             }
+            .help(TheaterChromeHelp.highContrast)
 
             Divider()
 
@@ -818,7 +898,7 @@ struct PresenterCaptionView: View {
                     Text(TheaterPresentationStyle.popup.displayName)
                 }
             }
-            .help(TheaterReadiness.popupStyle)
+            .help(TheaterChromeHelp.popup)
 
             Button {
                 PresenterCaptionController.shared.performChromeAction {
@@ -831,7 +911,7 @@ struct PresenterCaptionView: View {
                     Text(TheaterPresentationStyle.transparent.displayName)
                 }
             }
-            .help(TheaterReadiness.transparentStyle)
+            .help(TheaterChromeHelp.overlay)
 
             Button {
                 PresenterCaptionController.shared.performChromeAction {
@@ -844,7 +924,7 @@ struct PresenterCaptionView: View {
                     Text("Hide from screen share")
                 }
             }
-            .help(TheaterReadiness.hideFromScreenShare)
+            .help(TheaterChromeHelp.hideFromScreenShare)
             .accessibilityIdentifier("theater.hideFromScreenShare")
 
             if self.presentationStyle == .transparent {
@@ -854,12 +934,12 @@ struct PresenterCaptionView: View {
                     }
                 } label: {
                     if self.settings.theaterBackingBar {
-                        Label("Backing bar", systemImage: "checkmark")
+                        Label("Caption plate", systemImage: "checkmark")
                     } else {
-                        Text("Backing bar")
+                        Text("Caption plate")
                     }
                 }
-                .help(TheaterReadiness.backingBar)
+                .help(TheaterChromeHelp.captionPlate)
                 .accessibilityIdentifier("theater.backingBar")
             }
 
@@ -878,6 +958,7 @@ struct PresenterCaptionView: View {
                             Text(preset.displayName)
                         }
                     }
+                    .help(TheaterChromeHelp.position(preset))
                     .accessibilityIdentifier("theater.position.\(preset.rawValue)")
                 }
             }
@@ -890,7 +971,7 @@ struct PresenterCaptionView: View {
                             self.settings.clearTheaterTalkPack()
                         }
                     }
-                    .help(TheaterReadiness.talkPackClear)
+                    .help(TheaterChromeHelp.clearTalkNotes)
                     .accessibilityIdentifier("theater.talkPack.clear")
                 }
             }
@@ -899,7 +980,7 @@ struct PresenterCaptionView: View {
                                 .font(.system(size: 16, weight: .semibold))
                 .frame(width: 40, height: 40)
         }
-        .help("Board")
+        .theaterTag(TheaterChromeHelp.board)
         .accessibilityLabel("Board")
         .accessibilityIdentifier("theater.presentationStyle")
         .menuIndicator(.hidden)
@@ -994,7 +1075,8 @@ struct PresenterCaptionView: View {
                                         spokenColor: self.spokenNS,
                                         translatedColor: self.translatedNS,
                                         shadowColor: self.captionColors.shadowColor,
-                                        shadowBlur: self.captionColors.shadowBlur
+                                        shadowBlur: self.captionColors.shadowBlur,
+                                        showsCaptionPlate: self.showsCaptionPlate
                                     ),
                                     onRevealedHeightChange: tracksLiveHeight
                                         ? { height in
@@ -1173,6 +1255,15 @@ struct PresenterCaptionView: View {
         if !self.readySnapshot.canListen {
             return self.readySnapshot.nextAction
         }
+        // Idle Overlay has no Listen button to press.
+        if self.presentationStyle == .transparent, !self.model.overlayToolsPinned {
+            if !self.settings.theaterPresenterHotkeysEnabled {
+                return TheaterReadiness.overlayIdleMenuBarHint
+            }
+            return self.settings.theaterOverlayCoachSeen
+                ? TheaterReadiness.overlayIdleHint
+                : TheaterReadiness.overlayIdleCoach
+        }
         return TheaterReadiness.pressListen
     }
 
@@ -1226,6 +1317,7 @@ private struct TheaterCaptionLinePaint {
     var translatedColor: NSColor
     var shadowColor: NSColor?
     var shadowBlur: CGFloat
+    var showsCaptionPlate: Bool = false
 }
 
 private struct TheaterCaptionLineLabel: NSViewRepresentable {
@@ -1287,10 +1379,13 @@ private final class TheaterCaptionLineNSView: NSView {
     private var lastReportedHeight: CGFloat = 0
     private var isSyncingRows = false
     private var captionLineID = ""
+    private var showsCaptionPlate = false
+    private var plateLayers: [CALayer] = []
     var onRevealedHeightChange: ((CGFloat) -> Void)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        self.wantsLayer = true
         self.clipsToBounds = false
     }
 
@@ -1369,17 +1464,18 @@ private final class TheaterCaptionLineNSView: NSView {
         if spoken.isEmpty, translated.isEmpty {
             self.printStyle = printStyle
             self.isCurrent = isCurrent
-            self.applyChrome(
-                typeface: paint.typeface,
-                spokenFontSize: paint.spokenFontSize,
-                translatedFontSize: paint.translatedFontSize,
-                spokenColor: paint.spokenColor,
-                translatedColor: paint.translatedColor,
-                isCurrent: isCurrent,
-                shadowColor: paint.shadowColor,
-                shadowBlur: paint.shadowBlur
-            )
-            if self.printedSpoken.isEmpty, self.printedTranslated.isEmpty {
+        self.applyChrome(
+            typeface: paint.typeface,
+            spokenFontSize: paint.spokenFontSize,
+            translatedFontSize: paint.translatedFontSize,
+            spokenColor: paint.spokenColor,
+            translatedColor: paint.translatedColor,
+            isCurrent: isCurrent,
+            shadowColor: paint.shadowColor,
+            shadowBlur: paint.shadowBlur,
+            showsCaptionPlate: paint.showsCaptionPlate
+        )
+        if self.printedSpoken.isEmpty, self.printedTranslated.isEmpty {
                 self.applyPrintedText()
             }
             return
@@ -1417,7 +1513,8 @@ private final class TheaterCaptionLineNSView: NSView {
             translatedColor: paint.translatedColor,
             isCurrent: isCurrent,
             shadowColor: paint.shadowColor,
-            shadowBlur: paint.shadowBlur
+            shadowBlur: paint.shadowBlur,
+            showsCaptionPlate: paint.showsCaptionPlate
         )
         if !hasPrint, printStyle.fadesIn, self.window != nil {
             self.alphaValue = 0
@@ -1490,10 +1587,12 @@ private final class TheaterCaptionLineNSView: NSView {
         translatedColor: NSColor,
         isCurrent: Bool,
         shadowColor: NSColor?,
-        shadowBlur: CGFloat
+        shadowBlur: CGFloat,
+        showsCaptionPlate: Bool
     ) {
         self.spokenFont = typeface.nsFont(size: spokenFontSize, weight: .semibold)
         self.translatedFont = typeface.nsFont(size: translatedFontSize, weight: .semibold)
+        self.showsCaptionPlate = showsCaptionPlate
         let visible = TheaterCaptionVisibility.appliedAlphas(
             spoken: spokenColor,
             translated: translatedColor,
@@ -1510,6 +1609,7 @@ private final class TheaterCaptionLineNSView: NSView {
         } else {
             self.captionShadow = nil
         }
+        self.needsLayout = true
     }
 
     private func resetPrintProgress() {
@@ -1673,6 +1773,7 @@ private final class TheaterCaptionLineNSView: NSView {
             targets.append((view, NSRect(x: 0, y: y, width: width, height: lineHeight)))
             y += lineHeight + TheaterBilingualWrap.rowSpacing
         }
+        self.syncCaptionPlates(rowFrames: targets)
 
         // Rows only ever grow or shift down as translated content streams in.
         // Animate only a row that already existed and is actually moving, so a
@@ -1707,6 +1808,51 @@ private final class TheaterCaptionLineNSView: NSView {
     }
 
     override var isFlipped: Bool { true }
+
+    private func syncCaptionPlates(rowFrames: [(view: NSTextField, frame: NSRect)]) {
+        guard self.showsCaptionPlate else {
+            for layer in self.plateLayers {
+                layer.removeFromSuperlayer()
+            }
+            self.plateLayers.removeAll()
+            return
+        }
+        self.wantsLayer = true
+        guard let host = self.layer else { return }
+        while self.plateLayers.count < rowFrames.count {
+            let plate = CALayer()
+            plate.backgroundColor = TheaterOverlayPolicy.plateColor().cgColor
+            plate.cornerRadius = TheaterOverlayPolicy.plateCornerRadius
+            plate.zPosition = -1
+            host.insertSublayer(plate, at: 0)
+            self.plateLayers.append(plate)
+        }
+        while self.plateLayers.count > rowFrames.count {
+            self.plateLayers.removeLast().removeFromSuperlayer()
+        }
+        for (index, target) in rowFrames.enumerated() {
+            let plate = self.plateLayers[index]
+            let visible = target.view.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !visible.isEmpty else {
+                plate.isHidden = true
+                continue
+            }
+            let font = target.view.font ?? self.translatedFont
+            let textWidth = ceil((visible as NSString).size(withAttributes: [.font: font]).width)
+            let insetX = TheaterOverlayPolicy.plateHorizontalInset
+            let insetY = TheaterOverlayPolicy.plateVerticalInset
+            let width = min(target.frame.width, textWidth + insetX * 2)
+            let frame = CGRect(
+                x: target.frame.minX,
+                y: target.frame.minY + max((target.frame.height - font.ascender - font.descender) / 2 - insetY, 0),
+                width: width,
+                height: min(target.frame.height, font.ascender + abs(font.descender) + insetY * 2)
+            )
+            plate.isHidden = false
+            plate.frame = frame
+            plate.backgroundColor = TheaterOverlayPolicy.plateColor().cgColor
+        }
+    }
 
     private func makeLineField() -> NSTextField {
         let label = TheaterCaptionInkField(labelWithString: "")

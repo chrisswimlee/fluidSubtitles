@@ -1087,6 +1087,7 @@ extension ASRService {
         preferredTargetPID: pid_t?,
         textReadyAt: TimeInterval? = nil,
         tracksDictionaryCorrections: Bool = false,
+        preferPaste: Bool = false,
         completion: (@MainActor (TypingService.DeliveryOutcome) -> Void)? = nil
     ) {
         let requestedAt = ProcessInfo.processInfo.systemUptime
@@ -1102,6 +1103,7 @@ extension ASRService {
             preferredTargetPID: preferredTargetPID,
             textReadyAt: textReadyAt,
             tracksDictionaryCorrections: tracksDictionaryCorrections,
+            preferPaste: preferPaste,
             completion: completion
         )
         let dispatchedAt = ProcessInfo.processInfo.systemUptime

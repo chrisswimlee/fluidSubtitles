@@ -16,9 +16,10 @@ enum InsertIMEGuard {
         self.cache.start()
     }
 
+    /// Live input source only. Theater captions ask for paste at their own
+    /// insert call site, so English dictation keeps Text Insertion Mode.
     static func shouldAvoidUnicodeInjection(snapshot: Snapshot? = nil) -> Bool {
-        if self.shouldPreferPasteForTheaterCaption() { return true }
-        return self.snapshotRequiresPaste(snapshot ?? self.cache.snapshot())
+        self.snapshotRequiresPaste(snapshot ?? self.cache.snapshot())
     }
 
     static func snapshotRequiresPaste(_ snapshot: Snapshot) -> Bool {
@@ -26,9 +27,11 @@ enum InsertIMEGuard {
         return self.isIMEInputSource(snapshot.identifier)
     }
 
+    /// Korean, Japanese, and Thai captions paste instead of keystrokes.
+    /// Main actor: read it at the caption insert call site, not in the worker.
+    @MainActor
     static func shouldPreferPasteForTheaterCaption() -> Bool {
-        SettingsStore.shared.theaterListenUsed
-            && self.isIMELanguage(SpokenLanguageResolver.targetLanguage().id)
+        self.isIMELanguage(SpokenLanguageResolver.targetLanguage().id)
     }
 
     static func isIMELanguage(_ languageID: String) -> Bool {

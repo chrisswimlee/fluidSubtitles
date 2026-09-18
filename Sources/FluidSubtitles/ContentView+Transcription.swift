@@ -70,6 +70,7 @@ extension ContentView {
                 preferredTargetPID: typingTarget.pid,
                 textReadyAt: ProcessInfo.processInfo.systemUptime,
                 tracksDictionaryCorrections: false,
+                preferPaste: InsertIMEGuard.shouldPreferPasteForTheaterCaption(),
                 completion: { _ in }
             )
             if SettingsStore.shared.copyTranscriptionToClipboard {
@@ -1408,6 +1409,7 @@ extension ContentView {
             preferredTargetPID: preferredPID,
             textReadyAt: ProcessInfo.processInfo.systemUptime,
             tracksDictionaryCorrections: false,
+            preferPaste: InsertIMEGuard.shouldPreferPasteForTheaterCaption(),
             completion: nil
         )
     }

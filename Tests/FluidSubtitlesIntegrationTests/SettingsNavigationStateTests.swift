@@ -108,6 +108,16 @@ final class SettingsNavigationStateTests: XCTestCase {
         XCTAssertEqual(SettingsSection.aiProviders.systemImage, "cpu")
     }
 
+    func testSettingsStoreSharedInitDoesNotReenterShared() {
+        // FluidApp.init() reads SettingsStore.shared. The store's init used to
+        // reach SettingsStore.shared again for launch-at-startup defaults and
+        // trap: BUG IN CLIENT OF LIBDISPATCH: trying to lock recursively.
+        let store = SettingsStore.shared
+        store.refreshLaunchAtStartupStatus(clearError: true, logMismatch: false)
+        XCTAssertFalse(store.launchAtStartupStatusMessage.isEmpty)
+        XCTAssertTrue(store.defaults === SettingsStore.shared.defaults)
+    }
+
     func testSettingsSearchRanksExactTitleAheadOfRelatedTerms() {
         let results = SettingsSearchIndex.results(for: "Copy to Clipboard")
 

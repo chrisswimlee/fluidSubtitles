@@ -384,6 +384,7 @@ final class TypingService {
         tracksDictionaryCorrections: Bool = false,
         postInsertionKey: SettingsStore.SpokenSendKey? = nil,
         requiredFocusTarget: CapturedFocusTarget? = nil,
+        preferPaste: Bool = false,
         completion: (@MainActor (DeliveryOutcome) -> Void)? = nil
     ) {
         let requestedAt = ProcessInfo.processInfo.systemUptime
@@ -494,7 +495,11 @@ final class TypingService {
                     self.log("[TypingService] Delay completed, calling insertTextInstantly")
                     let insertStartedAt = ProcessInfo.processInfo.systemUptime
                     self.bench("insert_call")
-                    let inserted = self.insertTextInstantly(text, preferredTargetPID: preferredTargetPID)
+                    let inserted = self.insertTextInstantly(
+                        text,
+                        preferredTargetPID: preferredTargetPID,
+                        preferPaste: preferPaste
+                    )
                     self.bench(
                         "insert_return elapsedMs=\(Self.elapsedMs(since: insertStartedAt)) totalMs=\(Self.elapsedMs(since: requestedAt))"
                     )
@@ -560,11 +565,11 @@ final class TypingService {
 
     // MARK: - Internal insertion pipeline
 
-    private func insertTextInstantly(_ text: String, preferredTargetPID: pid_t?) -> Bool {
+    private func insertTextInstantly(_ text: String, preferredTargetPID: pid_t?, preferPaste: Bool = false) -> Bool {
         self.log("[TypingService] insertTextInstantly called with \(text.count) characters")
         self.log("[TypingService] Attempting to type text: \"\(text.prefix(50))\(text.count > 50 ? "..." : "")\"")
 
-        if InsertIMEGuard.shouldAvoidUnicodeInjection() {
+        if preferPaste || InsertIMEGuard.shouldAvoidUnicodeInjection() {
             self.log("[TypingService] Korean/Thai IME or caption language; forcing Reliable Paste")
             if self.tryReliablePasteInsertion(text, preferredTargetPID: preferredTargetPID) {
                 self.log("[TypingService] SUCCESS: IME Reliable Paste path completed")

@@ -148,17 +148,66 @@ enum TheaterCaptionSpokenDisplay: Equatable {
     }
 }
 
-/// Place Theater on the visible display. The old 1100×440 default left most of the screen unused.
+/// Place Theater on the visible display. Pop-up still fills when there is no
+/// useful stored frame. Overlay falls back to a caption bar and never upgrades
+/// a thin frame to the whole screen.
 enum TheaterWindowPlacement {
     static let legacyDefaultSize = CGSize(width: 1100, height: 440)
 
-    static func resolvedFrame(stored: CGRect?, visible: CGRect) -> CGRect {
+    static func resolvedFrame(
+        stored: CGRect?,
+        visible: CGRect,
+        presentation: TheaterPresentationStyle = .popup
+    ) -> CGRect {
+        if presentation == .transparent {
+            return Self.resolvedOverlayFrame(stored: stored, visible: visible)
+        }
+        return Self.resolvedPopupFrame(stored: stored, visible: visible)
+    }
+
+    static func resolvedPopupFrame(stored: CGRect?, visible: CGRect) -> CGRect {
         guard let stored, stored.width > 200, stored.height > 160 else {
             return visible
         }
-        if Self.shouldFillScreen(stored: stored, visible: visible) {
+        if Self.shouldFillScreen(stored: stored, visible: visible, presentation: .popup) {
             return visible
         }
+        return Self.clamped(stored, to: visible)
+    }
+
+    static func resolvedOverlayFrame(stored: CGRect?, visible: CGRect) -> CGRect {
+        let fallback = TheaterPositionPreset.captionBar.frame(in: visible)
+        guard let stored, stored.width > 200, stored.height > 80 else {
+            return fallback
+        }
+        if Self.isLegacyDefault(stored) || Self.isFillScreen(stored, visible: visible) {
+            return fallback
+        }
+        return Self.clamped(stored, to: visible)
+    }
+
+    static func shouldFillScreen(
+        stored: CGRect,
+        visible: CGRect,
+        presentation: TheaterPresentationStyle = .popup
+    ) -> Bool {
+        if presentation == .transparent { return false }
+        if visible.width < 200 || visible.height < 160 { return false }
+        if Self.isLegacyDefault(stored) { return true }
+        if stored.width < 700 || stored.height < 220 { return true }
+        return false
+    }
+
+    static func isLegacyDefault(_ stored: CGRect) -> Bool {
+        abs(stored.width - Self.legacyDefaultSize.width) < 80
+            && abs(stored.height - Self.legacyDefaultSize.height) < 80
+    }
+
+    static func isFillScreen(_ stored: CGRect, visible: CGRect) -> Bool {
+        abs(stored.width - visible.width) < 20 && abs(stored.height - visible.height) < 20
+    }
+
+    private static func clamped(_ stored: CGRect, to visible: CGRect) -> CGRect {
         var placed = stored
         if !visible.intersects(placed) {
             placed.size.width = min(placed.width, visible.width)
@@ -168,15 +217,6 @@ enum TheaterWindowPlacement {
         }
         return placed
     }
-
-    static func shouldFillScreen(stored: CGRect, visible: CGRect) -> Bool {
-        if visible.width < 200 || visible.height < 160 { return false }
-        let legacyWidth = abs(stored.width - Self.legacyDefaultSize.width) < 80
-        let legacyHeight = abs(stored.height - Self.legacyDefaultSize.height) < 80
-        if legacyWidth && legacyHeight { return true }
-        if stored.width < 700 || stored.height < 220 { return true }
-        return false
-    }
 }
 
 /// One-click board positions on the chosen display, inside a 5% safe margin.
@@ -184,9 +224,11 @@ enum TheaterPositionPreset: String, CaseIterable, Identifiable {
     case lowerThird
     case topBand
     case sideColumn
+    case captionBar
 
     static let safeMargin: CGFloat = 0.05
     static let sideColumnMinimumWidth: CGFloat = 480
+    static let captionBarHeight: CGFloat = 180
 
     var id: String { self.rawValue }
 
@@ -195,6 +237,7 @@ enum TheaterPositionPreset: String, CaseIterable, Identifiable {
         case .lowerThird: "Lower third"
         case .topBand: "Top band"
         case .sideColumn: "Side column"
+        case .captionBar: "Caption bar"
         }
     }
 
@@ -212,6 +255,9 @@ enum TheaterPositionPreset: String, CaseIterable, Identifiable {
         case .sideColumn:
             let width = min(safe.width, max(safe.width * 0.32, Self.sideColumnMinimumWidth))
             return CGRect(x: safe.maxX - width, y: safe.minY, width: width, height: safe.height)
+        case .captionBar:
+            let height = min(Self.captionBarHeight, safe.height)
+            return CGRect(x: safe.minX, y: safe.minY, width: safe.width, height: height)
         }
     }
 }

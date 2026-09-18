@@ -475,6 +475,8 @@ nonisolated enum LiveTranslationTiming {
     /// Captions kept on the Theater board. Off-screen lines are dropped.
     static let visibleTheaterLines = 3
     static let maxCommittedLines = visibleTheaterLines
+    /// Leftover peel and last-4 MT priors. Older clauses drop as new ones commit.
+    static let maxListenHistory = contextSentenceCount + maxCommittedLines
     /// After this much silence, skip ASR ticks and start a new e2e measurement.
     static let silenceHoldNanoseconds: UInt64 = 400_000_000
     static let silenceHoldSeconds: TimeInterval = 0.4
