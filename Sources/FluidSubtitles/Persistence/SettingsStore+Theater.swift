@@ -25,6 +25,7 @@ extension SettingsStore {
         static let backingBar = "TheaterBackingBar"
         static let positionPreset = "TheaterPositionPreset"
         static let presenterHotkeys = "TheaterPresenterHotkeys"
+        static let overlayCoachSeen = "TheaterOverlayCoachSeen"
     }
 
     var theaterSessionMode: TheaterSessionMode {
@@ -87,7 +88,7 @@ extension SettingsStore {
         .lecternMicrophone
     }
 
-    /// Pop-up is a solid board. Transparent lets slides show through.
+    /// Pop-up is a solid board. Overlay (stored as transparent) lets slides show through.
     var theaterPresentationStyle: String {
         get {
             TheaterPresentationStyle.resolved(
@@ -149,7 +150,7 @@ extension SettingsStore {
         }
     }
 
-    /// Transparent style only: a dark bar behind the captions so they read on white slides.
+    /// Overlay only: a dark plate behind each caption line so they read on white slides.
     var theaterBackingBar: Bool {
         get { self.defaults.bool(forKey: TheaterDefaults.backingBar) }
         set {
@@ -173,6 +174,15 @@ extension SettingsStore {
         set {
             objectWillChange.send()
             self.defaults.set(newValue, forKey: TheaterDefaults.presenterHotkeys)
+        }
+    }
+
+    /// The one-time Overlay coach line was shown and the presenter used Overlay.
+    var theaterOverlayCoachSeen: Bool {
+        get { self.defaults.bool(forKey: TheaterDefaults.overlayCoachSeen) }
+        set {
+            objectWillChange.send()
+            self.defaults.set(newValue, forKey: TheaterDefaults.overlayCoachSeen)
         }
     }
 }

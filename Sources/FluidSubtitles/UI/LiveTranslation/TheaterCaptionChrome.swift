@@ -33,6 +33,8 @@ final class PresenterCaptionModel: ObservableObject {
     @Published var paceCueCompactLabel: String = ""
     @Published var paceCueKind: String = ""
     @Published var showCloseConfirmation: Bool = false
+    /// Session-only. Overlay starts unpinned (text only). Pop-up, minimize, and close clear it.
+    @Published var overlayToolsPinned: Bool = false
 }
 
 enum TheaterTypeface: String, CaseIterable, Identifiable {
@@ -116,7 +118,7 @@ enum TheaterPresentationStyle: String, CaseIterable, Identifiable {
     var displayName: String {
         switch self {
         case .popup: return "Pop-up"
-        case .transparent: return "Transparent"
+        case .transparent: return "Overlay"
         }
     }
 

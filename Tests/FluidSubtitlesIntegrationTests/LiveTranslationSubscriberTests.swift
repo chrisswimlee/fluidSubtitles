@@ -57,6 +57,15 @@ final class LiveTranslationSubscriberTests: XCTestCase {
     }
 
     func testFailedTranslateDoesNotReplaceTheBoardWithSource() async {
+        let settings = SettingsStore.shared
+        let originalSource = settings.translationSourceLanguageID
+        let originalTarget = settings.translationTargetLanguageID
+        defer {
+            settings.translationSourceLanguageID = originalSource
+            settings.translationTargetLanguageID = originalTarget
+        }
+        settings.translationSourceLanguageID = "en"
+        settings.translationTargetLanguageID = "ko"
         let engine = FakeTranslationEngine()
         engine.result = .failure(TranslationEngineError(message: "pack missing"))
         let subscriber = LiveTranslationSubscriber(translator: engine)
@@ -70,6 +79,15 @@ final class LiveTranslationSubscriberTests: XCTestCase {
     }
 
     func testBeginListeningDropsInFlightCommitsFromThePreviousListen() async {
+        let settings = SettingsStore.shared
+        let originalSource = settings.translationSourceLanguageID
+        let originalTarget = settings.translationTargetLanguageID
+        defer {
+            settings.translationSourceLanguageID = originalSource
+            settings.translationTargetLanguageID = originalTarget
+        }
+        settings.translationSourceLanguageID = "en"
+        settings.translationTargetLanguageID = "ko"
         let engine = FakeTranslationEngine()
         engine.delayNanoseconds = 250_000_000
         engine.result = .success("어제 번역")
@@ -884,6 +902,109 @@ final class LiveTranslationSubscriberTests: XCTestCase {
                 $0.contains("First sentence is ready. Second")
             }
         )
+    }
+
+    func testLongListenKeepsContextAndDoesNotReprintOffscreenSpeech() async {
+        let settings = SettingsStore.shared
+        let originalSource = settings.translationSourceLanguageID
+        let originalTarget = settings.translationTargetLanguageID
+        let originalMode = settings.theaterSessionMode
+        defer {
+            settings.translationSourceLanguageID = originalSource
+            settings.translationTargetLanguageID = originalTarget
+            settings.theaterSessionMode = originalMode
+        }
+        settings.theaterSessionMode = .transcription
+        settings.translationSourceLanguageID = "en"
+        settings.translationTargetLanguageID = "en"
+
+        let sentences = [
+            "First sentence is ready.",
+            "Second sentence is next.",
+            "Third sentence is last.",
+            "Fourth sentence is extra.",
+            "Fifth sentence is later.",
+        ]
+        let subscriber = LiveTranslationSubscriber(translator: FakeTranslationEngine())
+        subscriber.startSessionRecord()
+        subscriber.beginListening()
+        var spoken = ""
+        for sentence in sentences {
+            spoken = spoken.isEmpty ? sentence : spoken + " " + sentence
+            _ = await subscriber.translateFinal(spoken)
+        }
+
+        XCTAssertEqual(
+            subscriber.committedSourceLines,
+            Array(sentences.suffix(LiveTranslationTiming.maxCommittedLines))
+        )
+        XCTAssertEqual(subscriber.exportCaptionPairs.map(\.source), sentences)
+        XCTAssertEqual(
+            subscriber.priorClausesForTesting(incoming: "Sixth sentence is new.").sources,
+            Array(sentences.suffix(LiveTranslationTiming.contextSentenceCount))
+        )
+
+        subscriber.handlePartial(spoken + " Sixth sentence is new.")
+        XCTAssertEqual(subscriber.liveSpokenText, "Sixth sentence is new.")
+        XCTAssertFalse(subscriber.liveSpokenText.contains("First sentence is ready."))
+
+        _ = await subscriber.translateFinal(spoken + " Sixth sentence is new.")
+        XCTAssertEqual(subscriber.committedSourceLines.last, "Sixth sentence is new.")
+        XCTAssertFalse(subscriber.committedSourceLines.contains("First sentence is ready."))
+        XCTAssertEqual(subscriber.exportCaptionPairs.map(\.source).count, 6)
+        XCTAssertEqual(subscriber.exportCaptionPairs.map(\.source).last, "Sixth sentence is new.")
+    }
+
+    func testListenHistoryDropsClausesOlderThanTheSlidingWindow() async {
+        let settings = SettingsStore.shared
+        let originalSource = settings.translationSourceLanguageID
+        let originalTarget = settings.translationTargetLanguageID
+        let originalMode = settings.theaterSessionMode
+        defer {
+            settings.translationSourceLanguageID = originalSource
+            settings.translationTargetLanguageID = originalTarget
+            settings.theaterSessionMode = originalMode
+        }
+        settings.theaterSessionMode = .transcription
+        settings.translationSourceLanguageID = "en"
+        settings.translationTargetLanguageID = "en"
+
+        let cap = LiveTranslationTiming.maxListenHistory
+        XCTAssertEqual(cap, LiveTranslationTiming.contextSentenceCount + LiveTranslationTiming.maxCommittedLines)
+        let sentences = [
+            "First sentence is ready.",
+            "Second sentence is next.",
+            "Third sentence is last.",
+            "Fourth sentence is extra.",
+            "Fifth sentence is later.",
+            "Sixth sentence is new.",
+            "Seventh sentence is added.",
+            "Eighth sentence is spoken.",
+            "Ninth sentence is heard.",
+            "Tenth sentence is finished.",
+            "Eleventh sentence is closed.",
+        ]
+        XCTAssertGreaterThan(sentences.count, cap)
+        let subscriber = LiveTranslationSubscriber(translator: FakeTranslationEngine())
+        subscriber.startSessionRecord()
+        subscriber.beginListening()
+        var spoken = ""
+        for sentence in sentences {
+            spoken = spoken.isEmpty ? sentence : spoken + " " + sentence
+            _ = await subscriber.translateFinal(spoken)
+        }
+
+        XCTAssertEqual(subscriber.listenHistoryCountForTesting, cap)
+        XCTAssertEqual(
+            subscriber.priorClausesForTesting(incoming: "Twelfth sentence is leftover.").sources,
+            Array(sentences.suffix(LiveTranslationTiming.contextSentenceCount))
+        )
+        XCTAssertFalse(
+            subscriber.priorClausesForTesting(incoming: "Twelfth sentence is leftover.").sources.contains(sentences[0])
+        )
+        subscriber.handlePartial(spoken + " Twelfth sentence is leftover.")
+        XCTAssertEqual(subscriber.liveSpokenText, "Twelfth sentence is leftover.")
+        XCTAssertFalse(subscriber.liveSpokenText.contains(sentences[0]))
     }
 
     func testNextSentenceStaysOnThisCaptionWhileTalking() {

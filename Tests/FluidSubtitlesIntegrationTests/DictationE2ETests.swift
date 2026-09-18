@@ -151,7 +151,7 @@ final class DictationE2ETests: XCTestCase {
 
     func testTranscriptionStartSound_legacyDisabledToggleMigratesToNone() {
         self.withRestoredDefaults(keys: [self.enableTranscriptionSoundsKey, self.transcriptionStartSoundKey]) {
-            let defaults = UserDefaults.standard
+            let defaults = SettingsStore.shared.defaults
             defaults.set(false, forKey: self.enableTranscriptionSoundsKey)
             defaults.set(SettingsStore.TranscriptionStartSound.fluidSfx1.rawValue, forKey: self.transcriptionStartSoundKey)
 
@@ -165,7 +165,7 @@ final class DictationE2ETests: XCTestCase {
 
     func testTranscriptionStartSound_legacyEnabledToggleKeepsSelectedSound() {
         self.withRestoredDefaults(keys: [self.enableTranscriptionSoundsKey, self.transcriptionStartSoundKey]) {
-            let defaults = UserDefaults.standard
+            let defaults = SettingsStore.shared.defaults
             defaults.set(true, forKey: self.enableTranscriptionSoundsKey)
             defaults.set(SettingsStore.TranscriptionStartSound.fluidSfx2.rawValue, forKey: self.transcriptionStartSoundKey)
 
@@ -405,10 +405,10 @@ final class DictationE2ETests: XCTestCase {
 
     func testLiteralFormattingCanBeDisabled() {
         self.withRestoredDefaults(keys: [self.literalDictationFormattingEnabledKey]) {
-            UserDefaults.standard.removeObject(forKey: self.literalDictationFormattingEnabledKey)
+            SettingsStore.shared.defaults.removeObject(forKey: self.literalDictationFormattingEnabledKey)
             XCTAssertFalse(SettingsStore.shared.literalDictationFormattingEnabled)
 
-            UserDefaults.standard.set(false, forKey: self.literalDictationFormattingEnabledKey)
+            SettingsStore.shared.defaults.set(false, forKey: self.literalDictationFormattingEnabledKey)
 
             XCTAssertEqual(ASRService.applySlashCommandFormatting("slash compact"), "slash compact")
             XCTAssertEqual(ASRService.applyMentionFormatting("mention Paul"), "mention Paul")
@@ -458,7 +458,7 @@ final class DictationE2ETests: XCTestCase {
 
     func testSpokenPunctuationFormattingRequiresDictionaryPrefix() {
         self.withRestoredDefaults(keys: self.punctuationFormattingDefaultsKeys) {
-            UserDefaults.standard.set(true, forKey: self.autoConvertPunctuationEnabledKey)
+            SettingsStore.shared.defaults.set(true, forKey: self.autoConvertPunctuationEnabledKey)
 
             XCTAssertEqual(
                 ASRService.applySpokenPunctuationFormatting(
@@ -475,7 +475,7 @@ final class DictationE2ETests: XCTestCase {
 
     func testSpokenPunctuationFormattingConvertsCodeAndContactPunctuationWithPrefix() {
         self.withRestoredDefaults(keys: self.punctuationFormattingDefaultsKeys) {
-            UserDefaults.standard.set(true, forKey: self.autoConvertPunctuationEnabledKey)
+            SettingsStore.shared.defaults.set(true, forKey: self.autoConvertPunctuationEnabledKey)
 
             XCTAssertEqual(
                 ASRService.applySpokenPunctuationFormatting(
@@ -520,7 +520,7 @@ final class DictationE2ETests: XCTestCase {
 
     func testSpokenPunctuationFormattingKeepsBareDotInProse() {
         self.withRestoredDefaults(keys: self.punctuationFormattingDefaultsKeys) {
-            UserDefaults.standard.set(true, forKey: self.autoConvertPunctuationEnabledKey)
+            SettingsStore.shared.defaults.set(true, forKey: self.autoConvertPunctuationEnabledKey)
 
             XCTAssertEqual(
                 ASRService.applySpokenPunctuationFormatting("the polka dot dress"),
@@ -539,7 +539,7 @@ final class DictationE2ETests: XCTestCase {
 
     func testSpokenPunctuationFormattingCleansGeneratedCommaNoiseWithPrefix() {
         self.withRestoredDefaults(keys: self.punctuationFormattingDefaultsKeys) {
-            UserDefaults.standard.set(true, forKey: self.autoConvertPunctuationEnabledKey)
+            SettingsStore.shared.defaults.set(true, forKey: self.autoConvertPunctuationEnabledKey)
 
             XCTAssertEqual(
                 ASRService.applySpokenPunctuationFormatting("literal hyphen literal comma literal hyphen literal comma literal hyphen"),
@@ -566,7 +566,7 @@ final class DictationE2ETests: XCTestCase {
 
     func testSpokenPunctuationFormattingPreservesExistingCommasNearSymbols() {
         self.withRestoredDefaults(keys: self.punctuationFormattingDefaultsKeys) {
-            UserDefaults.standard.set(true, forKey: self.autoConvertPunctuationEnabledKey)
+            SettingsStore.shared.defaults.set(true, forKey: self.autoConvertPunctuationEnabledKey)
 
             XCTAssertEqual(
                 ASRService.applySpokenPunctuationFormatting("Thanks, @Sam"),
@@ -589,7 +589,7 @@ final class DictationE2ETests: XCTestCase {
 
     func testSpokenPunctuationFormattingRespectsSetting() {
         self.withRestoredDefaults(keys: self.punctuationFormattingDefaultsKeys) {
-            UserDefaults.standard.set(false, forKey: self.autoConvertPunctuationEnabledKey)
+            SettingsStore.shared.defaults.set(false, forKey: self.autoConvertPunctuationEnabledKey)
 
             XCTAssertEqual(
                 ASRService.applySpokenPunctuationFormatting("Hello literal comma world literal question mark"),
@@ -601,7 +601,7 @@ final class DictationE2ETests: XCTestCase {
     func testSpokenPunctuationFormattingUsesCustomPrefixAndRules() {
         self.withRestoredDefaults(keys: self.punctuationFormattingDefaultsKeys) {
             let settings = SettingsStore.shared
-            UserDefaults.standard.set(true, forKey: self.autoConvertPunctuationEnabledKey)
+            SettingsStore.shared.defaults.set(true, forKey: self.autoConvertPunctuationEnabledKey)
             settings.punctuationDictionaryPrefix = "type"
             settings.punctuationDictionaryRules = [
                 SettingsStore.PunctuationDictionaryRule(
@@ -628,7 +628,7 @@ final class DictationE2ETests: XCTestCase {
     func testSpokenPunctuationFormattingUsesEditedRules() {
         self.withRestoredDefaults(keys: self.punctuationFormattingDefaultsKeys) {
             let settings = SettingsStore.shared
-            UserDefaults.standard.set(true, forKey: self.autoConvertPunctuationEnabledKey)
+            SettingsStore.shared.defaults.set(true, forKey: self.autoConvertPunctuationEnabledKey)
             settings.punctuationDictionaryRules = [
                 SettingsStore.PunctuationDictionaryRule(
                     aliases: ["full stop"],
@@ -2137,8 +2137,8 @@ extension DictationE2ETests {
     func testPrivateAIProviderContextTokenLimit_defaultsPersistsAndClamps() {
         self.withRestoredDefaults(keys: [self.privateAIContextTokenLimitKey, self.privateAIContextDefaultMigratedTo4KKey]) {
             let settings = SettingsStore.shared
-            UserDefaults.standard.removeObject(forKey: self.privateAIContextTokenLimitKey)
-            UserDefaults.standard.removeObject(forKey: self.privateAIContextDefaultMigratedTo4KKey)
+            SettingsStore.shared.defaults.removeObject(forKey: self.privateAIContextTokenLimitKey)
+            SettingsStore.shared.defaults.removeObject(forKey: self.privateAIContextDefaultMigratedTo4KKey)
 
             XCTAssertEqual(settings.privateAIContextTokenLimit, 4096)
 
@@ -2160,7 +2160,7 @@ extension DictationE2ETests {
             XCTAssertTrue(FileManager.default.createFile(atPath: tempURL.path, contents: Data(), attributes: nil))
             defer { try? FileManager.default.removeItem(at: tempURL) }
 
-            UserDefaults.standard.set(tempURL.path, forKey: self.privateAILocalModelPathKey)
+            SettingsStore.shared.defaults.set(tempURL.path, forKey: self.privateAILocalModelPathKey)
 
             XCTAssertEqual(
                 PrivateAIIntegrationService.isLocalRuntimeConfigured,
@@ -2191,7 +2191,7 @@ extension DictationE2ETests {
             XCTAssertTrue(FileManager.default.createFile(atPath: tempURL.path, contents: Data(), attributes: nil))
             defer { try? FileManager.default.removeItem(at: tempURL) }
 
-            UserDefaults.standard.set(tempURL.path, forKey: self.privateAILocalModelPathKey)
+            SettingsStore.shared.defaults.set(tempURL.path, forKey: self.privateAILocalModelPathKey)
             settings.selectedProviderID = "openai"
             settings.selectedModelByProvider = ["openai": "gpt-4.1"]
             settings.verifiedProviderFingerprints = [:]
@@ -2463,7 +2463,7 @@ extension DictationE2ETests {
     }
 
     private func withRestoredDefaults(keys: [String], run: () -> Void) {
-        let defaults = UserDefaults.standard
+        let defaults = SettingsStore.shared.defaults
         var snapshot: [String: Any] = [:]
         for key in keys {
             if let value = defaults.object(forKey: key) {
@@ -2540,7 +2540,7 @@ extension DictationE2ETests {
     func testSpokenFormattingActionsUseSharedPrefix() {
         self.withRestoredDefaults(keys: self.punctuationFormattingDefaultsKeys) {
             let settings = SettingsStore.shared
-            UserDefaults.standard.set(true, forKey: self.autoConvertPunctuationEnabledKey)
+            SettingsStore.shared.defaults.set(true, forKey: self.autoConvertPunctuationEnabledKey)
             settings.punctuationDictionaryPrefix = "literal"
             settings.spokenFormattingActionRules = SettingsStore.defaultSpokenFormattingActionRules
 
@@ -2570,7 +2570,7 @@ extension DictationE2ETests {
     func testSpokenFormattingActionsRemoveAdjacentGeneratedPeriodsOnly() {
         self.withRestoredDefaults(keys: self.punctuationFormattingDefaultsKeys) {
             let settings = SettingsStore.shared
-            UserDefaults.standard.set(true, forKey: self.autoConvertPunctuationEnabledKey)
+            SettingsStore.shared.defaults.set(true, forKey: self.autoConvertPunctuationEnabledKey)
             settings.punctuationDictionaryPrefix = "literal"
             settings.spokenFormattingActionRules = SettingsStore.defaultSpokenFormattingActionRules
 
@@ -2616,7 +2616,7 @@ extension DictationE2ETests {
     func testSpokenFormattingActionsCanBeCustomizedAndUnset() {
         self.withRestoredDefaults(keys: self.punctuationFormattingDefaultsKeys) {
             let settings = SettingsStore.shared
-            UserDefaults.standard.set(true, forKey: self.autoConvertPunctuationEnabledKey)
+            SettingsStore.shared.defaults.set(true, forKey: self.autoConvertPunctuationEnabledKey)
             settings.spokenFormattingActionRules = [
                 SettingsStore.SpokenFormattingActionRule(
                     action: .newLine,
@@ -2667,14 +2667,14 @@ extension DictationE2ETests {
             XCTAssertEqual(rules.first { $0.action == .newLine }?.aliases, ["shared action", "drop down"])
             XCTAssertEqual(rules.first { $0.action == .newParagraph }?.aliases, ["paragraph break"])
 
-            UserDefaults.standard.set(true, forKey: self.autoConvertPunctuationEnabledKey)
+            SettingsStore.shared.defaults.set(true, forKey: self.autoConvertPunctuationEnabledKey)
             XCTAssertEqual(ASRService.applySpokenPunctuationFormatting("literal comma"), ",")
             XCTAssertEqual(ASRService.applySpokenPunctuationFormatting("literal shared action"), "\n")
         }
     }
 
     func testSpokenFormattingActionRulesRoundTripAndLegacyBackupsPreserveCurrentRules() async throws {
-        let defaults = UserDefaults.standard
+        let defaults = SettingsStore.shared.defaults
         let originalValue = defaults.object(forKey: self.spokenFormattingActionRulesKey)
         defer {
             if let originalValue {

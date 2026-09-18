@@ -64,6 +64,10 @@ final class LiveTranslationController: ObservableObject {
     }
 
     func beginSession(kind: TranslationListenKind) {
+        if kind == .captions, SettingsStore.shared.theaterPresentation == .transparent {
+            // They found Listen in Overlay; the coach line has done its job.
+            SettingsStore.shared.theaterOverlayCoachSeen = true
+        }
         self.alignSpokenEngineWithTheater()
         self.sessionToken += 1
         self.abandonCaptionSession = false
@@ -511,7 +515,16 @@ final class LiveTranslationController: ObservableObject {
         Task { await self.onStopListening?() }
     }
 
+    /// Opens the same Accessibility guide onboarding uses.
+    var onAccessibilityNeeded: (() -> Void)?
+
     func insertCaptionText() {
+        // Check first: consuming marks lines typed, and a failed insert would
+        // otherwise lose them and disable the button.
+        guard AXIsProcessTrusted() else {
+            self.onAccessibilityNeeded?()
+            return
+        }
         let text: String
         if PresenterCaptionController.shared.isEditing {
             text = PresenterCaptionController.shared.documentTextForDelivery()

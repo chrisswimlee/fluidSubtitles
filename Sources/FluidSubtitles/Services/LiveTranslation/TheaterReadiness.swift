@@ -10,10 +10,31 @@ enum TheaterReadiness {
         "Listening. A finished sentence plus more speech starts the next pair. Spoken and Show-as stay paired."
 
     static let listeningEmpty =
-        "Listening… a finished sentence plus more speech starts the next pair. Spoken and Show-as stay paired."
+        "Listening… each sentence prints as soon as it ends. Spoken and Show-as stay paired."
 
     static let pressListen =
-        "Press Listen. A finished sentence plus more speech starts the next pair. Spoken and Show-as stay paired."
+        "Press Listen. Each sentence prints as soon as it ends. Spoken and Show-as stay paired."
+
+    static let talkPackCarryOver = "These names stay for the next talk until you Remove."
+
+    static let audienceTitle = "Who sees captions?"
+    static let audienceSlides = "Slides in the room"
+    static let audienceZoom = "Zoom or Meet"
+    static let audienceSlidesDetail =
+        "Captions show on this Mac and a wired projector. Screen share and recordings do not see them."
+    static let audienceZoomDetail =
+        "Remote viewers see captions when you share the whole screen. Sharing only the slides window leaves captions out. Check once before the talk."
+    static let hiddenFromZoomBadge = "Hidden from Zoom"
+
+    /// Idle Overlay hides every control and lets clicks reach the slides.
+    static let overlayIdleCoach =
+        "Slides stay clickable. Control-Option-T shows tools. Control-Option-L starts Listen."
+
+    static let overlayIdleHint = "Control-Option-L starts Listen. Control-Option-T shows tools."
+
+    /// Presenter shortcuts are off, so the menu bar is the way back to the tools.
+    static let overlayIdleMenuBarHint =
+        "Slides stay clickable. Use the Theater item in the menu bar to show tools or Listen."
 
     static let stopHelp =
         "Stop. Printed lines stay."
@@ -30,7 +51,7 @@ enum TheaterReadiness {
         "Stop dictation first"
 
     static let openTheaterHelp =
-        "Open Theater. Choose Pop-up or Transparent in Theater Window."
+        "Open Theater. Choose Pop-up or Overlay in Theater Window."
 
     static let showTheater = "Show Theater"
 
@@ -106,13 +127,16 @@ enum TheaterReadiness {
         "Types the current caption into the frontmost app. Copy takes every caption. \(insertIMECaveat)"
 
     static let typeIntoAppLocked =
-        "Type into app is available after the first caption."
+        "Listen and type unlocks after your first Theater caption."
 
     static let typeIntoAppBody =
-        "Click into an app, then use this shortcut to type the current caption. \(insertIMECaveat) Copy takes every caption."
+        "Click into an app, press this shortcut, and speak. It starts its own Listen and types the translation of what you say there. Theater's Type into app button is different: it types captions already on the board. \(insertIMECaveat)"
 
     static let typeIntoAppShortcutDetail =
-        "Separate from dictation. Types the current caption only."
+        "Starts its own Listen. Types what you say next, translated."
+
+    /// Type into app is off because every board line was already typed.
+    static let insertAlreadyTyped = "Already typed. Copy still has the board."
 
     static let undoLastCaption =
         "Remove the last printed line. Off-screen captions are already gone. Listen can keep going."
@@ -139,6 +163,9 @@ enum TheaterReadiness {
     static let captionsOnlyWindow =
         "On the Theater window, show captions only. Listen stays. Move the pointer to show languages and the rest."
 
+    static let captionsOnlyPopupOnly =
+        "Captions only is for Pop-up. Overlay is already text-only. Control-Option-T shows Overlay tools."
+
     static let howCaptionsAppear = "How new captions appear"
 
     static let captionSize = "Caption size."
@@ -161,22 +188,22 @@ enum TheaterReadiness {
         "Hide from screen share keeps Theater off Zoom, Keynote, and recordings. The window still shows on your display and on a wired projector. Turn it off for a Zoom or Meet talk so remote viewers see captions. On macOS 15 and later some apps still capture hidden windows, so share one window, not the whole screen."
 
     static let backingBar =
-        "Backing bar puts a dark band behind transparent captions so they stay readable on white slides."
+        "Caption plate puts a dark box behind each Overlay line so the text stays readable on white slides."
 
     static let talkPackClear =
         "Clear these notes so their names do not carry into the next talk."
 
     static let presenterHotkeys =
-        "Control-Option-H hides or shows Theater, P pauses, K clears, = and - change the text size. Your slides keep focus."
+        "Control-Option-H hides or shows Theater, P pauses, K clears, T shows Overlay tools, L starts or stops Listen, = and - change the text size. The menu-bar Theater item changes font, size, plate, and position. Your slides keep focus. A custom Listen shortcut with the same chord wins."
 
     static let popupStyle =
         "Pop-up is a solid floating board you can place over slides or a second display."
 
     static let transparentStyle =
-        "Transparent keeps the captions and hides the board, so slides show through."
+        "Overlay keeps the caption text and hides the board, so slides show through and stay clickable. Control-Option-T shows tools."
 
     static let presentationStyle =
-        "Choose Pop-up or Transparent. Open Theater to show it; Close Theater to hide it."
+        "Choose Pop-up or Overlay. Open Theater to show it; Close Theater to hide it."
 
     static let alsoHearOtherLanguages =
         "Whisper can auto-detect English, Korean, Japanese, and Thai questions. Apple Speech stays on I speak."

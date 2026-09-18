@@ -383,10 +383,28 @@ nonisolated enum TranslationClauseSegmenter {
     }
 
     /// Word-for-word containment after the same normalization as `isSameClause`.
+    /// Scripts without spaces between words (Japanese, Chinese, Thai) match by
+    /// substring; spaced scripts match whole words so "cat" is not in "catalog".
     static func contains(_ text: String, clause: String) -> Bool {
         let key = self.normalized(clause)
         guard !key.isEmpty else { return false }
-        return (" " + self.normalized(text) + " ").contains(" " + key + " ")
+        let haystack = self.normalized(text)
+        if self.hasUnspacedScript(key) {
+            return haystack.contains(key)
+        }
+        return (" " + haystack + " ").contains(" " + key + " ")
+    }
+
+    /// Kana, Han, or Thai: words are not separated by spaces.
+    static func hasUnspacedScript(_ text: String) -> Bool {
+        text.unicodeScalars.contains { scalar in
+            (0x3040...0x30FF).contains(scalar.value)
+                || (0x31F0...0x31FF).contains(scalar.value)
+                || (0xFF66...0xFF9D).contains(scalar.value)
+                || (0x3400...0x4DBF).contains(scalar.value)
+                || (0x4E00...0x9FFF).contains(scalar.value)
+                || (0x0E00...0x0E7F).contains(scalar.value)
+        }
     }
 
     static func shouldReplaceLast(previous: String, incoming: String) -> Bool {

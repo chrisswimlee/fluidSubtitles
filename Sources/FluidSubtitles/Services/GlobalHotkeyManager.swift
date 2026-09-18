@@ -2086,6 +2086,10 @@ final class GlobalHotkeyManager: NSObject {
         else { return false }
         // Size steps may repeat while held; toggles fire once per press.
         if isAutorepeat, !action.repeats { return true }
+        if action == .listen {
+            self.triggerCaptionListen()
+            return true
+        }
         Task { @MainActor in
             DebugLogger.shared.info("Theater presenter hotkey: \(action)", source: "GlobalHotkeyManager")
             TheaterPresenterHotkey.perform(action)

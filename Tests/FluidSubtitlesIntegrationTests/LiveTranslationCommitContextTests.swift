@@ -108,6 +108,33 @@ final class LiveTranslationCommitContextTests: XCTestCase {
         )
     }
 
+    func testLeftoverContainsPriorCaptionDoesNotMatchInsideALongerWord() {
+        XCTAssertFalse(
+            LiveTranslationCommitContext.leftoverContainsPriorCaption(
+                "Okay we trained the model.",
+                priors: ["OK"]
+            )
+        )
+        XCTAssertFalse(
+            LiveTranslationCommitContext.leftoverContainsPriorCaption(
+                "This is a high quality model.",
+                priors: ["Hi"]
+            )
+        )
+        XCTAssertTrue(
+            LiveTranslationCommitContext.leftoverContainsPriorCaption(
+                "Today the model performed well.",
+                priors: ["The model"]
+            )
+        )
+        XCTAssertTrue(
+            LiveTranslationCommitContext.leftoverContainsPriorCaption(
+                "Today the model performed well.",
+                priors: ["The model."]
+            )
+        )
+    }
+
     // MARK: - shouldPreferConfirmation
 
     func testShouldPreferConfirmationFalseWhenConfirmedIsBlank() {
@@ -192,5 +219,33 @@ final class LiveTranslationCommitContextTests: XCTestCase {
 
     func testFoldedClauseOfEmptyStringIsEmpty() {
         XCTAssertEqual(LiveTranslationCommitContext.foldedClause(""), "")
+    }
+
+    func testLeftoverContainsPriorCaptionMatchesShortUnspacedPriors() {
+        XCTAssertTrue(
+            LiveTranslationCommitContext.leftoverContainsPriorCaption(
+                "สวัสดีครับทุกคน วันนี้เราจะคุยกัน",
+                priors: ["สวัสดีครับ"]
+            )
+        )
+        XCTAssertTrue(
+            LiveTranslationCommitContext.leftoverContainsPriorCaption(
+                "はい、今日はいい天気ですね",
+                priors: ["今日はいい"]
+            )
+        )
+        XCTAssertFalse(
+            LiveTranslationCommitContext.leftoverContainsPriorCaption(
+                "今日はいい天気ですね",
+                priors: ["今日"]
+            )
+        )
+    }
+
+    func testSegmenterContainsKeepsWholeWordsForOneWordClauses() {
+        XCTAssertFalse(TranslationClauseSegmenter.contains("Italy is lovely.", clause: "It."))
+        XCTAssertFalse(TranslationClauseSegmenter.contains("A catalog.", clause: "cat"))
+        XCTAssertTrue(TranslationClauseSegmenter.contains("It is lovely.", clause: "It"))
+        XCTAssertTrue(TranslationClauseSegmenter.contains("はい 今日はいい天気", clause: "今日は"))
     }
 }

@@ -44,19 +44,24 @@ struct TheaterStableText: Equatable {
         self.hypothesis = ""
     }
 
-    /// Shared prefix cut back to a whole word. Scripts without spaces
-    /// (Japanese, Thai, Chinese) share by character.
+    /// Shared prefix cut back to a whole word. Scripts that do not put spaces
+    /// between words (Japanese, Chinese, and Thai, which spaces only phrases)
+    /// share by character; `Character` keeps Thai marks on their consonant.
     static func agreedPrefix(_ lhs: String, _ rhs: String) -> String {
         let common = String(zip(lhs, rhs).prefix { $0 == $1 }.map(\.0))
         guard !common.isEmpty else { return "" }
         if common.count == lhs.count, common.count == rhs.count { return common }
-        guard rhs.contains(" ") else { return common }
+        guard rhs.contains(" "), !Self.containsThai(rhs) else { return common }
         let nextIndex = rhs.index(rhs.startIndex, offsetBy: common.count)
         if nextIndex < rhs.endIndex, rhs[nextIndex] == " " {
             return common.trimmingCharacters(in: .whitespaces)
         }
         guard let lastSpace = common.lastIndex(of: " ") else { return "" }
         return String(common[..<lastSpace]).trimmingCharacters(in: .whitespaces)
+    }
+
+    private static func containsThai(_ text: String) -> Bool {
+        text.unicodeScalars.contains { (0x0E00...0x0E7F).contains($0.value) }
     }
 
     private static func isPrefix(_ shown: String, of text: String) -> Bool {

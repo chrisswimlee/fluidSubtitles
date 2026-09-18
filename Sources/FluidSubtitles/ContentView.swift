@@ -1751,6 +1751,9 @@ struct ContentView: View {
         LiveTranslationController.shared.onInsertCaption = { text in
             self.insertCaptionIntoFrontmostApp(text)
         }
+        LiveTranslationController.shared.onAccessibilityNeeded = {
+            self.openAccessibilitySettings()
+        }
         LiveTranslationController.shared.restoreTheaterIfNeeded()
 
         // Monitor initialization status

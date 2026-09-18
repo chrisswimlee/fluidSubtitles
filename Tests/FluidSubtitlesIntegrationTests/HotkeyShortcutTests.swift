@@ -270,7 +270,7 @@ final class HotkeyShortcutTests: XCTestCase {
 
     @MainActor
     func testIncrementalParakeetDefaultsOnAndRoundTripsWithoutBreakingLegacyBackups() async throws {
-        let defaults = UserDefaults.standard
+        let defaults = SettingsStore.shared.defaults
         let originalValue = defaults.object(forKey: self.incrementalParakeetEnabledKey)
         defer {
             if let originalValue {
@@ -299,7 +299,7 @@ final class HotkeyShortcutTests: XCTestCase {
 
     @MainActor
     func testHistoryPerformanceDefaultsOffAndRoundTripsWithoutBreakingLegacyBackups() async throws {
-        let defaults = UserDefaults.standard
+        let defaults = SettingsStore.shared.defaults
         let key = "ShowHistoryPerformanceMetrics"
         let originalValue = defaults.object(forKey: key)
         defer {
@@ -427,7 +427,7 @@ final class HotkeyShortcutTests: XCTestCase {
 
     func testDirectAudioCaptureIsEnabledWhenLegacyPreferenceIsUnset() {
         self.withRestoredDefaults(keys: [self.experimentalDirectAudioCaptureEnabledKey]) {
-            UserDefaults.standard.removeObject(forKey: self.experimentalDirectAudioCaptureEnabledKey)
+            SettingsStore.shared.defaults.removeObject(forKey: self.experimentalDirectAudioCaptureEnabledKey)
 
             XCTAssertTrue(SettingsStore.shared.experimentalDirectAudioCaptureEnabled)
         }
@@ -435,7 +435,7 @@ final class HotkeyShortcutTests: XCTestCase {
 
     func testDirectAudioCaptureIgnoresStoredDisabledPreference() {
         self.withRestoredDefaults(keys: [self.experimentalDirectAudioCaptureEnabledKey]) {
-            UserDefaults.standard.set(false, forKey: self.experimentalDirectAudioCaptureEnabledKey)
+            SettingsStore.shared.defaults.set(false, forKey: self.experimentalDirectAudioCaptureEnabledKey)
 
             XCTAssertTrue(SettingsStore.shared.experimentalDirectAudioCaptureEnabled)
         }
@@ -760,8 +760,8 @@ final class HotkeyShortcutTests: XCTestCase {
         try self.withRestoredDefaults(keys: [self.legacyHotkeyShortcutKey, self.primaryDictationShortcutsKey]) {
             let legacyShortcut = HotkeyShortcut(keyCode: 12, modifierFlags: [.option])
             let data = try JSONEncoder().encode(legacyShortcut)
-            UserDefaults.standard.set(data, forKey: self.legacyHotkeyShortcutKey)
-            UserDefaults.standard.removeObject(forKey: self.primaryDictationShortcutsKey)
+            SettingsStore.shared.defaults.set(data, forKey: self.legacyHotkeyShortcutKey)
+            SettingsStore.shared.defaults.removeObject(forKey: self.primaryDictationShortcutsKey)
 
             XCTAssertEqual(SettingsStore.shared.primaryDictationShortcuts, [legacyShortcut])
             XCTAssertEqual(SettingsStore.shared.hotkeyShortcut, legacyShortcut)
@@ -789,8 +789,8 @@ final class HotkeyShortcutTests: XCTestCase {
             self.pasteLastTranscriptionShortcutKey,
             self.pasteLastTranscriptionEnabledKey,
         ]) {
-            UserDefaults.standard.removeObject(forKey: self.pasteLastTranscriptionShortcutKey)
-            UserDefaults.standard.removeObject(forKey: self.pasteLastTranscriptionEnabledKey)
+            SettingsStore.shared.defaults.removeObject(forKey: self.pasteLastTranscriptionShortcutKey)
+            SettingsStore.shared.defaults.removeObject(forKey: self.pasteLastTranscriptionEnabledKey)
 
             XCTAssertNil(SettingsStore.shared.pasteLastTranscriptionHotkeyShortcut)
             XCTAssertFalse(SettingsStore.shared.pasteLastTranscriptionShortcutEnabled)
@@ -829,7 +829,7 @@ final class HotkeyShortcutTests: XCTestCase {
 
     func testLegacySystemModeRemainsReadableForPriorityMigration() throws {
         try self.withRestoredDefaults(keys: [self.microphoneSelectionModeKey]) {
-            UserDefaults.standard.set(
+            SettingsStore.shared.defaults.set(
                 SettingsStore.MicrophoneSelectionMode.system.rawValue,
                 forKey: self.microphoneSelectionModeKey
             )
@@ -1212,7 +1212,7 @@ final class HotkeyShortcutTests: XCTestCase {
             self.preferredInputDeviceUIDKey,
             self.microphoneSelectionMigrationVersionKey,
         ]) {
-            UserDefaults.standard.set(
+            SettingsStore.shared.defaults.set(
                 SettingsStore.MicrophoneSelectionMode.system.rawValue,
                 forKey: self.microphoneSelectionModeKey
             )
@@ -1237,7 +1237,7 @@ final class HotkeyShortcutTests: XCTestCase {
             XCTAssertEqual(SettingsStore.shared.microphoneSelectionMode, .manual)
             XCTAssertEqual(SettingsStore.shared.microphoneSelectionMigrationVersion, 4)
             XCTAssertEqual(
-                UserDefaults.standard.string(forKey: self.microphoneSelectionModeKey),
+                SettingsStore.shared.defaults.string(forKey: self.microphoneSelectionModeKey),
                 SettingsStore.MicrophoneSelectionMode.manual.rawValue
             )
             XCTAssertEqual(devices.defaultInputUID, "airpods")
@@ -1255,7 +1255,7 @@ final class HotkeyShortcutTests: XCTestCase {
             self.preferredInputDeviceUIDKey,
             self.microphoneSelectionMigrationVersionKey,
         ]) {
-            UserDefaults.standard.removeObject(forKey: self.microphoneSelectionModeKey)
+            SettingsStore.shared.defaults.removeObject(forKey: self.microphoneSelectionModeKey)
             SettingsStore.shared.preferredInputDeviceUID = "studio-mic"
             SettingsStore.shared.microphoneSelectionMigrationVersion = 0
             let devices = FakeAudioDeviceManager(
@@ -1283,7 +1283,7 @@ final class HotkeyShortcutTests: XCTestCase {
             self.preferredInputDeviceUIDKey,
             self.microphoneSelectionMigrationVersionKey,
         ]) {
-            UserDefaults.standard.removeObject(forKey: self.microphoneSelectionModeKey)
+            SettingsStore.shared.defaults.removeObject(forKey: self.microphoneSelectionModeKey)
             SettingsStore.shared.preferredInputDeviceUID = nil
             SettingsStore.shared.microphoneSelectionMigrationVersion = 0
             let fallback = Self.device(uid: "fallback", name: "Available Fallback")
@@ -1331,7 +1331,7 @@ final class HotkeyShortcutTests: XCTestCase {
             self.preferredInputDeviceUIDKey,
             self.microphoneSelectionMigrationVersionKey,
         ]) {
-            UserDefaults.standard.set(
+            SettingsStore.shared.defaults.set(
                 SettingsStore.MicrophoneSelectionMode.system.rawValue,
                 forKey: self.microphoneSelectionModeKey
             )
@@ -1365,7 +1365,7 @@ final class HotkeyShortcutTests: XCTestCase {
             self.preferredInputDeviceUIDKey,
             self.microphoneSelectionMigrationVersionKey,
         ]) {
-            UserDefaults.standard.set(
+            SettingsStore.shared.defaults.set(
                 SettingsStore.MicrophoneSelectionMode.system.rawValue,
                 forKey: self.microphoneSelectionModeKey
             )
@@ -1388,7 +1388,7 @@ final class HotkeyShortcutTests: XCTestCase {
             self.preferredInputDeviceUIDKey,
             self.microphoneSelectionMigrationVersionKey,
         ]) {
-            UserDefaults.standard.set(
+            SettingsStore.shared.defaults.set(
                 SettingsStore.MicrophoneSelectionMode.manual.rawValue,
                 forKey: self.microphoneSelectionModeKey
             )
@@ -1418,7 +1418,7 @@ final class HotkeyShortcutTests: XCTestCase {
             self.preferredInputDeviceUIDKey,
             self.microphoneSelectionMigrationVersionKey,
         ]) {
-            UserDefaults.standard.set(
+            SettingsStore.shared.defaults.set(
                 SettingsStore.MicrophoneSelectionMode.system.rawValue,
                 forKey: self.microphoneSelectionModeKey
             )
@@ -1699,7 +1699,7 @@ final class HotkeyShortcutTests: XCTestCase {
             self.microphonePriorityKey,
             self.showMicrophoneChangeAlertsKey,
         ]) {
-            let defaults = UserDefaults.standard
+            let defaults = SettingsStore.shared.defaults
             defaults.removeObject(forKey: self.showMicrophoneChangeAlertsKey)
             let microphone = Self.device(uid: "preferred", name: "Preferred")
             SettingsStore.shared.microphonePriority = [
@@ -2019,7 +2019,7 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     private func withRestoredDefaults(keys: [String], run: () throws -> Void) rethrows {
-        let defaults = UserDefaults.standard
+        let defaults = SettingsStore.shared.defaults
         let touchesMicrophoneSettings = keys.contains { key in
             key == self.microphoneSelectionModeKey ||
                 key == self.preferredInputDeviceUIDKey ||

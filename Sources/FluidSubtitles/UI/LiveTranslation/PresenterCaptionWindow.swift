@@ -57,6 +57,7 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
         self.restoreFrame()
         self.rememberExternalApp()
         self.applyMinimizedLayout()
+        self.applyOverlayPin()
         if TheaterMinimize.shouldOrderFront(minimized: SettingsStore.shared.theaterMinimized) {
             if self.model.isEditing {
                 self.panel?.makeKeyAndOrderFront(nil)
@@ -298,7 +299,15 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
             settings.theaterWindowFrame = NSStringFromRect(panel.frame)
         }
         settings.theaterMinimized.toggle()
+        if TheaterOverlayPolicy.shouldClearPin(
+            presentation: settings.theaterPresentation,
+            minimized: settings.theaterMinimized,
+            windowEnabled: settings.theaterWindowEnabled
+        ) {
+            self.model.overlayToolsPinned = false
+        }
         self.applyMinimizedLayout()
+        self.applyOverlayPin()
         if TheaterMinimize.shouldOrderFront(minimized: settings.theaterMinimized) {
             if self.model.isEditing {
                 self.panel?.makeKeyAndOrderFront(nil)
@@ -358,6 +367,8 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
         SettingsStore.shared.theaterWindowEnabled = false
         SettingsStore.shared.theaterMinimized = false
         self.model.isEditing = false
+        self.model.overlayToolsPinned = false
+        self.applyOverlayPin()
         LiveTranslationController.shared.theaterWasClosed()
         self.isDismissing = false
     }
@@ -414,14 +425,126 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
                 self?.refitAfterScreenChange()
             }
             .store(in: &self.settingsCancellables)
+        NotificationCenter.default
+            .publisher(for: NSApplication.didBecomeActiveNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.applyOverlayPin()
+                self?.lowerPopupIfAppWindowBecameKey(NSApp.keyWindow)
+            }
+            .store(in: &self.settingsCancellables)
+        NotificationCenter.default
+            .publisher(for: NSApplication.didResignActiveNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.applyOverlayPin()
+            }
+            .store(in: &self.settingsCancellables)
+        NotificationCenter.default
+            .publisher(for: NSWindow.didBecomeKeyNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] notification in
+                self?.lowerPopupIfAppWindowBecameKey(notification.object as? NSWindow)
+            }
+            .store(in: &self.settingsCancellables)
+    }
+
+    /// Pop-up shares the normal window stack. When Home or Settings becomes
+    /// key, send the board behind that window so it does not cover Setup.
+    private func lowerPopupIfAppWindowBecameKey(_ window: NSWindow?) {
+        guard let window,
+              window !== self.panel,
+              window.isVisible,
+              SettingsStore.shared.theaterPresentation == .popup,
+              let panel = self.panel,
+              panel.isVisible
+        else { return }
+        panel.order(.below, relativeTo: window.windowNumber)
     }
 
     private func applyWindowStyleIfChanged() {
         let settings = SettingsStore.shared
         let current = (hide: settings.theaterHideFromScreenShare, presentation: "\(settings.theaterPresentation)")
+        let presentationChanged = self.appliedWindowStyle?.presentation != current.presentation
         if let applied = self.appliedWindowStyle, applied == current { return }
+        if settings.theaterPresentation == .popup {
+            self.model.overlayToolsPinned = false
+        }
         self.applyWindowSharing()
         self.applyPresentationStyle()
+        if presentationChanged, self.panel?.isVisible == true, !settings.theaterMinimized {
+            self.refitAfterPresentationChange()
+        }
+    }
+
+    /// Overlay and Pop-up resolve empty / leftover frames differently.
+    private func refitAfterPresentationChange() {
+        guard let panel = self.panel else { return }
+        let screen = panel.screen ?? Self.preferredScreen()
+        guard let screen else { return }
+        if let preset = SettingsStore.shared.theaterPositionPreset {
+            panel.setFrame(preset.frame(in: screen.visibleFrame), display: true)
+            return
+        }
+        panel.setFrame(
+            TheaterWindowPlacement.resolvedFrame(
+                stored: panel.frame,
+                visible: screen.visibleFrame,
+                presentation: SettingsStore.shared.theaterPresentation
+            ),
+            display: true
+        )
+    }
+
+    var overlayToolsPinned: Bool { self.model.overlayToolsPinned }
+
+    func toggleOverlayToolsPinned() {
+        let settings = SettingsStore.shared
+        guard settings.theaterWindowEnabled,
+              settings.theaterPresentation == .transparent,
+              !settings.theaterMinimized
+        else { return }
+        self.model.overlayToolsPinned.toggle()
+        self.applyOverlayPin()
+        if self.model.overlayToolsPinned {
+            settings.theaterOverlayCoachSeen = true
+            self.panel?.orderFront(nil)
+        }
+    }
+
+    private func applyOverlayPin() {
+        guard let panel = self.panel else { return }
+        let settings = SettingsStore.shared
+        let presentation = settings.theaterPresentation
+        let pinned = self.model.overlayToolsPinned
+        let minimized = settings.theaterMinimized
+        panel.ignoresMouseEvents = TheaterOverlayPolicy.ignoresMouseEvents(
+            presentation: presentation,
+            toolsPinned: pinned,
+            minimized: minimized
+        )
+        panel.isMovableByWindowBackground = TheaterOverlayPolicy.movableByBackground(
+            presentation: presentation,
+            toolsPinned: pinned,
+            minimized: minimized
+        )
+        let hideButtons = TheaterOverlayPolicy.hidesTitlebarButtons(
+            presentation: presentation,
+            toolsPinned: pinned
+        )
+        for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+            panel.standardWindowButton(button)?.isHidden = hideButtons
+        }
+        panel.minSize = TheaterOverlayPolicy.minSize(for: presentation)
+        let appIsActive = NSApp.isActive
+        panel.level = TheaterOverlayPolicy.windowLevel(
+            presentation: presentation,
+            appIsActive: appIsActive
+        )
+        panel.isFloatingPanel = TheaterOverlayPolicy.isFloatingPanel(
+            presentation: presentation,
+            appIsActive: appIsActive
+        )
     }
 
     /// A projector unplugged mid-talk must not strand captions off-screen.
@@ -436,7 +559,11 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
         }
         let stored = onScreen ? panel.frame : nil
         panel.setFrame(
-            TheaterWindowPlacement.resolvedFrame(stored: stored, visible: screen.visibleFrame),
+            TheaterWindowPlacement.resolvedFrame(
+                stored: stored,
+                visible: screen.visibleFrame,
+                presentation: SettingsStore.shared.theaterPresentation
+            ),
             display: true
         )
     }
@@ -459,10 +586,15 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
             hide: SettingsStore.shared.theaterHideFromScreenShare,
             presentation: "\(SettingsStore.shared.theaterPresentation)"
         )
-        let transparent = SettingsStore.shared.theaterPresentation == .transparent
-        panel.hasShadow = !transparent
+        let presentation = SettingsStore.shared.theaterPresentation
+        if presentation == .popup {
+            self.model.overlayToolsPinned = false
+        }
+        panel.hasShadow = presentation != .transparent
         panel.isOpaque = false
         panel.backgroundColor = .clear
+        panel.minSize = TheaterOverlayPolicy.minSize(for: presentation)
+        self.applyOverlayPin()
     }
 
     private final class TheaterCaptionPanel: NSPanel {
@@ -490,26 +622,36 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
         panel.title = "\(FluidProduct.displayName) Theater"
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
-        panel.isFloatingPanel = true
         panel.becomesKeyOnlyIfNeeded = true
         panel.hidesOnDeactivate = false
-        // .floating keeps captions above normal app windows without
-        // competing with the menu bar / status items the way .statusBar did.
-        panel.level = .floating
+        let createdPresentation = SettingsStore.shared.theaterPresentation
+        let appIsActive = NSApp.isActive
+        panel.isFloatingPanel = TheaterOverlayPolicy.isFloatingPanel(
+            presentation: createdPresentation,
+            appIsActive: appIsActive
+        )
+        panel.level = TheaterOverlayPolicy.windowLevel(
+            presentation: createdPresentation,
+            appIsActive: appIsActive
+        )
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.isReleasedWhenClosed = false
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.contentViewController = hosting
-        panel.minSize = NSSize(width: 640, height: 260)
+        panel.minSize = TheaterOverlayPolicy.minSize(for: SettingsStore.shared.theaterPresentation)
         TheaterWindowSharing.apply(
             panel,
             hideFromScreenShare: SettingsStore.shared.theaterHideFromScreenShare
         )
         if let screen = Self.preferredScreen() {
             panel.setFrame(
-                TheaterWindowPlacement.resolvedFrame(stored: nil, visible: screen.visibleFrame),
+                TheaterWindowPlacement.resolvedFrame(
+                    stored: nil,
+                    visible: screen.visibleFrame,
+                    presentation: SettingsStore.shared.theaterPresentation
+                ),
                 display: true
             )
         } else {
@@ -545,7 +687,8 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
             panel.orderOut(nil)
             return
         }
-        panel.minSize = NSSize(width: 640, height: 260)
+        let presentation = SettingsStore.shared.theaterPresentation
+        panel.minSize = TheaterOverlayPolicy.minSize(for: presentation)
         let screen = panel.screen ?? Self.preferredScreen()
         let stored = SettingsStore.shared.theaterExpandedWindowFrame
         let storedRect = stored.isEmpty ? nil : NSRectFromString(stored)
@@ -557,15 +700,19 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
             panel.setFrame(
                 TheaterWindowPlacement.resolvedFrame(
                     stored: storedRect,
-                    visible: screen.visibleFrame
+                    visible: screen.visibleFrame,
+                    presentation: presentation
                 ),
                 display: true
             )
             return
         }
         var frame = panel.frame
-        if frame.height < 260 {
-            let height = TheaterWindowPlacement.legacyDefaultSize.height
+        let minHeight = TheaterOverlayPolicy.minSize(for: presentation).height
+        if frame.height < minHeight {
+            let height = presentation == .transparent
+                ? TheaterPositionPreset.captionBarHeight
+                : TheaterWindowPlacement.legacyDefaultSize.height
             frame.origin.y -= height - frame.height
             frame.size.height = height
             panel.setFrame(frame, display: true)
@@ -580,7 +727,11 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
             self.panel?.setFrame(preset.frame(in: screen.visibleFrame), display: true)
         } else if let screen {
             self.panel?.setFrame(
-                TheaterWindowPlacement.resolvedFrame(stored: storedRect, visible: screen.visibleFrame),
+                TheaterWindowPlacement.resolvedFrame(
+                    stored: storedRect,
+                    visible: screen.visibleFrame,
+                    presentation: SettingsStore.shared.theaterPresentation
+                ),
                 display: true
             )
         } else if let storedRect, storedRect.width > 200, storedRect.height > 160 {

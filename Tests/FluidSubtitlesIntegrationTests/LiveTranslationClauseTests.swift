@@ -1353,7 +1353,7 @@ final class LiveTranslationClauseTests: XCTestCase {
         XCTAssertEqual(TheaterPresentationStyle.resolved(""), .popup)
         XCTAssertEqual(TheaterPresentationStyle.resolved("transparent"), .transparent)
         XCTAssertEqual(TheaterPresentationStyle.popup.toggled, .transparent)
-        XCTAssertEqual(TheaterPresentationStyle.transparent.displayName, "Transparent")
+        XCTAssertEqual(TheaterPresentationStyle.transparent.displayName, "Overlay")
         XCTAssertEqual(TheaterPresentationStyle.popup.displayName, "Pop-up")
     }
 
@@ -1438,6 +1438,20 @@ final class LiveTranslationClauseTests: XCTestCase {
         XCTAssertEqual(second.sources, ["Today we measure it."])
         XCTAssertEqual(second.translations, ["오늘은 측정합니다."])
         XCTAssertFalse(second.sources.contains(where: { $0.contains("Yesterday") }))
+    }
+
+    @MainActor
+    func testLanguageChangeClearsListenHistoryPriors() {
+        let subscriber = LiveTranslationSubscriber()
+        subscriber.beginListening()
+        subscriber.seedCommittedForTesting(source: "Today we measure it.", translated: "오늘은 측정합니다.")
+        XCTAssertEqual(
+            subscriber.priorClausesForTesting(incoming: "Then we stop.").sources,
+            ["Today we measure it."]
+        )
+        subscriber.noteLanguagePairChanged()
+        XCTAssertTrue(subscriber.priorClausesForTesting(incoming: "Then we stop.").sources.isEmpty)
+        XCTAssertEqual(subscriber.listenHistoryCountForTesting, 0)
     }
 
     @MainActor
@@ -1993,6 +2007,21 @@ final class LiveTranslationClauseTests: XCTestCase {
         log.commit(source: "Today we trained the model.", translated: "오늘 모델을 학습했어요.")
         XCTAssertEqual(log.sourceLines, ["Today we trained the modal."])
         XCTAssertEqual(log.translatedLines, ["오늘 모델을 학습했습니다."])
+    }
+
+    func testLeftoverTailDropsALongOffscreenPrefixWithoutReprinting() {
+        let hidden = (1...40).map { "This is committed sentence number \($0) of the talk." }
+        let printed = (41...43).map { "This is committed sentence number \($0) of the talk." }
+        let tail = "And this is the open tail we are speaking now"
+        let transcript = (hidden + printed).joined(separator: " ") + " " + tail
+        XCTAssertEqual(
+            TranslationClauseSegmenter.leftoverTail(
+                transcript,
+                already: hidden + printed,
+                languageID: "en"
+            ),
+            tail
+        )
     }
 
     func testLeftoverTailDropsOffscreenPrefixOfACumulativeTalk() {
@@ -2619,6 +2648,8 @@ final class TheaterPresenterAidTests: XCTestCase {
         XCTAssertEqual(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_K), modifiers: chord), .clear)
         XCTAssertEqual(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_Equal), modifiers: chord), .fontLarger)
         XCTAssertEqual(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_Minus), modifiers: chord), .fontSmaller)
+        XCTAssertEqual(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_T), modifiers: chord), .toggleTools)
+        XCTAssertEqual(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_L), modifiers: chord), .listen)
         XCTAssertNil(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_H), modifiers: [.control]))
         XCTAssertNil(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_H), modifiers: [.control, .option, .command]))
         XCTAssertNil(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_A), modifiers: chord))
@@ -2940,3 +2971,24 @@ final class TheaterLongTalkTests: XCTestCase {
 }
 
 
+
+
+final class TheaterStableTextScriptTests: XCTestCase {
+    func testLiveLineGrowsWhileTalkingInEveryScript() {
+        let cases: [(String, String, String)] = [
+            ("en", "Today we trained", "Today we trained the model"),
+            ("ko", "오늘 모델을 학습", "오늘 모델을 학습했습니다"),
+            ("ja", "今日はモデルを", "今日はモデルを学習しました"),
+            // Thai has spaces between phrases, not words.
+            ("th", "ครับ วันนี้เราฝึก", "ครับ วันนี้เราฝึกโมเดลใหม่"),
+        ]
+        for (id, first, second) in cases {
+            var stable = TheaterStableText()
+            _ = stable.ingest(first)
+            let shown = stable.ingest(second)
+            XCTAssertFalse(shown.isEmpty, "\(id): nothing shown while talking")
+            XCTAssertTrue(second.hasPrefix(shown), "\(id)")
+            XCTAssertGreaterThan(shown.count, first.count / 2, "\(id): live line lags a whole phrase (\(shown))")
+        }
+    }
+}
