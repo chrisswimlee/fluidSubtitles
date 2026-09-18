@@ -40,10 +40,10 @@ nonisolated enum FluidProduct {
     static let upstreamURL = URL(string: "https://github.com/altic-dev/FluidVoice")!
 
     static let creditLine =
-        "fluidSubtitles is by Chris Swim Lee (chrisswimlee.com), a branch of FluidVoice by altic-dev. Speech recognition and the core app are theirs; live translation and Theater are what we added. Licensed under GPLv3."
+        "fluidSubtitles is by Chris Swim Lee (chrisswimlee.com), built on FluidVoice by altic-dev. Speech recognition and the core app are theirs; live translation and Theater are what we added. Licensed under GPLv3."
 
     static let creditShort =
-        "By Chris Swim Lee. A branch of FluidVoice by altic-dev. GPLv3."
+        "By Chris Swim Lee. GPLv3."
 
     static var updateRepository: (owner: String, repo: String)? {
         guard let owner = self.githubOwner, let repo = self.githubRepo,

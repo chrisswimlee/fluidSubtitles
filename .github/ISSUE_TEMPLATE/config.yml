@@ -3,6 +3,3 @@ contact_links:
   - name: Questions and ideas
     url: https://github.com/chrisswimlee/fluidSubtitles/discussions
     about: Ask a question or propose an idea before opening an issue.
-  - name: FluidVoice upstream
-    url: https://github.com/altic-dev/FluidVoice
-    about: Speech engine and dictation changes that belong in FluidVoice, not this translation fork.

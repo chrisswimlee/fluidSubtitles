@@ -14,7 +14,7 @@ Open **Theater** in the sidebar, pick Korean, English, Thai, or Japanese on each
 
 ![Theater captions](docs/screenshots/theater.png)
 
-**fluidSubtitles is by [Chris Swim Lee](https://chrisswimlee.com), a branch of [FluidVoice](https://github.com/altic-dev/FluidVoice) by altic-dev.** Speech recognition, live engines, and the core macOS app are theirs. This branch adds live translation and Theater captions. Licensed under GPLv3 — please star and support the original project.
+By [Chris Swim Lee](https://chrisswimlee.com). Licensed under GPLv3.
 
 ---
 
@@ -170,13 +170,19 @@ xcodebuild test -project fluidSubtitles.xcodeproj -scheme fluidSubtitles -destin
 
 fluidSubtitles is **local-first**. Your voice, audio, and transcribed text never leave your machine unless you explicitly opt in to a cloud AI provider.
 
-This release does not send analytics, feedback, or update checks to FluidVoice or to a third-party analytics host.
+This release does not send analytics, feedback, or update checks to a third-party analytics host.
 
 **Not collected:**
 
 - Voice, raw audio, or transcribed text
 - Selected text, prompts, or AI responses
 - Terminal commands, window titles, file paths, clipboard, or typed content
+
+---
+
+## Credits
+
+fluidSubtitles is built on [FluidVoice](https://github.com/altic-dev/FluidVoice) by altic-dev, which provides speech recognition, the live engines, and the core macOS app. Live translation and Theater captions are added here. If you find it useful, consider starring FluidVoice too.
 
 ---
 

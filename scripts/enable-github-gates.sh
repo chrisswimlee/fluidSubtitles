@@ -24,7 +24,7 @@ gh repo edit "${FULL}" \
     --accept-visibility-change-consequences \
     --enable-issues \
     --enable-discussions \
-    --description "Live Korean, English, Thai, and Japanese captions for macOS. A FluidVoice branch by Chris Swim Lee."
+    --description "Live Korean, English, Thai, and Japanese captions for macOS."
 
 gh api --method PUT "repos/${FULL}/private-vulnerability-reporting" >/dev/null
 gh api --method PUT "repos/${FULL}/vulnerability-alerts" >/dev/null || true
