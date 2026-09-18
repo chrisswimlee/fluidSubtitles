@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import XCTest
 @testable import FluidSubtitles_Debug
 
@@ -257,7 +258,13 @@ final class LiveTranslationGlossaryTests: XCTestCase {
     }
 
     @MainActor
-    func testSameLanguageControllerDoesNotSwapOrRequireAPack() async {
+    func testSameLanguageControllerDoesNotSwapOrRequireAPack() async throws {
+        // ensureReadyToListen asks for the microphone. On a headless runner that
+        // prompt never answers, and without access `ready` cannot be true.
+        try XCTSkipUnless(
+            AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
+            "Needs microphone access already granted"
+        )
         let settings = SettingsStore.shared
         let originalSource = settings.translationSourceLanguageID
         let originalTarget = settings.translationTargetLanguageID
