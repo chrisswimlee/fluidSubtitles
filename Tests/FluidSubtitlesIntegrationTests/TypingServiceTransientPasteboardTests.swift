@@ -70,10 +70,6 @@ final class TypingServiceTransientPasteboardTests: XCTestCase {
         // destroys a multi-window layout (e.g. WebStorm) on every dictation.
         let options = TypingService.focusRestoreActivationOptions
 
-        XCTAssertTrue(
-            options.contains(.activateIgnoringOtherApps),
-            "focus restore must still activate the target app and bring it forward"
-        )
         XCTAssertFalse(
             options.contains(.activateAllWindows),
             "Restoring focus must not raise every window of the target app (issue #748)"

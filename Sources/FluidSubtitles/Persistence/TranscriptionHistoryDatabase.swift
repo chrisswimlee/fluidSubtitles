@@ -1,7 +1,7 @@
 import Foundation
 import SQLite3
 
-enum HistoryTextMetrics {
+nonisolated enum HistoryTextMetrics {
     static func wordCount(in text: String) -> Int {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return 0 }
@@ -435,7 +435,7 @@ final class TranscriptionHistoryDatabase {
 }
 
 /// All disk queries and Codable work happen here, including the one-time legacy import.
-final class TranscriptionHistoryWriter: @unchecked Sendable {
+final nonisolated class TranscriptionHistoryWriter: @unchecked Sendable {
     private let queue = DispatchQueue(label: "fluid.history.persistence", qos: .utility)
     private var database: TranscriptionHistoryDatabase?
     private var writeError: Error?

@@ -574,19 +574,23 @@ struct BottomOverlayView: View {
     }
 
     private func handlePromptSelectorFrameChange(_ frameInScreen: CGRect, window: NSWindow?) {
-        self.promptSelectorFrameInScreen = frameInScreen
-        self.promptSelectorWindow = window
-        guard self.layout.showsTopControls, self.isPromptSelectableMode, !self.contentState.isProcessing else {
-            BottomOverlayPromptMenuController.shared.hide()
+        guard self.promptSelectorFrameInScreen != frameInScreen || self.promptSelectorWindow !== window else {
             return
         }
-
-        BottomOverlayPromptMenuController.shared.updateAnchor(
-            selectorFrameInScreen: frameInScreen,
-            parentWindow: window,
-            maxWidth: self.promptSelectorMaxWidth,
-            menuGap: self.promptMenuGap
-        )
+        DispatchQueue.main.async {
+            self.promptSelectorFrameInScreen = frameInScreen
+            self.promptSelectorWindow = window
+            guard self.layout.showsTopControls, self.isPromptSelectableMode, !self.contentState.isProcessing else {
+                BottomOverlayPromptMenuController.shared.hide()
+                return
+            }
+            BottomOverlayPromptMenuController.shared.updateAnchor(
+                selectorFrameInScreen: frameInScreen,
+                parentWindow: window,
+                maxWidth: self.promptSelectorMaxWidth,
+                menuGap: self.promptMenuGap
+            )
+        }
     }
 
     private func requestModeSwitch(_ mode: OverlayMode) {
@@ -612,19 +616,23 @@ struct BottomOverlayView: View {
     }
 
     private func handleModeSelectorFrameChange(_ frameInScreen: CGRect, window: NSWindow?) {
-        self.modeSelectorFrameInScreen = frameInScreen
-        self.modeSelectorWindow = window
-        guard self.layout.showsTopControls, !self.contentState.isProcessing else {
-            BottomOverlayModeMenuController.shared.hide()
+        guard self.modeSelectorFrameInScreen != frameInScreen || self.modeSelectorWindow !== window else {
             return
         }
-
-        BottomOverlayModeMenuController.shared.updateAnchor(
-            selectorFrameInScreen: frameInScreen,
-            parentWindow: window,
-            maxWidth: self.promptSelectorMaxWidth,
-            menuGap: self.promptMenuGap
-        )
+        DispatchQueue.main.async {
+            self.modeSelectorFrameInScreen = frameInScreen
+            self.modeSelectorWindow = window
+            guard self.layout.showsTopControls, !self.contentState.isProcessing else {
+                BottomOverlayModeMenuController.shared.hide()
+                return
+            }
+            BottomOverlayModeMenuController.shared.updateAnchor(
+                selectorFrameInScreen: frameInScreen,
+                parentWindow: window,
+                maxWidth: self.promptSelectorMaxWidth,
+                menuGap: self.promptMenuGap
+            )
+        }
     }
 
     private func handleActionsSelectorHover(_ hovering: Bool) {
@@ -637,20 +645,24 @@ struct BottomOverlayView: View {
     }
 
     private func handleActionsSelectorFrameChange(_ frameInScreen: CGRect, window: NSWindow?) {
-        self.actionsSelectorFrameInScreen = frameInScreen
-        self.actionsSelectorWindow = window
-        let actionsDisabled = self.contentState.isProcessing
-        guard self.layout.showsTopControls, !actionsDisabled else {
-            BottomOverlayActionsMenuController.shared.hide()
+        guard self.actionsSelectorFrameInScreen != frameInScreen || self.actionsSelectorWindow !== window else {
             return
         }
-
-        BottomOverlayActionsMenuController.shared.updateAnchor(
-            selectorFrameInScreen: frameInScreen,
-            parentWindow: window,
-            maxWidth: self.promptSelectorMaxWidth,
-            menuGap: self.promptMenuGap
-        )
+        DispatchQueue.main.async {
+            self.actionsSelectorFrameInScreen = frameInScreen
+            self.actionsSelectorWindow = window
+            let actionsDisabled = self.contentState.isProcessing
+            guard self.layout.showsTopControls, !actionsDisabled else {
+                BottomOverlayActionsMenuController.shared.hide()
+                return
+            }
+            BottomOverlayActionsMenuController.shared.updateAnchor(
+                selectorFrameInScreen: frameInScreen,
+                parentWindow: window,
+                maxWidth: self.promptSelectorMaxWidth,
+                menuGap: self.promptMenuGap
+            )
+        }
     }
 
     private var modeSelectorTrigger: some View {

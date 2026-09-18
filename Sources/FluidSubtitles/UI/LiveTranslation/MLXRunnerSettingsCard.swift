@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 struct MLXRunnerSettingsCard: View {
+    var showsEnableToggle = true
     @ObservedObject private var settings = SettingsStore.shared
     @ObservedObject private var runner = MLXRunnerService.shared
     @State private var pastedSpec = ""
@@ -9,19 +10,21 @@ struct MLXRunnerSettingsCard: View {
     var body: some View {
         ThemedCard(style: .standard, hoverEffect: false) {
             VStack(alignment: .leading, spacing: 12) {
-            FluidSectionHeader(title: "Local MLX cleaner")
-            Text("Optional. A running MLX model can translate the first print of a caption. It does not change a line already on Theater.")
+            FluidSectionHeader(title: "Local small LLM (experimental)")
+            Text("Experimental. Plug in a downloaded MLX model or an LM Studio folder. A running model can sharpen the first print. It does not change a line already on Theater. Apple Translation stays the fallback.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Toggle("Use local MLX runner", isOn: self.$settings.mlxRunnerEnabled)
-                .onChange(of: self.settings.mlxRunnerEnabled) { _, enabled in
-                    if enabled {
-                        Task { await self.runner.refresh() }
-                    } else {
-                        Task { await self.runner.stopAndWait() }
+            if self.showsEnableToggle {
+                Toggle("Use experimental local LLM", isOn: self.$settings.mlxRunnerEnabled)
+                    .onChange(of: self.settings.mlxRunnerEnabled) { _, enabled in
+                        if enabled {
+                            Task { await self.runner.refresh() }
+                        } else {
+                            Task { await self.runner.stopAndWait() }
+                        }
                     }
-                }
+            }
 
             if self.settings.mlxRunnerEnabled {
                 if self.runner.needsRuntimeInstall {

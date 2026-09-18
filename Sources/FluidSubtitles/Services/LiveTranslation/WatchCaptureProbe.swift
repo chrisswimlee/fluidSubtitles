@@ -1,5 +1,26 @@
 import Foundation
 
+private final class ProbeTally: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedPeak: Float = 0
+    private var recordedPackets = 0
+
+    var peak: Float {
+        self.lock.withLock { self.recordedPeak }
+    }
+
+    var packets: Int {
+        self.lock.withLock { self.recordedPackets }
+    }
+
+    func record(peak: Float) {
+        self.lock.withLock {
+            self.recordedPackets += 1
+            self.recordedPeak = max(self.recordedPeak, peak)
+        }
+    }
+}
+
 enum WatchCaptureProbe {
     enum Outcome: Equatable, Sendable {
         case heardAudio
@@ -84,9 +105,7 @@ enum WatchCaptureProbe {
         let resolvedBundleID = appBundleID ?? settings.theaterWatchAppBundleID
 
         let capture = SystemAudioCapture()
-        let lock = NSLock()
-        var peak: Float = 0
-        var packets = 0
+        let tally = ProbeTally()
         let gate = WatchFeedbackSession()
         let aggressive = WatchOutputRoute.looksLikeLoopbackOrAggregate()
         do {
@@ -104,10 +123,7 @@ enum WatchCaptureProbe {
                     for index in 0..<frameCount {
                         localPeak = max(localPeak, abs(samples[index]))
                     }
-                    lock.lock()
-                    packets += 1
-                    peak = max(peak, localPeak)
-                    lock.unlock()
+                    tally.record(peak: localPeak)
                 },
                 onStopped: { _ in }
             )
@@ -117,10 +133,7 @@ enum WatchCaptureProbe {
 
         try? await Task.sleep(nanoseconds: timeoutNanoseconds)
         await capture.stop()
-        lock.lock()
-        let result = self.classify(peak: peak, packets: packets)
-        lock.unlock()
-        return result
+        return self.classify(peak: tally.peak, packets: tally.packets)
     }
 
     private static func failedOutcome(_ error: Error) -> Outcome {

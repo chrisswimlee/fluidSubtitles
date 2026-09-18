@@ -11,6 +11,7 @@ enum SidebarItem: Hashable {
     case liveTranslation
     case welcome
     case voiceEngine
+    case translationEngine
     case aiEnhancements
     case cleanupStyles
     case customDictionary
@@ -24,6 +25,7 @@ enum SidebarItem: Hashable {
         case .liveTranslation: return "sidebar.theater"
         case .welcome: return "sidebar.welcome"
         case .voiceEngine: return "sidebar.voiceEngine"
+        case .translationEngine: return "sidebar.translationEngine"
         case .aiEnhancements: return "sidebar.aiProviders"
         case .cleanupStyles: return "sidebar.cleanupStyles"
         case .customDictionary: return "sidebar.customDictionary"

@@ -577,7 +577,7 @@ struct MLXRunnerError: LocalizedError {
     var errorDescription: String? { self.message }
 }
 
-private final class MLXRunnerJSONCollector: @unchecked Sendable {
+private nonisolated final class MLXRunnerJSONCollector: @unchecked Sendable {
     private let lock = NSLock()
     private var lastObject: [String: Any] = [:]
 

@@ -1150,6 +1150,14 @@ final class GlobalHotkeyManager: NSObject {
                 return nil
             }
 
+            if self.handleTheaterPresenterKeyDown(
+                keyCode: keyCode,
+                modifiers: eventModifiers,
+                isAutorepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+            ) {
+                return nil
+            }
+
             if let assignment = self.promptShortcutAssignments.first(where: { $0.shortcut.matches(keyCode: keyCode, modifiers: eventModifiers) }) {
                 switch self.hotkeyMode {
                 case .hold:
@@ -2062,6 +2070,27 @@ final class GlobalHotkeyManager: NSObject {
             return true
         }
         return decision.outcome != .ignore
+    }
+
+    /// Control+Option chords that drive Theater mid-talk. Only live while
+    /// Theater is open, so they never steal keys from other apps otherwise.
+    private func handleTheaterPresenterKeyDown(
+        keyCode: UInt16,
+        modifiers: NSEvent.ModifierFlags,
+        isAutorepeat: Bool
+    ) -> Bool {
+        let settings = SettingsStore.shared
+        guard settings.theaterPresenterHotkeysEnabled,
+              settings.theaterWindowEnabled,
+              let action = TheaterPresenterHotkey.action(keyCode: keyCode, modifiers: modifiers)
+        else { return false }
+        // Size steps may repeat while held; toggles fire once per press.
+        if isAutorepeat, !action.repeats { return true }
+        Task { @MainActor in
+            DebugLogger.shared.info("Theater presenter hotkey: \(action)", source: "GlobalHotkeyManager")
+            TheaterPresenterHotkey.perform(action)
+        }
+        return true
     }
 
     private func triggerCaptionListen() {

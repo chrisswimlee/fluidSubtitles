@@ -64,7 +64,7 @@ cp scripts/check-team-id.sh .git/hooks/pre-commit && chmod +x .git/hooks/pre-com
 
 Unsigned fallback for machines without a team: `./build.sh unsigned`.
 
-Optional caption cleanup uses a local MLX runner. Install Python 3.12 (`brew install python@3.12`), then set `FLUID_PYTHON` if it is not on `PATH`.
+Optional experimental first-print sharpening uses a local MLX runner. Install Python 3.12 (`brew install python@3.12`), then set `FLUID_PYTHON` if it is not on `PATH`.
 
 ## Where to edit
 

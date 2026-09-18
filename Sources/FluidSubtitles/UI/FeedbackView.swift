@@ -249,7 +249,7 @@ struct FeedbackView: View {
             let logFileURL = FileLogger.shared.currentLogFileURL()
             if FileManager.default.fileExists(atPath: logFileURL.path) {
                 do {
-                    let logContent = try String(contentsOf: logFileURL)
+                    let logContent = try String(contentsOf: logFileURL, encoding: .utf8)
                     let lines = logContent.components(separatedBy: .newlines)
                     let recentLines = Array(lines.suffix(30)) // Last 30 lines
                     feedbackContent += "Recent Log Entries:\n"

@@ -1135,13 +1135,11 @@ extension AIEnhancementSettingsView {
         let selectedScope = self.viewModel.promptRoutingScope(for: mode)
         let key = "\(mode.normalized.rawValue)-\(scope.rawValue)"
         let isSelected = selectedScope == scope
-        let isEnabled = true
-        let isHovering = isEnabled && self.hoveredPromptScopeKey == key
+        let isHovering = self.hoveredPromptScopeKey == key
         let tone = self.modeAccentColor(mode)
         let cornerRadius: CGFloat = 9
 
         return Button {
-            guard isEnabled else { return }
             self.viewModel.setPromptRoutingScope(scope, for: mode)
         } label: {
             Text(title)
@@ -1157,10 +1155,8 @@ extension AIEnhancementSettingsView {
                 )
         }
         .buttonStyle(.plain)
-        .disabled(!isEnabled)
-        .opacity(isEnabled ? 1 : 0.48)
         .onHover { hovering in
-            self.hoveredPromptScopeKey = hovering && isEnabled ? key : nil
+            self.hoveredPromptScopeKey = hovering ? key : nil
         }
     }
 
@@ -1271,7 +1267,7 @@ extension AIEnhancementSettingsView {
     ) -> some View {
         let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
 
-        return VStack(spacing: 10) {
+        VStack(spacing: 10) {
             HStack(alignment: .center, spacing: 12) {
                 self.appIconView(bundleID: binding.appBundleID)
                     .frame(width: 34, height: 34)

@@ -13,13 +13,18 @@ extension SettingsStore {
         static let hideFromScreenShare = "TheaterHideFromScreenShare"
         static let presentationStyle = "TheaterPresentationStyle"
         static let alsoHearOtherLanguages = "TheaterAlsoHearOtherLanguages"
+        static let dynamicPairing = "TheaterDynamicPairing"
         static let sessionMode = "TheaterSessionMode"
+        /// Leftover Watch keys. Theater Listen is the microphone.
         static let watchTarget = "TheaterWatchTarget"
         static let watchAppBundleID = "TheaterWatchAppBundleID"
         static let minimized = "TheaterMinimized"
         static let expandedWindowFrame = "TheaterExpandedWindowFrame"
         static let captionPrintStyle = "TheaterCaptionPrintStyle"
         static let lastTranslateTarget = "TheaterLastTranslateTargetLanguageID"
+        static let backingBar = "TheaterBackingBar"
+        static let positionPreset = "TheaterPositionPreset"
+        static let presenterHotkeys = "TheaterPresenterHotkeys"
     }
 
     var theaterSessionMode: TheaterSessionMode {
@@ -40,6 +45,7 @@ extension SettingsStore {
         }
     }
 
+    /// Leftover Watch setting. Theater Listen ignores this and uses the microphone.
     var theaterWatchTarget: TheaterWatchTarget {
         get {
             TheaterWatchTarget(
@@ -52,6 +58,7 @@ extension SettingsStore {
         }
     }
 
+    /// Leftover Watch setting. Theater Listen ignores this and uses the microphone.
     var theaterWatchAppBundleID: String {
         get { self.defaults.string(forKey: TheaterDefaults.watchAppBundleID) ?? "" }
         set {
@@ -129,6 +136,43 @@ extension SettingsStore {
         set {
             objectWillChange.send()
             self.defaults.set(newValue, forKey: TheaterDefaults.alsoHearOtherLanguages)
+        }
+    }
+
+    /// Either way: translate whichever language of the pair you speak. Kept
+    /// for a later release; Listen ignores this until `dynamicPairingAvailable`.
+    var theaterDynamicPairing: Bool {
+        get { self.defaults.bool(forKey: TheaterDefaults.dynamicPairing) }
+        set {
+            objectWillChange.send()
+            self.defaults.set(newValue, forKey: TheaterDefaults.dynamicPairing)
+        }
+    }
+
+    /// Transparent style only: a dark bar behind the captions so they read on white slides.
+    var theaterBackingBar: Bool {
+        get { self.defaults.bool(forKey: TheaterDefaults.backingBar) }
+        set {
+            objectWillChange.send()
+            self.defaults.set(newValue, forKey: TheaterDefaults.backingBar)
+        }
+    }
+
+    /// Last position preset. Nil once the presenter drags the board somewhere else.
+    var theaterPositionPreset: TheaterPositionPreset? {
+        get { TheaterPositionPreset(rawValue: self.defaults.string(forKey: TheaterDefaults.positionPreset) ?? "") }
+        set {
+            objectWillChange.send()
+            self.defaults.set(newValue?.rawValue ?? "", forKey: TheaterDefaults.positionPreset)
+        }
+    }
+
+    /// Control+Option shortcuts that drive Theater while the slides keep focus.
+    var theaterPresenterHotkeysEnabled: Bool {
+        get { self.defaults.object(forKey: TheaterDefaults.presenterHotkeys) as? Bool ?? true }
+        set {
+            objectWillChange.send()
+            self.defaults.set(newValue, forKey: TheaterDefaults.presenterHotkeys)
         }
     }
 }

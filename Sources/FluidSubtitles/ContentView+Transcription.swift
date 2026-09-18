@@ -1354,6 +1354,7 @@ extension ContentView {
                 LiveTranslationController.shared.reportListenFailure(MicrophoneAccess.deniedCopy)
                 return
             }
+            await LiveTranslationController.shared.awaitInitialTranslationWarmupIfNeeded()
             LiveTranslationController.shared.beginSession(kind: .captions)
             self.setActiveRecordingMode(.dictate)
             let startOutcome = await self.asr.start(onCaptureStarted: {

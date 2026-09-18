@@ -15,7 +15,7 @@ End-to-end is speech-start to the printed caption. `MT` is Apple Translation onl
 
 The HUD stays visible when chrome is hidden.
 
-Apple Translation uses a warm `TranslationSession`. Hosted CI builds with the Xcode 26.3 SDK, so the later `preferredStrategy` API is not linked. Theater translates a clause when it commits, not on every ASR partial. A speculative Apple-only prefetch may start at a clause-boundary approximation (unread completed clause or a tail that is ready to commit). The HUD `MT` value is still the commit-path wait: 0 on a cache hit, otherwise the remaining Apple call. Prefetch does not use local MLX and must not starve a queued commit.
+Apple Translation uses a warm `TranslationSession`. Hosted CI builds with the Xcode 26.3 SDK, so the later `preferredStrategy` API is not linked. Theater translates a clause when it commits, not on every ASR partial. A speculative Apple-only prefetch may start at a clause-boundary approximation (unread completed clause or a tail that is ready to commit). The HUD `MT` value is the commit-path wait: 0 on an Apple cache hit that was not sharpened, otherwise Apple plus optional first-print polish. Prefetch does not use local MLX and must not starve a queued commit. A running experimental local LLM may sharpen the Apple draft before it prints; a miss or timeout keeps the Apple line.
 
 Apple Translation is warmed when the language pair changes (swap or I-speak / caption pickers) and again on Listen. The first clause still includes pack-ready plus `TranslationSession.prepareTranslation()` if those have not finished. That setup cost is not the per-clause `MT` readout.
 
@@ -30,16 +30,20 @@ Korean, Japanese, and Thai Listen must not use Flash or TDT v2. Theater refuses 
 | Stage | Budget |
 | --- | --- |
 | Parakeet Flash preview tick | ~200 ms |
-| Clause confirm (English / Thai / Korean / Japanese) | 0.5 s / 0.8 s / 1.0 s / 1.0 s after a strong ending |
-| Open-thought fallback | 3.5 s / 4.0 s / 6.0 s of no new words |
+| Hard commit | End-of-utterance, RMS silence hold, or Stop. The Pause button does not flush. |
+| Commit-time line split | 12 English words / 80 KO/JA/TH characters, only when leftover is flushed |
 | Apple Translation `lowLatency` (short clause) | typically 50–200 ms |
 | Audience sees the caption | 3–8 s after the speaker finishes that sentence |
 
 English mid-listen confirmation re-decode is skipped so preview ticks keep the Neural Engine. Korean, Japanese, and Thai also print from the live stitch while you talk. A fuller pass still runs on Stop and on the first silence hold for leftover speech only. A caption already on the board stays.
 
-Speech edges: the first ASR tick is immediate. After 400 ms of RMS silence, one last tick still runs, then later ticks are skipped so a long keynote pause does not keep the Neural Engine hot. Parakeet end-of-utterance holds 400 ms, then commits leftover speech that is a real clause. Theater waits for a finished sentence plus the short land, a natural pause, a twelve-word run-on backstop, or the longer open-thought timeout. Same-language pairs skip Apple Translation and print the spoken sentence. There is no neural VAD on this path.
+Speech edges: the first ASR tick is immediate. After 400 ms of RMS silence, one last tick still runs, then later ticks are skipped so a long keynote pause does not keep the Neural Engine hot. Parakeet end-of-utterance holds 400 ms, then commits leftover speech that is a real clause. A mid-talk period commits only when more speech already follows that finished sentence. A twelve-word timer stays pause-only. Same-language pairs skip Apple Translation and print the spoken sentence. There is no neural VAD on this path.
 
-Memory: live PCM is 30 seconds of 16 kHz float. The live Theater transcript keeps the newest 2,400 characters. Theater keeps a 200-line visible window. Overflow is JSONL under Application Support (`TheaterSession.jsonl`), written on a serial queue with a batched flush. Export bilingual text from the full archive. SRT/VTT use commit times when every cue has a date; otherwise they fall back to 4-second slots.
+Memory: live PCM is 30 seconds of 16 kHz float. The live Theater transcript keeps unread speech only. Theater keeps the 3 on-screen captions. Off-screen lines are dropped. Export bilingual text from the visible board. SRT/VTT use commit times when every cue has a date; otherwise they fall back to 4-second slots.
+
+The presenter pace cue repeats the last measured `e2e` when the spoken line is still ahead of the printed caption. It is not a second score.
+
+Korean and Japanese clause rules stay until a scored talk. Do not invent a new land.
 
 After a real Listen, Theater writes `LastListenLatency.json` under Application Support. Paste those numbers here. Do not invent HUD values. Score captions with [STAGE_SCORE.md](STAGE_SCORE.md).
 

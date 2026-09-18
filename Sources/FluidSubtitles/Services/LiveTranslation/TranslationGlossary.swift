@@ -15,6 +15,7 @@ enum TranslationGlossary {
                 terms.append(entry.replacement)
             }
         }
+        terms.append(contentsOf: TheaterTalkPack.sanitizedTerms(settings.theaterTalkPackTerms))
         return Array(Set(terms.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }))
             .filter { $0.count >= 2 }
             .sorted { $0.count > $1.count }
@@ -28,14 +29,12 @@ enum TranslationGlossary {
         var result = text
         var tokens: [String: String] = [:]
         var index = 0
-        for term in terms {
-            guard !term.isEmpty, result.range(of: term, options: [.caseInsensitive, .diacriticInsensitive]) != nil else {
-                continue
-            }
-            let token = "[[FT\(index)]]"
+        for term in self.orderedTerms(terms) {
+            guard self.containsTerm(term, in: result) else { continue }
+            let token = Self.lockToken(index)
             index += 1
             tokens[token] = term
-            result = result.replacingOccurrences(of: term, with: token, options: [.caseInsensitive, .diacriticInsensitive])
+            result = self.replaceTerm(term, with: token, in: result)
         }
         return ProtectedText(text: result, tokens: tokens)
     }
@@ -50,23 +49,76 @@ enum TranslationGlossary {
 
     /// Terms that appear in the source but vanished from a polished caption.
     static func lostProtectedTerms(source: String, polished: String, terms: [String]) -> [String] {
-        terms.filter { term in
-            let needle = term.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard needle.count >= 2 else { return false }
-            let presentInSource = source.range(
-                of: needle,
-                options: [.caseInsensitive, .diacriticInsensitive]
-            ) != nil
-            let presentInPolished = polished.range(
-                of: needle,
-                options: [.caseInsensitive, .diacriticInsensitive]
-            ) != nil
-            return presentInSource && !presentInPolished
+        self.orderedTerms(terms).filter { term in
+            self.containsTerm(term, in: source) && !self.containsTerm(term, in: polished)
         }
+    }
+
+    static func containsTerm(_ term: String, in text: String) -> Bool {
+        let needle = term.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard needle.count >= 2, !text.isEmpty else { return false }
+        return text.range(of: self.termPattern(needle), options: self.termOptions(for: needle)) != nil
+    }
+
+    /// Short all-caps tokens match as written so IT does not eat "it" and AI does not eat Thai.
+    private static func termOptions(for term: String) -> String.CompareOptions {
+        if self.requiresExactCase(term) {
+            return [.regularExpression]
+        }
+        return [.regularExpression, .caseInsensitive, .diacriticInsensitive]
+    }
+
+    private static func requiresExactCase(_ term: String) -> Bool {
+        let letters = term.filter(\.isLetter)
+        return letters.count >= 2 && letters.count <= 3 && letters.allSatisfy(\.isUppercase)
+    }
+
+    private static func orderedTerms(_ terms: [String]) -> [String] {
+        var seen = Set<String>()
+        var unique: [String] = []
+        for term in terms
+            .map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+            .filter({ $0.count >= 2 })
+            .sorted(by: { $0.count > $1.count })
+        {
+            if seen.insert(term.lowercased()).inserted {
+                unique.append(term)
+            }
+        }
+        return unique
+    }
+
+    private static func replaceTerm(_ term: String, with token: String, in text: String) -> String {
+        text.replacingOccurrences(of: self.termPattern(term), with: token, options: self.termOptions(for: term))
+    }
+
+    private static func termPattern(_ term: String) -> String {
+        let escaped = NSRegularExpression.escapedPattern(for: term)
+        if self.usesWordBoundary(term) {
+            return "\\b\(escaped)\\b"
+        }
+        return escaped
+    }
+
+    private static func usesWordBoundary(_ term: String) -> Bool {
+        !term.unicodeScalars.contains { scalar in
+            (0xAC00...0xD7AF).contains(scalar.value)
+                || (0x3040...0x30FF).contains(scalar.value)
+                || (0x4E00...0x9FFF).contains(scalar.value)
+                || (0x0E00...0x0E7F).contains(scalar.value)
+        }
+    }
+
+    /// Private-use wrappers so a later term like FT cannot smash a lock token.
+    private static func lockToken(_ index: Int) -> String {
+        "\u{FFF9}\(index)\u{FFFA}"
     }
 }
 
 enum SpokenLanguageResolver {
+    /// Either-way pairing is off. Translate stays I speak → Show as.
+    static var dynamicPairingAvailable: Bool { false }
+
     static func spokenLanguageID(settings: SettingsStore = .shared) -> String {
         if let heard = self.heardLanguage(settings: settings) {
             return heard.id
@@ -121,7 +173,7 @@ enum SpokenLanguageResolver {
         if self.heardLanguage(settings: settings)?.id == source.id {
             return true
         }
-        if model.isWhisperModel, settings.theaterAlsoHearOtherLanguages {
+        if model.isWhisperModel, self.shouldAutoDetectWhisper(settings: settings) {
             return true
         }
         return false
@@ -175,6 +227,9 @@ enum SpokenLanguageResolver {
     /// Caption under Theater pickers. Hidden when a mismatch is already showing.
     static func theaterEngineHint(settings: SettingsStore = .shared) -> String? {
         guard self.voiceEngineMismatchMessage(settings: settings) == nil else { return nil }
+        if self.isDynamicPairingEnabled(settings: settings) {
+            return TheaterReadiness.dynamicPairingHint(isWhisper: settings.selectedSpeechModel.isWhisperModel)
+        }
         return TranslationLanguageCatalog.theaterEngineHint(forSource: self.sourceLanguage(settings: settings))
     }
 
@@ -266,11 +321,11 @@ enum SpokenLanguageResolver {
         }
     }
 
-    /// Theater Listen refuses Whisper automatic detection. Auto-detect can
-    /// flip language mid-talk or silently translate a bilingual clause.
-    /// Q&A extras keep auto-detect so English, Korean, Japanese, and Thai questions can land.
+    /// Theater Listen refuses Whisper automatic detection unless Q&A extras
+    /// are on. Either way is a later product. Auto-detect can flip language
+    /// mid-talk or silently translate a bilingual clause.
     static func pinWhisperToSpokenSource(settings: SettingsStore = .shared) {
-        if settings.theaterAlsoHearOtherLanguages { return }
+        if self.shouldAutoDetectWhisper(settings: settings) { return }
         let sourceID = self.sourceLanguage(settings: settings).id
         guard let code = VoiceEngineLanguageCatalog.whisperLanguageCode(for: sourceID) else { return }
         settings.selectedWhisperLanguageCode = code
@@ -306,11 +361,98 @@ enum SpokenLanguageResolver {
         if source.id == target.id {
             return "\(source.displayName) captions"
         }
+        if self.isDynamicPairingEnabled(settings: settings) {
+            return "\(source.displayName) ↔ \(target.displayName)"
+        }
         return "\(source.displayName) → \(target.displayName)"
+    }
+
+    static func shouldAutoDetectWhisper(settings: SettingsStore = .shared) -> Bool {
+        settings.theaterAlsoHearOtherLanguages || self.isDynamicPairingEnabled(settings: settings)
+    }
+
+    /// Auto-detecting the spoken language and swapping source/target based on
+    /// what was heard is removed: translation always runs in the one fixed
+    /// direction the user configured (I speak -> Show as), never "either way".
+    static func isDynamicPairingEnabled(settings _: SettingsStore = .shared) -> Bool {
+        false
+    }
+
+    /// I speak / Show as. Always the fixed configured direction.
+    static func pairForSpokenText(
+        _: String,
+        settings: SettingsStore = .shared
+    ) -> (source: TranslationLanguage, target: TranslationLanguage) {
+        (self.sourceLanguage(settings: settings), self.targetLanguage(settings: settings))
+    }
+
+    static func listenLanguageID(for text: String, settings: SettingsStore = .shared) -> String {
+        self.pairForSpokenText(text, settings: settings).source.id
     }
 }
 
-enum LiveTranslationTiming {
+enum SpokenScriptDetector {
+    static func languageID(in text: String, among allowed: [String]) -> String? {
+        let allowedIDs = Set(allowed)
+        guard !allowedIDs.isEmpty else { return nil }
+        var scores: [String: Int] = [:]
+        let countHanForJapanese = allowedIDs.contains(TranslationLanguageCatalog.japanese.id)
+            && !allowedIDs.contains(TranslationLanguageCatalog.korean.id)
+
+        for scalar in text.unicodeScalars {
+            if Self.isHangul(scalar) {
+                Self.add("ko", to: &scores, allowed: allowedIDs)
+            } else if Self.isThai(scalar) {
+                Self.add("th", to: &scores, allowed: allowedIDs)
+            } else if Self.isKana(scalar) {
+                Self.add("ja", to: &scores, allowed: allowedIDs)
+            } else if countHanForJapanese, Self.isHan(scalar) {
+                Self.add("ja", to: &scores, allowed: allowedIDs)
+            } else if Self.isLatinLetter(scalar) {
+                Self.add("en", to: &scores, allowed: allowedIDs)
+            }
+        }
+
+        let ranked = scores.filter { $0.value > 0 }.sorted { $0.value > $1.value }
+        guard let top = ranked.first, top.value >= 2 else { return nil }
+        if let second = ranked.dropFirst().first, second.value * 2 >= top.value {
+            return nil
+        }
+        return top.key
+    }
+
+    private static func add(_ id: String, to scores: inout [String: Int], allowed: Set<String>) {
+        guard allowed.contains(id) else { return }
+        scores[id, default: 0] += 1
+    }
+
+    private static func isLatinLetter(_ scalar: Unicode.Scalar) -> Bool {
+        CharacterSet.letters.contains(scalar) && scalar.value < 0x0250
+    }
+
+    private static func isHangul(_ scalar: Unicode.Scalar) -> Bool {
+        (0x1100 ... 0x11FF).contains(scalar.value)
+            || (0x3130 ... 0x318F).contains(scalar.value)
+            || (0xAC00 ... 0xD7AF).contains(scalar.value)
+    }
+
+    private static func isKana(_ scalar: Unicode.Scalar) -> Bool {
+        (0x3040 ... 0x30FF).contains(scalar.value)
+            || (0x31F0 ... 0x31FF).contains(scalar.value)
+            || (0xFF66 ... 0xFF9D).contains(scalar.value)
+    }
+
+    private static func isHan(_ scalar: Unicode.Scalar) -> Bool {
+        (0x4E00 ... 0x9FFF).contains(scalar.value)
+            || (0x3400 ... 0x4DBF).contains(scalar.value)
+    }
+
+    private static func isThai(_ scalar: Unicode.Scalar) -> Bool {
+        (0x0E00 ... 0x0E7F).contains(scalar.value)
+    }
+}
+
+nonisolated enum LiveTranslationTiming {
     /// English confirm after a finished ending.
     static let completeSettleNanoseconds: UInt64 = 500_000_000
     /// English open-thought silence before a forced cut.
@@ -330,20 +472,26 @@ enum LiveTranslationTiming {
     static let maxLineWords = 12
     static let maxLineCharacters = 80
     static let contextSentenceCount = 4
-    /// Captions kept in the Theater window. Older lines stay in the session archive.
-    static let visibleTheaterLines = 12
-    /// Visible Theater window. Overflow goes to the session archive on disk.
-    static let maxCommittedLines = 200
+    /// Captions kept on the Theater board. Off-screen lines are dropped.
+    static let visibleTheaterLines = 3
+    static let maxCommittedLines = visibleTheaterLines
     /// After this much silence, skip ASR ticks and start a new e2e measurement.
     static let silenceHoldNanoseconds: UInt64 = 400_000_000
     static let silenceHoldSeconds: TimeInterval = 0.4
     static let polishPriorCaptionCount = 4
     static let polishTemperature = 0.2
     static let polishMaxTokens = 256
-    static let polishTimeoutNanoseconds: UInt64 = 8_000_000_000
-    /// Local commit MT must lose to Apple if it is slower than a clause.
+    /// A commit MT call must fail, not hang, since the burst-safe log
+    /// holds the row until `inFlightSources` is empty again. `warmAppleTranslation`
+    /// is fire-and-forget at session start, not awaited — the session's first
+    /// commit can race a cold Apple Translation session start (model load,
+    /// first `.translationTask` attach), which can take longer than a few
+    /// seconds. This only needs to catch a truly hung call, not enforce
+    /// snappy latency, so the floor stays generous.
+    static let translateClauseTimeoutNanoseconds: UInt64 = 25_000_000_000
+    /// Local first-print polish and Apple-failure MT must lose to Apple if slower than a clause.
     static let commitTranslationTimeoutNanoseconds: UInt64 = 4_000_000_000
-    /// After this many local attempts, an 80% echo rate disables local MT for the listen.
+    /// After this many local attempts, an 80% miss rate disables local MT for the listen.
     static let localEchoFailMinimumAttempts = 5
     static let localEchoFailRatio = 0.80
 

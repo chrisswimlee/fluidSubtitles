@@ -20,7 +20,6 @@ struct VoiceEngineSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            TheaterEngineCards(showsVoiceSection: false, showsVoiceCustomize: false)
             self.speechRecognitionCard
         }
         .onAppear { self.viewModel.onAppear() }

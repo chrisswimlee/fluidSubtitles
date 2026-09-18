@@ -1,6 +1,6 @@
 import Foundation
 
-enum TheaterCaptionExport {
+nonisolated enum TheaterCaptionExport {
     static func bilingualText(pairs: [CaptionHistoryPair]) -> String {
         pairs
             .compactMap(Self.cueText(for:))

@@ -1,7 +1,7 @@
 import Foundation
 
-/// Overflow from the 200-line Theater window. JSONL on disk so a 3-hour talk
-/// does not grow the in-memory SwiftUI board or UserDefaults snapshot.
+/// Optional JSONL helper for leftover session files. Live Theater drops
+/// off-screen captions instead of writing overflow.
 /// Writes run on a dedicated serial queue with a batched flush so clause
 /// commits do not fsync on the MainActor.
 final class LectureCaptionArchive: @unchecked Sendable {
@@ -131,15 +131,25 @@ final class LectureCaptionArchive: @unchecked Sendable {
             try handle.seekToEnd()
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
-            for entry in entries {
-                let data = try encoder.encode(entry)
-                try handle.write(contentsOf: data)
-                try handle.write(contentsOf: Data([0x0A]))
-                self.flushedCount += 1
+            var written = 0
+            do {
+                for entry in entries {
+                    let data = try encoder.encode(entry)
+                    try handle.write(contentsOf: data)
+                    try handle.write(contentsOf: Data([0x0A]))
+                    written += 1
+                }
+                try handle.synchronize()
+                self.flushedCount += written
+            } catch {
+                // Only the entries that never made it to disk are retried.
+                // Reinserting already-written ones would double-write them
+                // and inflate flushedCount/overflowCount on the next flush.
+                self.flushedCount += written
+                self.pending.insert(contentsOf: entries[written...], at: 0)
+                throw error
             }
-            try handle.synchronize()
         } catch {
-            self.pending.insert(contentsOf: entries, at: 0)
             DebugLogger.shared.error(
                 "Theater archive append failed: \(error.localizedDescription)",
                 source: "LiveTranslation"

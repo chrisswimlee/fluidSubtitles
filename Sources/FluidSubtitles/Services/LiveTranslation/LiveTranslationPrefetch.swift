@@ -8,6 +8,10 @@ struct LiveTranslationPrefetchKey: Hashable {
 
 enum LiveTranslationPrefetch {
     static func unitToPrefetch(leftover: String, languageID: String) -> String? {
+        let trimmed = leftover.trimmingCharacters(in: .whitespacesAndNewlines)
+        let open = TranslationClauseSegmenter.liveOpenText(trimmed, languageID: languageID)
+        if open.count >= 8 { return open }
+        if trimmed.count >= 8 { return trimmed }
         if let next = TranslationClauseSegmenter.nextCommitUnit(
             leftover,
             languageID: languageID,

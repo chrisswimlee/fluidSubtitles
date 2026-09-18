@@ -17,9 +17,9 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
     @Published private(set) var availableLanguages: [TranslationLanguage] = TranslationLanguageCatalog.all
 
     private var mailbox = TranslationRequestMailbox()
-    private var sessionTask: Task<Void, Never>?
     private var lastPair: String = ""
-    private var supportedLanguages: [Locale.Language] = []
+    private let languageAvailability = LanguageAvailability()
+    private var packStatusByPair: [String: TranslationPackAvailability] = [:]
 
     var isMailboxReady: Bool { self.mailbox.isReady }
     var hasQueuedOrInFlightCommit: Bool { self.mailbox.hasQueuedOrInFlightCommit }
@@ -29,9 +29,9 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
             self.tearDownSession(reason: "Language pair changed.")
             return
         }
-        let sourceLanguage = self.resolvedAppleLanguage(source)
-        let targetLanguage = self.resolvedAppleLanguage(target)
-        let pair = "\(sourceLanguage.minimalIdentifier)->\(targetLanguage.minimalIdentifier)"
+        let sourceLanguage = source.localeLanguage
+        let targetLanguage = target.localeLanguage
+        let pair = Self.packCacheKey(source: source, target: target)
         if pair == self.lastPair, self.configuration != nil {
             return
         }
@@ -43,10 +43,9 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
         )
     }
 
-    func warm(source: TranslationLanguage, target: TranslationLanguage) async {
-        await self.ensureSupportedLanguages()
+    func warm(source: TranslationLanguage, target: TranslationLanguage, timeoutSeconds: TimeInterval = 2) async {
         self.prepare(source: source, target: target)
-        await self.waitUntilMailboxReady()
+        await self.waitUntilMailboxReady(timeoutSeconds: timeoutSeconds)
     }
 
     /// Re-triggers the SwiftUI host so macOS can show the language-pack sheet.
@@ -71,7 +70,6 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
         guard !trimmed.isEmpty else { return "" }
         guard source.id != target.id else { return trimmed }
 
-        await self.ensureSupportedLanguages()
         self.prepare(source: source, target: target)
         await self.waitUntilMailboxReady()
 
@@ -108,6 +106,16 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
         return .warmMailbox
     }
 
+    /// Theater only asks Apple about this pair. Enumerating every system
+    /// locale pair can trap in Translation on macOS 26.
+    nonisolated static func packCacheKey(source: TranslationLanguage, target: TranslationLanguage) -> String {
+        "\(source.id)->\(target.id)"
+    }
+
+    /// Apple requires the session to stay in use only while `.translationTask`'s closure is
+    /// running, so this must await the serve loop directly rather than detaching it — a
+    /// detached Task lets the closure return immediately and the session becomes invalid
+    /// while `serve` is still calling `translate` on it, which eventually traps.
     func attachSession(_ session: TranslationSession) async {
         do {
             try await session.prepareTranslation()
@@ -119,7 +127,7 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
                 source: "AppleTranslationEngine"
             )
         }
-        self.replaceSessionTask(serving: session)
+        await self.serve(session: session, mailbox: self.mailbox)
     }
 
     private func tearDownSession(reason: String) {
@@ -127,14 +135,6 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
         self.lastPair = ""
         self.mailbox.cancelAll(TranslationEngineError(message: reason))
         self.configuration = nil
-    }
-
-    private func replaceSessionTask(serving session: TranslationSession) {
-        self.sessionTask?.cancel()
-        // Keep queued commits. Pair changes already cancelAll in prepare/tearDown.
-        self.sessionTask = Task { [mailbox] in
-            await self.serve(session: session, mailbox: mailbox)
-        }
     }
 
     private func waitUntilMailboxReady(timeoutSeconds: TimeInterval = 2) async {
@@ -152,20 +152,29 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
         target: TranslationLanguage
     ) async -> TranslationPackAvailability {
         if source.id == target.id { return .installed }
-        await self.ensureSupportedLanguages()
-        let sourceLanguage = self.resolvedAppleLanguage(source)
-        let targetLanguage = self.resolvedAppleLanguage(target)
-        let status = await LanguageAvailability().status(from: sourceLanguage, to: targetLanguage)
+        let key = Self.packCacheKey(source: source, target: target)
+        if let cached = self.packStatusByPair[key], cached == .installed || cached == .unsupported {
+            return cached
+        }
+        let status = await self.languageAvailability.status(
+            from: source.localeLanguage,
+            to: target.localeLanguage
+        )
+        let resolved: TranslationPackAvailability
         switch status {
         case .installed:
-            return .installed
+            resolved = .installed
         case .supported:
-            return .supported
+            resolved = .supported
         case .unsupported:
-            return .unsupported
+            resolved = .unsupported
         @unknown default:
-            return .unknown
+            resolved = .unknown
         }
+        if resolved == .installed || resolved == .unsupported {
+            self.packStatusByPair[key] = resolved
+        }
+        return resolved
     }
 
     func checkAvailability(source: TranslationLanguage, target: TranslationLanguage) async -> String {
@@ -173,14 +182,11 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
             return "Ready — captioning \(source.displayName)"
         }
         let status = await self.packAvailability(source: source, target: target)
-        let englishIsPresent = self.supportedLanguages.contains {
-            $0.languageCode?.identifier.lowercased() == "en"
-        }
         switch status {
         case .installed:
             return "Ready — \(source.displayName) pack is installed."
         case .supported:
-            if englishIsPresent, source.id == "en" {
+            if source.id == "en" {
                 return "Download the \(target.displayName) pack before you Listen."
             }
             return "Download the language pack before you Listen."
@@ -191,20 +197,6 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
         }
     }
 
-    private func ensureSupportedLanguages() async {
-        guard self.supportedLanguages.isEmpty else { return }
-        let supported = await LanguageAvailability().supportedLanguages
-        self.supportedLanguages = supported
-        let languages = TranslationLanguageCatalog.languages(from: supported)
-        if !languages.isEmpty {
-            self.availableLanguages = languages
-        }
-    }
-
-    private func resolvedAppleLanguage(_ language: TranslationLanguage) -> Locale.Language {
-        TranslationLanguageCatalog.appleLanguage(for: language, from: self.supportedLanguages)
-    }
-
     @available(macOS 26.0, *)
     private func translateWithInstalledSession(
         _ text: String,
@@ -212,9 +204,10 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
         target: TranslationLanguage
     ) async throws -> String? {
         do {
-            let sourceLanguage = self.resolvedAppleLanguage(source)
-            let targetLanguage = self.resolvedAppleLanguage(target)
-            let session = Self.makeInstalledSession(source: sourceLanguage, target: targetLanguage)
+            let session = Self.makeInstalledSession(
+                source: source.localeLanguage,
+                target: target.localeLanguage
+            )
             let started = ProcessInfo.processInfo.systemUptime
             let response = try await session.translate(text)
             self.recordLatency(since: started)
@@ -243,15 +236,36 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
             if request.isCancelled { continue }
             let started = ProcessInfo.processInfo.systemUptime
             do {
-                let response = try await session.translate(request.text)
+                let text = try await Self.translate(request.text, session: session)
                 self.recordLatency(since: started)
                 if request.isCancelled { continue }
-                request.resume(.success(response.targetText))
+                request.resume(.success(text))
             } catch {
                 self.lastError = error.localizedDescription
                 if request.isCancelled { continue }
                 request.resume(.failure(error))
             }
+        }
+    }
+
+    /// This loop serves one request at a time, so a single hung or slow
+    /// `translate` call (e.g. a cold on-device session still warming up on
+    /// the first sentence) would otherwise block every later sentence's
+    /// commit behind it indefinitely — the caller's own timeout only
+    /// abandons its wait, it does not stop this shared loop. Racing the call
+    /// against the same deadline the caller uses keeps the queue moving so a
+    /// slow first sentence cannot starve every sentence that follows it.
+    private static func translate(_ text: String, session: TranslationSession) async throws -> String {
+        try await withThrowingTaskGroup(of: String.self) { group in
+            group.addTask {
+                try await session.translate(text).targetText
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: LiveTranslationTiming.translateClauseTimeoutNanoseconds)
+                throw TranslationEngineError(message: "Apple Translation timed out.")
+            }
+            defer { group.cancelAll() }
+            return try await group.next()!
         }
     }
 
@@ -297,6 +311,37 @@ enum TranslationPackAvailability: Equatable {
             }
         }
         return rank(lhs) >= rank(rhs) ? lhs : rhs
+    }
+}
+
+/// Either way (later) needs both directions. The download sheet attaches to the
+/// missing pack, not always I speak → Show as.
+enum TheaterPairPacks {
+    static func combined(
+        forward: TranslationPackAvailability,
+        reverse: TranslationPackAvailability?,
+        bidirectional: Bool
+    ) -> TranslationPackAvailability {
+        guard bidirectional, let reverse else { return forward }
+        return TranslationPackAvailability.stricter(forward, reverse)
+    }
+
+    static func downloadPair(
+        source: TranslationLanguage,
+        target: TranslationLanguage,
+        forward: TranslationPackAvailability,
+        reverse: TranslationPackAvailability?,
+        bidirectional: Bool
+    ) -> (source: TranslationLanguage, target: TranslationLanguage) {
+        guard bidirectional, source.id != target.id, let reverse else {
+            return (source, target)
+        }
+        let attachReverse = reverse != .installed
+            && (
+                forward == .installed
+                    || TranslationPackAvailability.stricter(forward, reverse) == reverse
+            )
+        return attachReverse ? (target, source) : (source, target)
     }
 }
 

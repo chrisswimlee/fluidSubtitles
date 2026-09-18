@@ -1,6 +1,6 @@
 import Foundation
 
-enum LiveAudioRetention {
+nonisolated enum LiveAudioRetention {
     static let sampleRate = 16_000
     static let maximumRetainedSeconds = 30
     static let maximumRetainedSamples = sampleRate * maximumRetainedSeconds

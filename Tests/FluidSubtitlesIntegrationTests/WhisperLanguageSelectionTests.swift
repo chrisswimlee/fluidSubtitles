@@ -141,6 +141,41 @@ final class WhisperLanguageSelectionTests: XCTestCase {
         XCTAssertEqual(SpokenLanguageHints.whisperLanguageCode(stored: "ko", alsoHearOthers: false), "ko")
     }
 
+    func testDeferredEitherWayPinsWhisperToSpokenSource() {
+        let settings = SettingsStore.shared
+        let originalModel = settings.selectedSpeechModel
+        let originalSource = settings.translationSourceLanguageID
+        let originalTarget = settings.translationTargetLanguageID
+        let originalWhisper = settings.selectedWhisperLanguageCode
+        let originalAlsoHear = settings.theaterAlsoHearOtherLanguages
+        let originalDynamic = settings.theaterDynamicPairing
+        let originalMode = settings.theaterSessionMode
+        defer {
+            settings.selectedSpeechModel = originalModel
+            settings.translationSourceLanguageID = originalSource
+            settings.translationTargetLanguageID = originalTarget
+            settings.selectedWhisperLanguageCode = originalWhisper
+            settings.theaterAlsoHearOtherLanguages = originalAlsoHear
+            settings.theaterDynamicPairing = originalDynamic
+            settings.theaterSessionMode = originalMode
+        }
+
+        settings.selectedSpeechModel = .whisperSmall
+        settings.theaterSessionMode = .translation
+        settings.translationSourceLanguageID = "en"
+        settings.translationTargetLanguageID = "ko"
+        settings.selectedWhisperLanguageCode = nil
+        settings.theaterAlsoHearOtherLanguages = false
+        settings.theaterDynamicPairing = true
+
+        SpokenLanguageResolver.pinWhisperToSpokenSource(settings: settings)
+
+        XCTAssertFalse(SpokenLanguageResolver.dynamicPairingAvailable)
+        XCTAssertEqual(settings.selectedWhisperLanguageCode, "en")
+        XCTAssertFalse(SpokenLanguageResolver.shouldAutoDetectWhisper(settings: settings))
+        XCTAssertTrue(SpokenLanguageResolver.voiceEngineSupportsSource(settings: settings))
+    }
+
     @MainActor
     func testBeginSessionPinsAutomaticWhisperToSpokenSource() {
         let settings = SettingsStore.shared

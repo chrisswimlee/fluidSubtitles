@@ -18,6 +18,7 @@ Ad-hoc, `not set`, and empty team IDs are rejected by `UpdateSignaturePolicy`.
 3. Put the published team ID in `FluidProduct.allowedUpdateTeamIDs`. Until that set is non-empty, every in-app update is rejected.
 4. Tag `v*` and attach the zip plus `SHA256SUMS` (or let `.github/workflows/release.yml` do it once the `release` environment secrets exist).
 5. Hosted CI still cannot prove a live Theater listen. Keep [STAGE_SCORE.md](STAGE_SCORE.md) next to the release notes. Watch is not a product gate.
+6. Homebrew listing is a personal tap first, then an official cask PR. See [HOMEBREW.md](HOMEBREW.md).
 
 ## Library validation
 

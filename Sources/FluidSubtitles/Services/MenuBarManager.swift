@@ -186,6 +186,23 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
             return
         }
 
+        // Theater captions fill their own window and never type into another
+        // app, so the dictation notch popping up underneath is a leftover
+        // dictation-only reflex, not a Theater status indicator — it only
+        // confuses users pressing Theater's Listen. Insert still types into
+        // the focused app like normal dictation, so it keeps the notch.
+        if LiveTranslationController.shared.isSessionActive,
+           LiveTranslationController.shared.listenKind == .captions
+        {
+            self.pendingShowOperation?.cancel()
+            self.pendingShowOperation = nil
+            if self.overlayVisible {
+                self.overlayVisible = false
+                NotchOverlayManager.shared.hide()
+            }
+            return
+        }
+
         // Don't hide the overlay while AI processing is active.
         // Without this, the notch can disappear during the short "Refining..." phase because
         // `isRunning` becomes false before post-processing completes.

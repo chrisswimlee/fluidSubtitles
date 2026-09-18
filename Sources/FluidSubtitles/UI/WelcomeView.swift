@@ -88,23 +88,13 @@ struct WelcomeView: View {
                                     step: 3,
                                     title: self.isLanguagePackReady ? "Language pack ready" : "Download language pack",
                                     description: self.languagePackAvailability.isEmpty
-                                        ? "Translation Engine is Apple Translation. It downloads the Korean, English, Thai, or Japanese pack once."
+                                        ? "Translation Engine is Apple Translation by default. Download the Korean, English, Thai, or Japanese pack once, or try the experimental local LLM."
                                         : self.languagePackAvailability,
                                     status: self.isLanguagePackReady ? .completed : .pending,
                                     action: {
-                                        Task {
-                                            let source = SpokenLanguageResolver.sourceLanguage()
-                                            let target = SpokenLanguageResolver.targetLanguage()
-                                            await AppleTranslationEngine.shared.warm(source: source, target: target)
-                                            AppleTranslationEngine.shared.requestLanguagePackDownload()
-                                            try? await Task.sleep(nanoseconds: 1_500_000_000)
-                                            self.languagePackAvailability = await AppleTranslationEngine.shared.checkAvailability(
-                                                source: source,
-                                                target: target
-                                            )
-                                        }
+                                        self.selectedSidebarItem = .translationEngine
                                     },
-                                    actionButtonTitle: TheaterReadiness.downloadPack,
+                                    actionButtonTitle: "Translation Engine",
                                     showActionButton: !self.isLanguagePackReady
                                 )
                             }

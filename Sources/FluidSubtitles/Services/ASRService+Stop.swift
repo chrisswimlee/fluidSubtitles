@@ -286,7 +286,7 @@ extension ASRService {
                 defer { delayedFinalStatusTask.cancel() }
                 result = try await self.transcriptionExecutor.run(benchmarkSessionID: self.benchmarkSessionID) { [provider] in
                     let executionStartedAt = ProcessInfo.processInfo.systemUptime
-                    DebugLogger.shared.info("ASR_BENCH t=\(executionStartedAt) final_executor_begin mainThread=\(Thread.isMainThread)", source: "ASRBenchmark")
+                    DebugLogger.shared.info("ASR_BENCH t=\(executionStartedAt) final_executor_begin", source: "ASRBenchmark")
                     defer {
                         DebugLogger.shared.info("ASR_BENCH t=\(ProcessInfo.processInfo.systemUptime) final_executor_end", source: "ASRBenchmark")
                     }
@@ -1439,7 +1439,7 @@ extension ASRService {
         let sessionID = self.benchmarkSessionID
         self.audioCapturePipeline.setRecordingEnabled(false)
         if self.isStarting, self.isRunning == false {
-            await self.audioCaptureReadinessGate.signalFormatInvalidation(
+            self.audioCaptureReadinessGate.signalFormatInvalidation(
                 sessionID: sessionID,
                 attemptID: self.audioCaptureAttemptID
             )

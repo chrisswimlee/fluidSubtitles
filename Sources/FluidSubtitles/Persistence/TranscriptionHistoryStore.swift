@@ -57,7 +57,7 @@ struct CaptionHistoryPair: Codable, Equatable, Sendable {
     }
 }
 
-struct TranscriptionHistoryEntry: Codable, Identifiable, Equatable, Sendable {
+nonisolated struct TranscriptionHistoryEntry: Codable, Identifiable, Equatable, Sendable {
     let id: UUID
     let timestamp: Date
     let rawText: String

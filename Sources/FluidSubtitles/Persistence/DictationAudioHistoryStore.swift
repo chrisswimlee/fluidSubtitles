@@ -1,6 +1,6 @@
 import Foundation
 
-struct DictationAudioSnapshot: Sendable {
+nonisolated struct DictationAudioSnapshot: Sendable {
     let samples: [Float]
     let sampleRate: Int
     let channels: Int
@@ -103,7 +103,7 @@ final nonisolated class DictationAudioHistoryStore: @unchecked Sendable {
     /// metadata has attached on the main actor.
     func completePendingSave(fileName: String) {
         self.pendingSaveLock.withLock {
-            self.pendingSaveFileNames.remove(fileName)
+            _ = self.pendingSaveFileNames.remove(fileName)
         }
     }
 
@@ -534,7 +534,7 @@ final nonisolated class DictationAudioHistoryStore: @unchecked Sendable {
     }()
 }
 
-private struct AudioManifestRow: Encodable {
+private nonisolated struct AudioManifestRow: Encodable {
     let audio: String
     let text: String
     let rawTranscript: String

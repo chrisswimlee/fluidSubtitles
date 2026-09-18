@@ -348,7 +348,7 @@ enum PrivateAIProviderRegistry {
     nonisolated(unsafe) static var integration: any PrivateAIIntegrationProviding = UnavailablePrivateAIIntegrationProvider()
 }
 
-private enum PrivateAIProviderBootstrap {
+private nonisolated enum PrivateAIProviderBootstrap {
     static let installOnce: Void = {
         #if PRIVATE_AI_PROVIDER
         PrivateAIProviderBridge.install()
@@ -360,7 +360,7 @@ private enum PrivateAIProviderBootstrap {
     }
 }
 
-enum PrivateAIProviderFeature {
+nonisolated enum PrivateAIProviderFeature {
     nonisolated static var shared: any PrivateAIProviderFeatureProviding {
         PrivateAIProviderBootstrap.installIfAvailable()
         return PrivateAIProviderRegistry.feature

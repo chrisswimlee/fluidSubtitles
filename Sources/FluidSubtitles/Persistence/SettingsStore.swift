@@ -27,7 +27,7 @@ final class SettingsStore: ObservableObject {
     static let privateAIDictationRoundTripTokenCost = 2.75
     private static let privateAIDenseSegmentByteThreshold = 12
     private static let privateAIDenseBytesPerToken = 2
-    static let privateAIBackendPreferenceDefaultsKey = "FluidIntelligenceBackendPreference"
+    nonisolated static let privateAIBackendPreferenceDefaultsKey = "FluidIntelligenceBackendPreference"
     private static let forcedOnboardingResetIntroducedAt = Date(timeIntervalSince1970: 1_782_091_732)
     let defaults = UserDefaults.standard
     let keychain = KeychainService.shared

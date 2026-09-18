@@ -66,13 +66,13 @@ final class SystemAudioCapture: NSObject, SCStreamOutput, SCStreamDelegate, @unc
             }
         }
         await self.stop()
-        self.lock.lock()
-        self.packetHandler = packetHandler
-        self.onStopped = onStopped
-        self.nextSampleTime = 0
-        self.stoppingIntentionally = false
-        self.didReportStop = false
-        self.lock.unlock()
+        self.lock.withLock {
+            self.packetHandler = packetHandler
+            self.onStopped = onStopped
+            self.nextSampleTime = 0
+            self.stoppingIntentionally = false
+            self.didReportStop = false
+        }
 
         guard let display = content.displays.first else {
             throw SystemAudioCaptureError.noDisplay
@@ -101,9 +101,9 @@ final class SystemAudioCapture: NSObject, SCStreamOutput, SCStreamDelegate, @unc
         } catch {
             throw SystemAudioCaptureError.startFailed(ScreenRecordingAccess.message(forStartError: error))
         }
-        self.lock.lock()
-        self.stream = stream
-        self.lock.unlock()
+        self.lock.withLock {
+            self.stream = stream
+        }
     }
 
     func resetClock() {
@@ -113,13 +113,14 @@ final class SystemAudioCapture: NSObject, SCStreamOutput, SCStreamDelegate, @unc
     }
 
     func stop() async {
-        self.lock.lock()
-        self.stoppingIntentionally = true
-        let stream = self.stream
-        self.stream = nil
-        self.packetHandler = nil
-        self.onStopped = nil
-        self.lock.unlock()
+        let stream = self.lock.withLock { () -> SCStream? in
+            self.stoppingIntentionally = true
+            let stream = self.stream
+            self.stream = nil
+            self.packetHandler = nil
+            self.onStopped = nil
+            return stream
+        }
         guard let stream else { return }
         try? await stream.stopCapture()
     }

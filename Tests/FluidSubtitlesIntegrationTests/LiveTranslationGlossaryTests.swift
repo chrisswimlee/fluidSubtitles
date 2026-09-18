@@ -640,4 +640,224 @@ final class LiveTranslationGlossaryTests: XCTestCase {
             )
         )
     }
+
+    func testSpokenScriptDetectorReadsThePairLanguages() {
+        XCTAssertEqual(SpokenScriptDetector.languageID(in: "Hello there", among: ["en", "ko"]), "en")
+        XCTAssertEqual(SpokenScriptDetector.languageID(in: "안녕하세요 여러분", among: ["en", "ko"]), "ko")
+        XCTAssertEqual(SpokenScriptDetector.languageID(in: "こんにちは皆さん", among: ["en", "ja"]), "ja")
+        XCTAssertEqual(SpokenScriptDetector.languageID(in: "สวัสดีครับ", among: ["en", "th"]), "th")
+        XCTAssertNil(SpokenScriptDetector.languageID(in: "Hi 안녕", among: ["en", "ko"]))
+        XCTAssertNil(SpokenScriptDetector.languageID(in: "A", among: ["en", "ko"]))
+    }
+
+    func testDynamicPairingStaysPinnedWhileEitherWayIsDeferred() {
+        let settings = SettingsStore.shared
+        let originalSource = settings.translationSourceLanguageID
+        let originalTarget = settings.translationTargetLanguageID
+        let originalMode = settings.theaterSessionMode
+        let originalDynamic = settings.theaterDynamicPairing
+        defer {
+            settings.translationSourceLanguageID = originalSource
+            settings.translationTargetLanguageID = originalTarget
+            settings.theaterSessionMode = originalMode
+            settings.theaterDynamicPairing = originalDynamic
+        }
+
+        settings.theaterSessionMode = .translation
+        settings.translationSourceLanguageID = "en"
+        settings.translationTargetLanguageID = "ko"
+        settings.theaterDynamicPairing = true
+
+        XCTAssertFalse(SpokenLanguageResolver.dynamicPairingAvailable)
+        XCTAssertFalse(SpokenLanguageResolver.isDynamicPairingEnabled(settings: settings))
+        let korean = SpokenLanguageResolver.pairForSpokenText("안녕하세요 여러분", settings: settings)
+        XCTAssertEqual(korean.source.id, "en")
+        XCTAssertEqual(korean.target.id, "ko")
+        let english = SpokenLanguageResolver.pairForSpokenText("Hello everyone", settings: settings)
+        XCTAssertEqual(english.source.id, "en")
+        XCTAssertEqual(english.target.id, "ko")
+        XCTAssertEqual(SpokenLanguageResolver.pairLabel(settings: settings), "English → Korean")
+    }
+
+    func testEitherWayCombinesPacksAndAttachesTheMissingDirection() {
+        let english = TranslationLanguageCatalog.english
+        let korean = TranslationLanguageCatalog.korean
+        XCTAssertEqual(
+            TheaterPairPacks.combined(forward: .installed, reverse: .supported, bidirectional: true),
+            .supported
+        )
+        XCTAssertEqual(
+            TheaterPairPacks.combined(forward: .installed, reverse: .supported, bidirectional: false),
+            .installed
+        )
+        let reverseMissing = TheaterPairPacks.downloadPair(
+            source: english,
+            target: korean,
+            forward: .installed,
+            reverse: .supported,
+            bidirectional: true
+        )
+        XCTAssertEqual(reverseMissing.source.id, "ko")
+        XCTAssertEqual(reverseMissing.target.id, "en")
+        let forwardMissing = TheaterPairPacks.downloadPair(
+            source: english,
+            target: korean,
+            forward: .supported,
+            reverse: .installed,
+            bidirectional: true
+        )
+        XCTAssertEqual(forwardMissing.source.id, "en")
+        XCTAssertEqual(forwardMissing.target.id, "ko")
+        let oneWay = TheaterPairPacks.downloadPair(
+            source: english,
+            target: korean,
+            forward: .installed,
+            reverse: .supported,
+            bidirectional: false
+        )
+        XCTAssertEqual(oneWay.source.id, "en")
+        XCTAssertEqual(oneWay.target.id, "ko")
+    }
+
+    func testTalkPackExtractsRepeatedNamesFromNotes() {
+        let notes = """
+        Q3 Review
+        We will demo fluidSubtitles in Keynote today.
+        fluidSubtitles stays on this Mac.
+        Keynote is the deck.
+        Nemotron hears Thai.
+        Nemotron stays local.
+        매출목표
+        매출목표
+        """
+        let terms = TheaterTalkPack.extractTerms(from: notes)
+        XCTAssertTrue(terms.contains("fluidSubtitles"), "terms=\(terms)")
+        XCTAssertTrue(terms.contains("Keynote"))
+        XCTAssertTrue(terms.contains("Nemotron"))
+        XCTAssertTrue(terms.contains("매출목표"))
+        XCTAssertTrue(terms.contains("Q3") || terms.contains("Q3 Review"))
+        XCTAssertFalse(terms.contains("today"))
+        XCTAssertFalse(terms.contains("Review"))
+        XCTAssertFalse(terms.contains("Welcome"))
+        XCTAssertFalse(terms.contains("stays"))
+        XCTAssertFalse(terms.contains("local"))
+        XCTAssertLessThanOrEqual(terms.count, TheaterTalkPack.maxTerms)
+    }
+
+    func testTalkPackIgnoresSlideChromeAndSentenceStarts() {
+        let notes = """
+        Thank You
+        Next Steps
+        Welcome
+        This Mac stays local.
+        Please use real-time captions
+        Satoshi Nakamoto built Bitcoin.
+        Seoul National University
+        """
+        let terms = TheaterTalkPack.extractTerms(from: notes)
+        XCTAssertTrue(terms.contains("Satoshi Nakamoto"), "terms=\(terms)")
+        XCTAssertTrue(terms.contains("Seoul National University"))
+        XCTAssertFalse(terms.contains(where: { $0.contains("\n") }), "terms=\(terms)")
+        XCTAssertFalse(terms.contains("Thank You"))
+        XCTAssertFalse(terms.contains("Next Steps"))
+        XCTAssertFalse(terms.contains("Welcome"))
+        XCTAssertFalse(terms.contains("This Mac"))
+        XCTAssertFalse(terms.contains("real-time"))
+        XCTAssertFalse(terms.contains("Bitcoin"))
+    }
+
+    func testTalkPackKeepsKoreanNamesNotSentences() {
+        let notes = """
+        오늘 발표
+        이재용 회장이 삼성전자 실적을 설명합니다.
+        매출목표는 전년 대비 성장입니다.
+        그리고 그리고 그리고
+        서울대학교 연구팀이 참여했습니다.
+        """
+        let terms = TheaterTalkPack.extractTerms(from: notes)
+        XCTAssertTrue(terms.contains("이재용"), "terms=\(terms)")
+        XCTAssertTrue(terms.contains("삼성전자"))
+        XCTAssertTrue(terms.contains("매출목표"))
+        XCTAssertTrue(terms.contains("서울대학교"))
+        XCTAssertFalse(terms.contains("그리고"))
+        XCTAssertFalse(terms.contains(where: { $0.contains("설명합니다") }))
+        XCTAssertFalse(terms.contains(where: { $0.count > 16 }))
+    }
+
+    func testTalkPackKeepsThaiPlaceNamesNotClauses() {
+        let notes = """
+        วันนี้เราจะพูดถึงกรุงเทพมหานคร
+        กรุงเทพมหานคร เป็นเมืองหลวง
+        ขอบคุณ ครับ ครับ
+        """
+        let terms = TheaterTalkPack.extractTerms(from: notes)
+        XCTAssertTrue(terms.contains("กรุงเทพมหานคร"), "terms=\(terms)")
+        XCTAssertFalse(terms.contains("ครับ"))
+        XCTAssertFalse(terms.contains("ขอบคุณ"))
+        XCTAssertFalse(terms.contains("เป็นเมืองหลวง"))
+        XCTAssertFalse(terms.contains(where: { $0.count > 16 }))
+    }
+
+    func testGlossaryDoesNotLockAcronymsInsideWords() {
+        let protected = TranslationGlossary.protect(
+            "Nemotron hears Thai and it is available in title.",
+            terms: ["AI", "IT"]
+        )
+        XCTAssertEqual(protected.text, "Nemotron hears Thai and it is available in title.")
+        XCTAssertTrue(protected.tokens.isEmpty)
+
+        let locked = TranslationGlossary.protect("We use AI in Thai class.", terms: ["AI"])
+        XCTAssertFalse(locked.text.contains("AI"))
+        XCTAssertEqual(
+            TranslationGlossary.restore(locked.text, tokens: locked.tokens),
+            "We use AI in Thai class."
+        )
+        XCTAssertFalse(
+            TranslationGlossary.lostProtectedTerms(
+                source: "Nemotron hears Thai.",
+                polished: "Nemotron hears Thai.",
+                terms: ["AI"]
+            ).contains("AI")
+        )
+    }
+
+    func testTalkPackReadsJSONNamesAndCapsTheList() throws {
+        let json = try TheaterTalkPack.document(
+            from: Data("[\"Keynote\",\"Nemotron\"]".utf8),
+            fileName: "names.json"
+        )
+        XCTAssertEqual(Set(json.terms), ["Keynote", "Nemotron"])
+        XCTAssertEqual(json.fileName, "names.json")
+
+        let blob = (1...300)
+            .map { "TermName\($0) TermName\($0)" }
+            .joined(separator: "\n")
+        XCTAssertEqual(TheaterTalkPack.extractTerms(from: blob).count, TheaterTalkPack.maxTerms)
+    }
+
+    func testTalkPackTermsJoinTheGlossaryUntilClear() {
+        let settings = SettingsStore.shared
+        let originalName = settings.theaterTalkPackFileName
+        let originalTerms = settings.theaterTalkPackTerms
+        defer {
+            settings.theaterTalkPackFileName = originalName
+            settings.theaterTalkPackTerms = originalTerms
+        }
+
+        settings.applyTheaterTalkPack(
+            TheaterTalkPack.Document(fileName: "q3.txt", terms: ["Nemotron"], sourceCharacterCount: 12)
+        )
+        XCTAssertTrue(settings.hasTheaterTalkPack)
+        XCTAssertTrue(TranslationGlossary.protectedTerms(from: settings).contains("Nemotron"))
+        let protected = TranslationGlossary.protect("Nemotron hears Thai.", terms: TranslationGlossary.protectedTerms(from: settings))
+        XCTAssertFalse(protected.text.contains("Nemotron"))
+        XCTAssertEqual(
+            TranslationGlossary.restore(protected.text, tokens: protected.tokens),
+            "Nemotron hears Thai."
+        )
+
+        settings.clearTheaterTalkPack()
+        XCTAssertFalse(settings.hasTheaterTalkPack)
+        XCTAssertFalse(TranslationGlossary.protectedTerms(from: settings).contains("Nemotron"))
+    }
 }

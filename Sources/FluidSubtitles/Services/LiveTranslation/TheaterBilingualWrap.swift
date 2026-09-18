@@ -2,34 +2,113 @@ import AppKit
 import Foundation
 
 /// Splits a bilingual caption into visual lines and stacks them:
-/// translation title first, spoken undertone below.
+/// spoken undertone first (fixed slot), translation title grows below.
 ///
-/// Wrap is a greedy left-to-right fill so a printed word does not jump to
-/// another line when the sentence grows. Spoken and translated blocks
-/// reveal independently. The live title grows as it types — empty wrap slots
-/// are not reserved ahead of the printed Show-as line.
+/// Spoken goes first so its row position never moves as the translation
+/// streams in — only rows below it are added or resized. Reordering this
+/// (translation before spoken) makes the spoken line's index, and thus its
+/// on-screen position, shift every time the translation's line count
+/// changes, which reads as a jump rather than smooth growth.
+///
+/// Wrap is a greedy left-to-right fill. A line wraps only when the next
+/// token does not fit on the board. Each caption is the spoken line
+/// and then its Show-as title. Empty wrap slots stay off the board so a short
+/// sentence does not look like it already wrapped.
 enum TheaterBilingualWrap {
     struct Row: Equatable {
         let text: String
         let isSpoken: Bool
     }
 
-    /// Horizontal inset of the caption line fields. Measuring wrap at the
-    /// full view width makes a fitting line clip. NSTextField draws a little
-    /// wider than `size(withAttributes:)`, so keep slack here.
-    static let textInset: CGFloat = 12
-    static let wrapSlack: CGFloat = 4
+    /// NSTextField cells inset about two points. Do not steal more than that
+    /// or a line wraps while the board still has room.
+    static let textInset: CGFloat = 2
 
     /// Below this, Theater has not laid out yet. Do not invent per-glyph wraps.
-    static let minimumWrapWidth: CGFloat = 32
+    static let minimumWrapWidth: CGFloat = 80
 
-    /// Ignore GeometryReader jitter below this so wrap lines stay put.
+    /// Ignore GeometryReader jitter below this so wrap lines stay put when
+    /// the board grows a little. A narrower board always rewraps.
     static let wrapWidthHysteresis: CGFloat = 24
 
     static let rowSpacing: CGFloat = 2
 
+    /// Extra height so NSTextField can draw ascenders and the slide halo.
+    static let lineVerticalInset: CGFloat = 10
+
+    /// First-line halo / shadow sits above the ink. Keep it in the board height
+    /// so ScrollView does not clip the opening title.
+    static let boardTopClearance: CGFloat = 10
+
+    /// About five ems. If the last title line has less room than this, reserve
+    /// a second unused slot so wrap does not grow the board.
+    static let wrapLookaheadEm: CGFloat = 5
+
+    /// One title line plus halo. Use this for the first paint so SwiftUI does
+    /// not size the live row to a single pixel and clip the opening letters.
+    static func openingBoardHeight(font: NSFont) -> CGFloat {
+        Self.boardTopClearance + Self.lineHeight(for: font)
+    }
+
+    /// Finished wrap height, but never shorter than one title line while there
+    /// is nothing to measure yet. An empty first paint with a real board width
+    /// used to report 1 pt and slice the original sentence through the middle.
+    /// Once real rows exist (even just the small spoken line, before
+    /// translation starts), use their actual height instead of also
+    /// reserving room for a full translated-size line that is not on screen.
+    static func displayHeight(
+        rows: [Row],
+        spokenFont: NSFont,
+        translatedFont: NSFont
+    ) -> CGFloat {
+        guard !rows.isEmpty else {
+            return Self.openingBoardHeight(font: translatedFont)
+        }
+        return Self.boardHeight(
+            rows: rows,
+            spokenFont: spokenFont,
+            translatedFont: translatedFont
+        )
+    }
+
+    /// Live caption height is the ink on screen. Height grows when a wrap
+    /// actually fills, not when the next line might be needed.
+    static func reservedDisplayHeight(
+        rows: [Row],
+        spokenFont: NSFont,
+        translatedFont: NSFont,
+        width _: CGFloat
+    ) -> CGFloat {
+        self.displayHeight(
+            rows: rows,
+            spokenFont: spokenFont,
+            translatedFont: translatedFont
+        )
+    }
+
+    static func lastLineIsNearlyFull(_ text: String, font: NSFont, width: CGFloat) -> Bool {
+        let usable = self.usableWidth(width)
+        let used = text.isEmpty ? 0 : self.lineWidth(text, font: font)
+        return usable - used < ceil(font.pointSize * Self.wrapLookaheadEm)
+    }
+
+    /// `nil` until Theater has a real board width. Wrapping against a first-frame
+    /// 0–32 pt proposal puts the whole sentence on one line and clips it.
+    static func layoutWrapWidth(proposed: CGFloat, locked: CGFloat) -> CGFloat? {
+        let width = max(proposed, 1)
+        if width >= Self.minimumWrapWidth {
+            return self.resolvedWrapWidth(proposed: width, locked: locked)
+        }
+        if locked >= Self.minimumWrapWidth {
+            return locked
+        }
+        return nil
+    }
+
     static func lineHeight(for font: NSFont) -> CGFloat {
-        ceil(font.ascender - font.descender + max(0, font.leading))
+        let typographic = ceil(font.ascender - font.descender + max(0, font.leading))
+        let ink = ceil(font.boundingRectForFont.height)
+        return max(typographic, ink) + Self.lineVerticalInset
     }
 
     static func boardHeight(
@@ -38,7 +117,7 @@ enum TheaterBilingualWrap {
         translatedFont: NSFont
     ) -> CGFloat {
         guard !rows.isEmpty else { return 0 }
-        var height: CGFloat = 0
+        var height: CGFloat = Self.boardTopClearance
         for (index, row) in rows.enumerated() {
             if index > 0 {
                 height += Self.rowSpacing
@@ -75,18 +154,17 @@ enum TheaterBilingualWrap {
         let translatedLines = self.visualLines(translated, font: translatedFont, width: usable)
         var rows: [Row] = []
         rows.reserveCapacity(spokenLines.count + translatedLines.count)
-        for line in translatedLines {
-            self.append(line, isSpoken: false, onto: &rows)
-        }
         for line in spokenLines {
             self.append(line, isSpoken: true, onto: &rows)
+        }
+        for line in translatedLines {
+            self.append(line, isSpoken: false, onto: &rows)
         }
         return rows
     }
 
-    /// Same stacking as `rows`. Live Show-as wrap lines that have not started
-    /// printing are omitted so a blank title band does not pop in. Spoken
-    /// undertone rows stay so the reference line does not jump.
+    /// Same stacking as `rows`. Wrap lines with no ink yet stay off the
+    /// board so a short sentence does not reserve the next line.
     static func revealedRows(
         spoken: String,
         translated: String,
@@ -143,8 +221,12 @@ enum TheaterBilingualWrap {
         revealed.reserveCapacity(template.count)
         for row in template {
             if row.isSpoken {
-                revealed.append(self.reveal(row, index: spokenIndex, progress: spokenProgress))
+                let next = self.reveal(row, index: spokenIndex, progress: spokenProgress)
                 spokenIndex += 1
+                if next.text.isEmpty, !spokenProgress.finished {
+                    continue
+                }
+                revealed.append(next)
             } else {
                 let next = self.reveal(row, index: translatedIndex, progress: translatedProgress)
                 translatedIndex += 1
@@ -180,11 +262,14 @@ enum TheaterBilingualWrap {
 
     static func resolvedWrapWidth(proposed: CGFloat, locked: CGFloat) -> CGFloat {
         let width = max(proposed, 1)
-        if width >= Self.minimumWrapWidth,
-           locked >= Self.minimumWrapWidth,
-           abs(width - locked) < Self.wrapWidthHysteresis
-        {
-            return locked
+        if width >= Self.minimumWrapWidth, locked >= Self.minimumWrapWidth {
+            if locked - width >= 1 {
+                return width
+            }
+            if width - locked < Self.wrapWidthHysteresis {
+                return locked
+            }
+            return width
         }
         if width >= Self.minimumWrapWidth {
             return width
@@ -253,7 +338,7 @@ enum TheaterBilingualWrap {
                 continue
             }
             let candidate = current + token
-            if self.lineWidth(candidate, font: font) + Self.wrapSlack <= width {
+            if self.lineWidth(candidate, font: font) <= width + 1 {
                 current = candidate
                 continue
             }
@@ -273,6 +358,14 @@ enum TheaterBilingualWrap {
         var kind: TokenKind?
 
         for character in text {
+            if Self.isGluePunctuation(character) {
+                if current.isEmpty, let last = result.indices.last {
+                    result[last].append(character)
+                } else {
+                    current.append(character)
+                }
+                continue
+            }
             let next: TokenKind
             if character.isWhitespace {
                 next = .space
@@ -302,6 +395,10 @@ enum TheaterBilingualWrap {
         return result
     }
 
+    private static func isGluePunctuation(_ character: Character) -> Bool {
+        ".,!?;:…'’”—、。！？｡､」』】〉》)]}".contains(character)
+    }
+
     private enum TokenKind {
         case space
         case latin
@@ -309,7 +406,8 @@ enum TheaterBilingualWrap {
     }
 
     private static func lineWidth(_ text: String, font: NSFont) -> CGFloat {
-        ceil((text as NSString).size(withAttributes: [.font: font]).width)
+        let size = (text as NSString).size(withAttributes: [.font: font])
+        return ceil(size.width)
     }
 
     private static func progress(lines: [String], printed: String) -> LineProgress {

@@ -177,7 +177,7 @@ enum SettingsSearchIndex {
             terms: [
                 "translate theater captions language pair apple translation korean english thai japanese I speak",
                 "voice transcription fluidvoice translate mode",
-                "voice engine speech to text translation engine apple translation",
+                "voice engine speech to text translation engine apple translation local small llm mlx experimental",
             ]
         ),
         .init(
@@ -190,6 +190,8 @@ enum SettingsSearchIndex {
                 "hide from screen share zoom keynote recording capture projector OBS",
                 "also hear english korean thai questions whisper auto detect Q&A",
                 "clear captions board archive wipe reset high contrast",
+                "talk notes notes pdf rtf markdown json glossary names",
+                "pace cue teleprompter behind caught up last print",
                 "voice transcription fluidvoice translate mode",
             ]
         ),

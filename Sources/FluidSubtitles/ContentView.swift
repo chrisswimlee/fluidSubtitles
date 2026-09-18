@@ -318,20 +318,20 @@ struct ContentView: View {
             .onChange(of: self.activeShortcutRecordingTarget) { _, _ in
                 self.hotkeyManager?.resetModifierOnlyShortcutTracking()
             }
-            .onChange(of: self.isPromptModeShortcutEnabled) { newValue in
+            .onChange(of: self.isPromptModeShortcutEnabled) { _, newValue in
                 self.handlePromptShortcutEnabledChange(newValue)
             }
             .onChange(of: self.pasteLastTranscriptionHotkeyShortcut) { _, newValue in
                 SettingsStore.shared.pasteLastTranscriptionHotkeyShortcut = newValue
                 self.hotkeyManager?.refreshMouseShortcutTapIfNeeded()
             }
-            .onChange(of: self.isPasteLastTranscriptionShortcutEnabled) { newValue in
+            .onChange(of: self.isPasteLastTranscriptionShortcutEnabled) { _, newValue in
                 self.handlePasteLastTranscriptionShortcutEnabledChange(newValue)
             }
             .onChange(of: self.translationInsertHotkeyShortcut) { _, newValue in
                 SettingsStore.shared.translationInsertHotkeyShortcut = newValue
             }
-            .onChange(of: self.isTranslationInsertHotkeyEnabled) { newValue in
+            .onChange(of: self.isTranslationInsertHotkeyEnabled) { _, newValue in
                 SettingsStore.shared.translationInsertHotkeyEnabled = newValue
                 if !newValue, self.activeShortcutRecordingTarget == .translateInsert {
                     self.clearShortcutRecordingMode()
@@ -340,7 +340,7 @@ struct ContentView: View {
             .onChange(of: self.captionListenHotkeyShortcut) { _, newValue in
                 SettingsStore.shared.captionListenHotkeyShortcut = newValue
             }
-            .onChange(of: self.isCaptionListenHotkeyEnabled) { newValue in
+            .onChange(of: self.isCaptionListenHotkeyEnabled) { _, newValue in
                 SettingsStore.shared.captionListenHotkeyEnabled = newValue
                 if !newValue, self.activeShortcutRecordingTarget == .captionListen {
                     self.clearShortcutRecordingMode()

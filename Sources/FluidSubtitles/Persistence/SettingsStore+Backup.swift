@@ -113,6 +113,7 @@ extension SettingsStore {
             theaterPresentationStyle: self.theaterPresentationStyle,
             theaterHideFromScreenShare: self.theaterHideFromScreenShare,
             theaterAlsoHearOtherLanguages: self.theaterAlsoHearOtherLanguages,
+            theaterDynamicPairing: self.theaterDynamicPairing,
             theaterCaptionPrintStyle: self.theaterCaptionPrintStyle.rawValue
         )
     }
@@ -309,6 +310,9 @@ extension SettingsStore {
         }
         if let theaterAlsoHearOtherLanguages = payload.theaterAlsoHearOtherLanguages {
             self.theaterAlsoHearOtherLanguages = theaterAlsoHearOtherLanguages
+        }
+        if let theaterDynamicPairing = payload.theaterDynamicPairing {
+            self.theaterDynamicPairing = theaterDynamicPairing
         }
         if let theaterCaptionPrintStyle = payload.theaterCaptionPrintStyle {
             self.theaterCaptionPrintStyle = TheaterCaptionPrintStyle.resolved(theaterCaptionPrintStyle)

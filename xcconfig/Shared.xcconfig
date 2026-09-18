@@ -1,3 +1,8 @@
 // Shared signed-build settings. Local team IDs stay out of git.
 // Copy Local.xcconfig.example to Local.xcconfig (gitignored) and set DEVELOPMENT_TEAM.
 #include? "Local.xcconfig"
+
+// Audio, history, and Theater helpers are called off the main actor.
+// Keep explicit @MainActor on UI and session types only.
+SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated
+SWIFT_APPROACHABLE_CONCURRENCY = NO

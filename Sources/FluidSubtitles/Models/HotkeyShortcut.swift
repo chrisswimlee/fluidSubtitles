@@ -2,7 +2,7 @@ import AppKit
 import Carbon
 import Foundation
 
-struct HotkeyShortcut: Codable, Equatable {
+nonisolated struct HotkeyShortcut: Codable, Equatable {
     enum ShortcutKind: String, Codable {
         case keyboard
         case mouse

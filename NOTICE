@@ -38,8 +38,9 @@ MIT License. Compatible with GPLv3.
 
 Transitive Swift package pins (EventSource, Path.swift, Version, yyjson,
 Hugging Face / Apple Swift packages used by FluidAudio) are listed in
-Package.resolved. Those pins are Apache-2.0, MIT, or Unlicense and are
-compatible with GPLv3. The combined work stays GPLv3.
+`fluidSubtitles.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`.
+Those pins are Apache-2.0, MIT, or Unlicense and are compatible with GPLv3.
+The combined work stays GPLv3.
 
 MediaRemoteAdapter is not linked. The ejbills fork published no LICENSE at
 the previously pinned revision, so pause-other-apps is omitted from this

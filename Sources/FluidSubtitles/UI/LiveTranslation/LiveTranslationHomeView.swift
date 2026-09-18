@@ -9,6 +9,7 @@ struct LiveTranslationHomeView: View {
     @ObservedObject private var controller = LiveTranslationController.shared
 
     var openVoiceEngine: (() -> Void)?
+    var openTranslationEngine: (() -> Void)?
 
     private var asr: ASRService { self.appServices.asr }
 
@@ -34,8 +35,12 @@ struct LiveTranslationHomeView: View {
                     TranslationLanguagePairCard()
                     TheaterEngineCards(
                         openVoiceEngine: self.openVoiceEngine,
+                        openTranslationEngine: self.openTranslationEngine,
                         showsPurpose: false
                     )
+                    if self.settings.theaterSessionMode.showsTranslation {
+                        TheaterTalkPackCard()
+                    }
                     if !self.readySnapshot.canListen || !self.readySnapshot.microphoneAllowed {
                         self.readinessCard
                     }
@@ -115,7 +120,9 @@ struct LiveTranslationHomeView: View {
             return failure
         }
         if self.settings.theaterWindowEnabled {
-            return "Theater is open."
+            return self.settings.theaterMinimized
+                ? TheaterReadiness.theaterMinimizedStatus
+                : TheaterReadiness.theaterOpenStatus
         }
         return nil
     }
@@ -143,6 +150,14 @@ struct LiveTranslationHomeView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 if !self.readySnapshot.voiceEngineReady, let openVoiceEngine {
                     Button("Voice Engine", action: openVoiceEngine)
+                        .buttonStyle(.bordered)
+                        .controlSize(.regular)
+                }
+                if self.settings.theaterSessionMode == .translation,
+                   !self.readySnapshot.languagePackReady,
+                   let openTranslationEngine
+                {
+                    Button("Translation Engine", action: openTranslationEngine)
                         .buttonStyle(.bordered)
                         .controlSize(.regular)
                 }
@@ -211,7 +226,19 @@ struct LiveTranslationSettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            MLXRunnerSettingsCard()
+            ThemedCard(style: .standard, hoverEffect: false) {
+                VStack(alignment: .leading, spacing: 8) {
+                    FluidSectionHeader(title: TheaterEngineCopy.translationTitle, systemImage: "globe")
+                    Text(TheaterEngineCopy.translationPurpose)
+                        .font(self.theme.typography.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("Open Setup → Translation Engine to pick Apple Translation or try the experimental local LLM.")
+                        .font(self.theme.typography.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
         .alert("Clear captions?", isPresented: self.$showClearConfirmation) {
             Button("Cancel", role: .cancel) {}
@@ -316,6 +343,31 @@ struct LiveTranslationSettingsView: View {
                         .labelsHidden()
                         .accessibilityLabel("Hide from screen share")
                         .accessibilityIdentifier("theater.settings.hideFromScreenShare")
+                }
+
+                self.settingsToggleRow(
+                    title: "Backing bar",
+                    description: TheaterReadiness.backingBar
+                ) {
+                    Toggle("Backing bar", isOn: self.$settings.theaterBackingBar)
+                        .toggleStyle(.switch)
+                        .tint(self.theme.palette.accent)
+                        .labelsHidden()
+                        .disabled(self.settings.theaterPresentation != .transparent)
+                        .accessibilityLabel("Backing bar")
+                        .accessibilityIdentifier("theater.settings.backingBar")
+                }
+
+                self.settingsToggleRow(
+                    title: "Presenter shortcuts",
+                    description: TheaterReadiness.presenterHotkeys
+                ) {
+                    Toggle("Presenter shortcuts", isOn: self.$settings.theaterPresenterHotkeysEnabled)
+                        .toggleStyle(.switch)
+                        .tint(self.theme.palette.accent)
+                        .labelsHidden()
+                        .accessibilityLabel("Presenter shortcuts")
+                        .accessibilityIdentifier("theater.settings.presenterHotkeys")
                 }
 
                 self.settingsToggleRow(
@@ -497,17 +549,25 @@ struct OpenTheaterButton: View {
     @Environment(\.theme) private var theme
     @ObservedObject private var settings = SettingsStore.shared
 
+    private var homeAction: TheaterMinimize.HomeAction {
+        TheaterMinimize.homeAction(
+            windowEnabled: self.settings.theaterWindowEnabled,
+            minimized: self.settings.theaterMinimized
+        )
+    }
+
     var body: some View {
         Button {
-            if self.settings.theaterWindowEnabled {
+            switch self.homeAction {
+            case .close:
                 PresenterCaptionController.shared.requestClose()
-            } else {
+            case .open, .show:
                 PresenterCaptionController.shared.setVisible(true)
             }
         } label: {
             Label(
-                self.settings.theaterWindowEnabled ? "Close Theater" : "Open Theater",
-                systemImage: self.settings.theaterWindowEnabled ? "rectangle.inset.filled" : "rectangle.on.rectangle"
+                TheaterMinimize.homeTitle(for: self.homeAction),
+                systemImage: TheaterMinimize.homeSystemImage(for: self.homeAction)
             )
         }
         .buttonStyle(.borderedProminent)
@@ -516,10 +576,10 @@ struct OpenTheaterButton: View {
         .disabled(!TheaterAvailability.isSupported)
         .help(
             TheaterAvailability.isSupported
-                ? TheaterReadiness.openTheaterHelp
+                ? TheaterMinimize.homeHelp(for: self.homeAction)
                 : TheaterAvailability.unsupportedCopy
         )
-        .accessibilityLabel(self.settings.theaterWindowEnabled ? "Close Theater" : "Open Theater")
+        .accessibilityLabel(TheaterMinimize.homeTitle(for: self.homeAction))
         .accessibilityIdentifier("theater.open")
     }
 }
@@ -748,10 +808,7 @@ struct TranslationLanguagePairCard: View {
                 .fixedSize(horizontal: false, vertical: true)
             Button(TheaterReadiness.downloadPack) {
                 Task {
-                    let source = SpokenLanguageResolver.sourceLanguage()
-                    let target = SpokenLanguageResolver.targetLanguage()
-                    await AppleTranslationEngine.shared.warm(source: source, target: target)
-                    AppleTranslationEngine.shared.requestLanguagePackDownload()
+                    await self.controller.requestNeededLanguagePackDownload()
                     try? await Task.sleep(nanoseconds: 1_500_000_000)
                     await self.prepareAndRefreshAvailability()
                 }
@@ -792,10 +849,7 @@ struct TranslationLanguagePairCard: View {
     }
 
     private func prepareAndRefreshAvailability() async {
-        let source = SpokenLanguageResolver.sourceLanguage()
-        let target = SpokenLanguageResolver.targetLanguage()
-        await AppleTranslationEngine.shared.warm(source: source, target: target)
-        self.availabilityText = await AppleTranslationEngine.shared.checkAvailability(source: source, target: target)
+        self.availabilityText = await self.controller.pairAvailabilityCopy()
     }
 }
 

@@ -1,7 +1,7 @@
 import Foundation
 
-/// Counts local-MT echoes for one Listen. After most lines echo, skip local
-/// and keep Apple Translation as the fallback.
+/// Counts local-MT misses for one Listen. Echo, reject, and thrown
+/// failures all count. After most lines miss, skip local and keep Apple.
 struct LocalTranslationEchoTally: Equatable {
     var attempts = 0
     var echoes = 0
@@ -21,39 +21,35 @@ struct LocalTranslationEchoTally: Equatable {
 /// runner is already up. It never rewrites a line already on the board.
 @MainActor
 final class LLMTranslationEngine: TranslationEngine {
-    let name = "Local MLX (finished lines)"
+    let name = "Local MLX (first print)"
     private(set) var echoTally = LocalTranslationEchoTally()
     private var didLogEchoSkip = false
 
-    func isAvailable(settings: SettingsStore = .shared) -> Bool {
-        if settings.mlxRunnerEnabled {
-            return true
-        }
-        guard settings.llmTranslationPolishEnabled else { return false }
-        let route = DictationProviderRoute.resolve(settings: settings)
-        if route.usesPrivateAI { return false }
-        return Self.isLocalEndpoint(route.baseURL) && !route.model.isEmpty
+    func isAvailable() -> Bool {
+        self.isAvailable(settings: SettingsStore.shared)
+    }
+
+    func isAvailable(settings: SettingsStore) -> Bool {
+        settings.mlxRunnerEnabled
     }
 
     /// Do not start MLX on the first caption. Only use it when it is already up.
-    func isReadyForCommitTranslation(settings: SettingsStore = .shared) -> Bool {
+    func isReadyForCommitTranslation() -> Bool {
+        self.isReadyForCommitTranslation(settings: SettingsStore.shared)
+    }
+
+    func isReadyForCommitTranslation(settings: SettingsStore) -> Bool {
         if self.echoTally.shouldSkipLocal {
             if !self.didLogEchoSkip {
                 self.didLogEchoSkip = true
                 DebugLogger.shared.debug(
-                    "Local commit skipped: \(self.echoTally.echoes)/\(self.echoTally.attempts) lines echoed",
+                    "Local commit skipped: \(self.echoTally.echoes)/\(self.echoTally.attempts) lines missed",
                     source: "LLMTranslationEngine"
                 )
             }
             return false
         }
-        if settings.mlxRunnerEnabled, MLXRunnerService.shared.status.running {
-            return true
-        }
-        guard settings.llmTranslationPolishEnabled else { return false }
-        let route = DictationProviderRoute.resolve(settings: settings)
-        if route.usesPrivateAI { return false }
-        return Self.isLocalEndpoint(route.baseURL) && !route.model.isEmpty
+        return settings.mlxRunnerEnabled && MLXRunnerService.shared.status.running
     }
 
     func resetListenEchoTally() {
@@ -65,6 +61,10 @@ final class LLMTranslationEngine: TranslationEngine {
         self.echoTally.record(echoed: echoed)
     }
 
+    func noteListenFailure() {
+        self.noteListenEcho(true)
+    }
+
     func translate(_ text: String, source: TranslationLanguage, target: TranslationLanguage) async throws -> String {
         try await self.translateCommit(
             text,
@@ -74,8 +74,8 @@ final class LLMTranslationEngine: TranslationEngine {
         )
     }
 
-    /// First-print translation when the local MLX runner is on. Falls back to
-    /// Apple Translation if this throws or the line is rejected.
+    /// Isolated caption when Apple Translation failed. Falls back to the
+    /// caller if this throws or the line is rejected.
     func translateCommit(
         _ text: String,
         priorSource: [String],
@@ -98,7 +98,8 @@ final class LLMTranslationEngine: TranslationEngine {
                 sourceText: text,
                 priorSource: priorSource,
                 sourceLanguage: source.displayName,
-                targetLanguage: target.displayName
+                targetLanguage: target.displayName,
+                terms: TranslationGlossary.protectedTerms(from: settings)
             ).map { $0.mapValues { $0 as Any } },
             model: route.model,
             baseURL: route.baseURL,
@@ -107,7 +108,7 @@ final class LLMTranslationEngine: TranslationEngine {
             temperature: LiveTranslationTiming.polishTemperature,
             maxTokens: LiveTranslationTiming.polishMaxTokens
         )
-        config.maxRetries = 0
+        config.maxRetries = 1
         config.timeoutSeconds = Double(LiveTranslationTiming.commitTranslationTimeoutNanoseconds) / 1_000_000_000
         let response = try await LLMClient.shared.call(config)
         let cleaned = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -120,6 +121,7 @@ final class LLMTranslationEngine: TranslationEngine {
             self.noteListenEcho(true)
             throw TranslationEngineError.localEchoed
         case .malformed:
+            self.noteListenFailure()
             throw TranslationEngineError.localRejected
         }
     }
@@ -227,7 +229,8 @@ final class LLMTranslationEngine: TranslationEngine {
                 priorSource: priorSource,
                 priorCaptions: priorCaptions,
                 sourceLanguage: source.displayName,
-                targetLanguage: target.displayName
+                targetLanguage: target.displayName,
+                terms: TranslationGlossary.protectedTerms(from: settings)
             ).map { $0.mapValues { $0 as Any } },
             model: route.model,
             baseURL: route.baseURL,
@@ -236,8 +239,8 @@ final class LLMTranslationEngine: TranslationEngine {
             temperature: LiveTranslationTiming.polishTemperature,
             maxTokens: LiveTranslationTiming.polishMaxTokens
         )
-        config.maxRetries = 0
-        config.timeoutSeconds = Double(LiveTranslationTiming.polishTimeoutNanoseconds) / 1_000_000_000
+        config.maxRetries = 1
+        config.timeoutSeconds = Double(LiveTranslationTiming.commitTranslationTimeoutNanoseconds) / 1_000_000_000
         let started = ProcessInfo.processInfo.systemUptime
         let response = try await client.call(config)
         let ms = Int(((ProcessInfo.processInfo.systemUptime - started) * 1000).rounded())
@@ -391,11 +394,6 @@ final class LLMTranslationEngine: TranslationEngine {
             apiKey: route.apiKey.isEmpty ? "lm-studio" : route.apiKey
         )
     }
-
-    private static func isLocalEndpoint(_ baseURL: String) -> Bool {
-        guard let host = URL(string: baseURL)?.host?.lowercased() else { return false }
-        return host == "localhost" || host == "127.0.0.1" || host.hasSuffix(".local")
-    }
 }
 
 enum LLMTranslationPrompt {
@@ -403,7 +401,8 @@ enum LLMTranslationPrompt {
         sourceText: String,
         priorSource: [String],
         sourceLanguage: String,
-        targetLanguage: String
+        targetLanguage: String,
+        terms: [String] = []
     ) -> [[String: String]] {
         [
             [
@@ -412,7 +411,7 @@ enum LLMTranslationPrompt {
                 Translate one finished spoken sentence for a live lecture caption.
                 Source language: \(sourceLanguage). Caption language: \(targetLanguage).
                 Use the previous source sentences only to resolve pronouns and omitted subjects.
-                Keep names and glossary tokens unchanged.
+                \(Self.termGuidance(terms))
                 Do not add quotes, notes, or romanization.
                 Output only the caption.
                 """,
@@ -436,7 +435,8 @@ enum LLMTranslationPrompt {
         priorSource: [String],
         priorCaptions: [String] = [],
         sourceLanguage: String,
-        targetLanguage: String
+        targetLanguage: String,
+        terms: [String] = []
     ) -> [[String: String]] {
         let sourceBlock = Self.numberedBlock(priorSource)
         let captionBlock = Self.numberedBlock(priorCaptions)
@@ -453,7 +453,7 @@ enum LLMTranslationPrompt {
                 Use the previous source sentences and captions to resolve pronouns and omitted subjects.
                 \(Self.languageGuidance(sourceLanguage: sourceLanguage, targetLanguage: targetLanguage))
                 Do not invent facts. Do not add quotes, notes, or romanization.
-                Keep names and glossary terms unchanged.
+                \(Self.termGuidance(terms))
                 Keep polite particles (요, ครับ, ค่ะ) when the speaker used them.
                 Output only the caption.
                 """,
@@ -475,6 +475,16 @@ enum LLMTranslationPrompt {
                 """,
             ],
         ]
+    }
+
+    static func termGuidance(_ terms: [String]) -> String {
+        let kept = TheaterTalkPack.promptTerms(from: terms)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if kept.isEmpty {
+            return "Keep names and glossary tokens unchanged."
+        }
+        return "Keep names and glossary tokens unchanged. Keep these talk terms unchanged: \(kept.joined(separator: ", "))."
     }
 
     private static func numberedBlock(_ lines: [String]) -> String {

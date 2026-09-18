@@ -8,6 +8,7 @@ final class FakeTranslationEngine: TranslationEngine {
     var delayNanoseconds: UInt64 = 0
     var calls: [String] = []
     var resultsByText: [String: String] = [:]
+    var resultQueue: [Result<String, Error>] = []
 
     func translate(
         _ text: String,
@@ -20,6 +21,9 @@ final class FakeTranslationEngine: TranslationEngine {
         }
         if let mapped = self.resultsByText[text] {
             return mapped
+        }
+        if !self.resultQueue.isEmpty {
+            return try self.resultQueue.removeFirst().get()
         }
         return try self.result.get()
     }
@@ -182,6 +186,69 @@ final class LiveTranslationSubscriberTests: XCTestCase {
         XCTAssertTrue(subscriber.liveCaptionText.isEmpty)
     }
 
+    func testTranslatePairingsKeepFinishedSentenceVisibleWhileTalking() {
+        let settings = SettingsStore.shared
+        let originalSource = settings.translationSourceLanguageID
+        let originalTarget = settings.translationTargetLanguageID
+        let originalMode = settings.theaterSessionMode
+        defer {
+            settings.translationSourceLanguageID = originalSource
+            settings.translationTargetLanguageID = originalTarget
+            settings.theaterSessionMode = originalMode
+        }
+        settings.theaterSessionMode = .translation
+
+        let cases: [(source: String, target: String, first: String, restitch: String)] = [
+            ("en", "ko", "Today we trained the model.", "Today we trained the model. Then we applied it"),
+            ("ko", "en", "오늘 모델을 학습했습니다.", "오늘 모델을 학습했습니다. 그다음 적용했습니다"),
+            ("ja", "en", "今日はモデルを学習しました。", "今日はモデルを学習しました。次に適用しました"),
+            ("th", "en", "วันนี้เราฝึกโมเดลแล้วครับ", "วันนี้เราฝึกโมเดลแล้วครับแล้วนำไปใช้ครับ"),
+        ]
+
+        for item in cases {
+            settings.translationSourceLanguageID = item.source
+            settings.translationTargetLanguageID = item.target
+            let subscriber = LiveTranslationSubscriber(translator: FakeTranslationEngine())
+            subscriber.beginListening()
+            subscriber.handlePartial(item.first)
+            subscriber.handlePartial(item.restitch)
+            let midTalk = TranslationClauseSegmenter.nextCompletedSentence(
+                item.restitch,
+                languageID: item.source
+            )
+            if midTalk != nil {
+                XCTAssertFalse(
+                    subscriber.liveSpokenText.contains(item.first),
+                    "\(item.source): finished sentence should peel off the live row"
+                )
+            } else {
+                XCTAssertTrue(
+                    subscriber.liveSpokenText.hasPrefix(item.first),
+                    item.source
+                )
+            }
+            XCTAssertFalse(subscriber.liveSpokenText.isEmpty, item.source)
+            let rows = TheaterCaptionFlow.lines(
+                committed: subscriber.committedLines,
+                committedIDs: subscriber.committedLineIDs,
+                nextCaptionID: subscriber.nextCaptionID,
+                committedSources: subscriber.committedSourceLines,
+                draft: subscriber.liveCaptionText,
+                sourceDraft: subscriber.liveSpokenText,
+                pendingSources: subscriber.pendingSpokenLines,
+                spokenDisplay: .paired
+            )
+            if midTalk != nil {
+                // The finished sentence must stay visible (English only)
+                // while its translation is in flight, not disappear.
+                XCTAssertTrue(
+                    rows.contains { $0.source.contains(item.first) && $0.isDraft },
+                    item.source
+                )
+            }
+        }
+    }
+
     func testCommittedKoreanIsDroppedFromTheNextLiveLine() {
         let subscriber = LiveTranslationSubscriber(translator: FakeTranslationEngine())
         subscriber.seedCommittedForTesting(
@@ -195,6 +262,90 @@ final class LiveTranslationSubscriberTests: XCTestCase {
         XCTAssertEqual(subscriber.sourceDraft, "그걸 적용하면")
         XCTAssertEqual(subscriber.liveSpokenText, "그걸 적용하면")
         XCTAssertTrue(subscriber.liveCaptionText.isEmpty)
+    }
+
+    func testMidTalkPeriodDoesNotClearTheLiveLine() async {
+        let subscriber = LiveTranslationSubscriber(translator: FakeTranslationEngine())
+        subscriber.beginListening()
+        subscriber.handlePartial("Today we trained the model.")
+        XCTAssertEqual(subscriber.liveSpokenText, "Today we trained the model.")
+        try? await Task.sleep(
+            nanoseconds: LiveTranslationTiming.completeSettleNanoseconds(languageID: "en") + 200_000_000
+        )
+        await subscriber.waitForIdleForTesting()
+        XCTAssertEqual(subscriber.liveSpokenText, "Today we trained the model.")
+        XCTAssertTrue(subscriber.committedLines.isEmpty)
+    }
+
+    func testCaptionEnterPathGrowsOnePairWithoutBlanking() {
+        let settings = SettingsStore.shared
+        let originalSource = settings.translationSourceLanguageID
+        let originalTarget = settings.translationTargetLanguageID
+        let originalMode = settings.theaterSessionMode
+        defer {
+            settings.translationSourceLanguageID = originalSource
+            settings.translationTargetLanguageID = originalTarget
+            settings.theaterSessionMode = originalMode
+        }
+        settings.theaterSessionMode = .transcription
+        settings.translationSourceLanguageID = "en"
+        settings.translationTargetLanguageID = "en"
+
+        let subscriber = LiveTranslationSubscriber(translator: FakeTranslationEngine())
+        subscriber.beginListening()
+
+        let ticks = [
+            "Today we",
+            "Today we trained",
+            "Today we trained the model.",
+        ]
+        var currentSpoken = ""
+        var currentTranslated = ""
+        for tick in ticks {
+            subscriber.handlePartial(tick)
+            XCTAssertTrue(subscriber.committedLines.isEmpty, tick)
+            XCTAssertEqual(subscriber.pendingSpokenLines, [])
+
+            let rows = TheaterCaptionFlow.lines(
+                committed: subscriber.committedLines,
+                committedIDs: subscriber.committedLineIDs,
+                nextCaptionID: subscriber.nextCaptionID,
+                committedSources: subscriber.committedSourceLines,
+                draft: subscriber.liveCaptionText,
+                sourceDraft: subscriber.liveSpokenText,
+                pendingSources: subscriber.pendingSpokenLines,
+                spokenDisplay: .isTheCaption
+            )
+            XCTAssertEqual(rows.count, 1, tick)
+            XCTAssertEqual(rows.first?.isDraft, true)
+            XCTAssertTrue(
+                subscriber.liveSpokenText.hasPrefix("Today we"),
+                "Spoken leftover should keep the opening words on \(tick)"
+            )
+
+            let incoming = TheaterLinePrinter.resolveIncoming(
+                currentSpoken: currentSpoken,
+                currentTranslated: currentTranslated,
+                nextSpoken: "",
+                nextTranslated: rows.first?.text ?? "",
+                translationStarted: !currentTranslated.isEmpty
+            )
+            XCTAssertFalse(incoming.reset, "A restitch must not blank the live pair on \(tick)")
+            XCTAssertTrue(
+                incoming.translated.hasPrefix("Today we")
+                    || currentTranslated.hasPrefix(incoming.translated),
+                incoming.translated
+            )
+            currentSpoken = incoming.spoken
+            currentTranslated = incoming.translated
+        }
+
+        subscriber.handlePartial("Today we trained the model. Then we applied it")
+        XCTAssertEqual(subscriber.liveSpokenText, "Then we applied it")
+        // The finished sentence is enqueued for commit but must stay
+        // visible (as a pending row) rather than disappear while its
+        // translation resolves.
+        XCTAssertEqual(subscriber.pendingSpokenLines, ["Today we trained the model."])
     }
 
     func testSpokenLeftoverGrowsBeforeTheClauseCommits() {
@@ -240,21 +391,25 @@ final class LiveTranslationSubscriberTests: XCTestCase {
         engine.result = .success("번역")
         let subscriber = LiveTranslationSubscriber(translator: engine)
         subscriber.beginListening()
-        subscriber.handlePartial(
+        let jammed =
             "Today we trained the model.Then we applied it.And we shipped it to production."
-        )
+        subscriber.handlePartial(jammed)
         XCTAssertEqual(subscriber.liveSpokenText, "And we shipped it to production.")
+        // Both finished sentences are enqueued and must stay visible while
+        // their translations resolve.
         XCTAssertEqual(
             subscriber.pendingSpokenLines,
             ["Today we trained the model.", "Then we applied it."]
         )
-        XCTAssertTrue(subscriber.sourceDraft.contains("Then we applied it."))
-        XCTAssertTrue(subscriber.sourceDraft.contains("And we shipped it to production."))
-        XCTAssertFalse(subscriber.sourceDraft.contains("Today we trained the model."))
+        await subscriber.waitForIdleForTesting()
+        XCTAssertEqual(
+            subscriber.committedSourceLines,
+            ["Today we trained the model.", "Then we applied it."]
+        )
+        XCTAssertEqual(subscriber.committedLines, ["번역", "번역"])
 
         subscriber.handleEndOfUtterance()
         await subscriber.waitForIdleForTesting()
-        XCTAssertEqual(engine.calls.first, "Today we trained the model.")
         XCTAssertEqual(
             subscriber.committedSourceLines,
             [
@@ -263,7 +418,6 @@ final class LiveTranslationSubscriberTests: XCTestCase {
                 "And we shipped it to production.",
             ]
         )
-        XCTAssertFalse(subscriber.sourceDraft.contains("Today we trained the model."))
     }
 
     func testRestitchAfterACommitDoesNotPrintTheWholeTalk() async {
@@ -289,21 +443,13 @@ final class LiveTranslationSubscriberTests: XCTestCase {
             "Today we trained the model. Then we applied it. And we shipped it to production."
         )
         XCTAssertEqual(subscriber.liveSpokenText, "And we shipped it to production.")
+        // The already-committed sentence is peeled off, but the newly
+        // finished "Then we applied it." is enqueued and must stay visible.
         XCTAssertEqual(subscriber.pendingSpokenLines, ["Then we applied it."])
-        XCTAssertTrue(subscriber.sourceDraft.contains("And we shipped it"))
+        XCTAssertEqual(subscriber.sourceDraft, "And we shipped it to production.")
         XCTAssertFalse(subscriber.sourceDraft.contains("Today we trained"))
-        XCTAssertFalse(subscriber.sourceDraft.contains("Then we applied it."))
-
-        try? await Task.sleep(nanoseconds: 200_000_000)
-        let current = "Then we applied it."
-        let payload = TranslationClauseSegmenter.joinTranslatedLines(
-            ["Today we trained the model.", current],
-            languageID: "en"
-        )
-        XCTAssertEqual(engine.calls.first, payload)
-        XCTAssertTrue(engine.calls.contains(current))
-        XCTAssertEqual(subscriber.committedLines.last, "번역")
-        XCTAssertTrue(subscriber.sourceDraft.contains("And we shipped it"))
+        XCTAssertFalse(subscriber.liveSpokenText.contains("Today we trained the model."))
+        XCTAssertFalse(subscriber.liveSpokenText.contains("Then we applied"))
     }
 
     func testSharedLastWordDoesNotEraseTheNextClause() {
@@ -336,29 +482,31 @@ final class LiveTranslationSubscriberTests: XCTestCase {
         engine.result = .success("번역")
         let subscriber = LiveTranslationSubscriber(translator: engine)
         subscriber.beginListening()
-        subscriber.handlePartial(
-            "Today we trained the model. Then we applied it. And we shipped it."
-        )
+        let spoken = "Today we trained the model. Then we applied it. And we shipped it."
+        subscriber.handlePartial(spoken)
         XCTAssertEqual(subscriber.liveSpokenText, "And we shipped it.")
         XCTAssertEqual(
             subscriber.pendingSpokenLines,
             ["Today we trained the model.", "Then we applied it."]
         )
-        try? await Task.sleep(nanoseconds: 200_000_000)
-        XCTAssertEqual(engine.calls, ["Today we trained the model."])
-        XCTAssertTrue(subscriber.sourceDraft.contains("Then we applied it."))
-        XCTAssertTrue(subscriber.sourceDraft.contains("And we shipped it."))
-
-        try? await Task.sleep(nanoseconds: LiveTranslationTiming.completeSettleNanoseconds(languageID: "en") + 200_000_000)
-        let first = "Today we trained the model."
-        let second = "Then we applied it."
-        let payload = TranslationClauseSegmenter.joinTranslatedLines(
-            [first, second],
-            languageID: "en"
+        await subscriber.waitForIdleForTesting()
+        XCTAssertEqual(
+            subscriber.committedSourceLines,
+            ["Today we trained the model.", "Then we applied it."]
         )
-        XCTAssertEqual(engine.calls, [first, payload, second])
-        XCTAssertTrue(subscriber.sourceDraft.contains("And we shipped it."))
-        XCTAssertFalse(subscriber.sourceDraft.contains("Today we trained"))
+        XCTAssertEqual(subscriber.liveSpokenText, "And we shipped it.")
+
+        subscriber.handleEndOfUtterance()
+        await subscriber.waitForIdleForTesting()
+        XCTAssertEqual(
+            subscriber.committedSourceLines,
+            [
+                "Today we trained the model.",
+                "Then we applied it.",
+                "And we shipped it.",
+            ]
+        )
+        XCTAssertTrue(subscriber.liveSpokenText.isEmpty)
     }
 
     func testStopConfirmRevisesTheLastClauseAfterTheBoardHasLines() async {
@@ -638,18 +786,42 @@ final class LiveTranslationSubscriberTests: XCTestCase {
     }
 
     func testPrefetchPicksACompletedClauseAndKeysByPriorContext() {
+        XCTAssertTrue(
+            TranslationClauseSegmenter.isGrowingClause(
+                "Hey, how are you doing?",
+                toward: "Hey, how are you doing today?"
+            )
+        )
+        XCTAssertTrue(
+            TranslationClauseSegmenter.isLivePrefetchMatch(
+                unit: "Hey, how are you doing?",
+                leftover: "Hey, how are you doing today?",
+                languageID: "en"
+            )
+        )
+        XCTAssertFalse(
+            TranslationClauseSegmenter.isLivePrefetchMatch(
+                unit: "Hi, man.",
+                leftover: "Hi, man. Hi, my name is Chris. How are you doing?",
+                languageID: "en"
+            )
+        )
         XCTAssertEqual(
             LiveTranslationPrefetch.unitToPrefetch(
                 leftover: "Today we trained the model. Then we applied it",
                 languageID: "en"
             ),
-            "Today we trained the model."
+            TranslationClauseSegmenter.liveOpenText(
+                "Today we trained the model. Then we applied it",
+                languageID: "en"
+            )
         )
-        XCTAssertNil(
+        XCTAssertEqual(
             LiveTranslationPrefetch.unitToPrefetch(
                 leftover: "Hello world today",
                 languageID: "en"
-            )
+            ),
+            "Hello world today"
         )
         let key = LiveTranslationPrefetch.cacheKey(
             unit: "Today we measure it.",
@@ -682,12 +854,14 @@ final class LiveTranslationSubscriberTests: XCTestCase {
         subscriber.beginListening()
         subscriber.handlePartial("First sentence is ready.")
         XCTAssertEqual(subscriber.liveSpokenText, "First sentence is ready.")
+        subscriber.handleEndOfUtterance()
         await subscriber.waitForIdleForTesting()
         XCTAssertEqual(subscriber.committedLines, ["First sentence is ready."])
         XCTAssertEqual(subscriber.committedSourceLines, ["First sentence is ready."])
 
         subscriber.handlePartial("First sentence is ready. Second sentence is next.")
         XCTAssertEqual(subscriber.liveSpokenText, "Second sentence is next.")
+        subscriber.handleEndOfUtterance()
         await subscriber.waitForIdleForTesting()
         XCTAssertEqual(
             subscriber.committedSourceLines,
@@ -701,6 +875,7 @@ final class LiveTranslationSubscriberTests: XCTestCase {
         subscriber.handlePartial(
             "First sentence is ready. Second sentence is next. Third sentence is last."
         )
+        subscriber.handleEndOfUtterance()
         await subscriber.waitForIdleForTesting()
         XCTAssertEqual(subscriber.committedSourceLines.count, 3)
         XCTAssertEqual(subscriber.committedSourceLines.last, "Third sentence is last.")
@@ -711,7 +886,7 @@ final class LiveTranslationSubscriberTests: XCTestCase {
         )
     }
 
-    func testNextSentenceTypesOnANewLineWhileTalking() {
+    func testNextSentenceStaysOnThisCaptionWhileTalking() {
         let settings = SettingsStore.shared
         let originalSource = settings.translationSourceLanguageID
         let originalTarget = settings.translationTargetLanguageID
@@ -727,20 +902,7 @@ final class LiveTranslationSubscriberTests: XCTestCase {
         subscriber.handlePartial("Today we trained the model. Then we applied")
         XCTAssertEqual(subscriber.pendingSpokenLines, ["Today we trained the model."])
         XCTAssertEqual(subscriber.liveSpokenText, "Then we applied")
-        XCTAssertTrue(subscriber.committedLines.isEmpty)
-
-        let rows = TheaterCaptionFlow.lines(
-            committed: subscriber.committedLines,
-            committedIDs: subscriber.committedLineIDs,
-            nextCaptionID: subscriber.nextCaptionID,
-            committedSources: subscriber.committedSourceLines,
-            draft: subscriber.liveCaptionText,
-            sourceDraft: subscriber.liveSpokenText,
-            pendingSources: subscriber.pendingSpokenLines
-        )
-        XCTAssertEqual(rows.map(\.text), ["Today we trained the model.", "Then we applied"])
-        XCTAssertEqual(rows.first?.isDraft, true)
-        XCTAssertEqual(rows.last?.isDraft, true)
+        XCTAssertFalse(subscriber.liveSpokenText.contains("Today we trained the model."))
     }
 
     func testReplaceLastAfterAVisibleTranslationLeavesTheBoardLineAlone() {
@@ -840,13 +1002,63 @@ final class LiveTranslationSubscriberTests: XCTestCase {
         subscriber.handlePartial("Today we trained the model. Then we applied it")
         XCTAssertEqual(subscriber.liveSpokenText, "Then we applied it")
         XCTAssertEqual(subscriber.pendingSpokenLines, ["Today we trained the model."])
-        try? await Task.sleep(
-            nanoseconds: LiveTranslationTiming.completeSettleNanoseconds(languageID: "en") + 200_000_000
-        )
         await subscriber.waitForIdleForTesting()
-        XCTAssertEqual(engine.calls.first, "Today we trained the model.")
         XCTAssertEqual(subscriber.committedSourceLines, ["Today we trained the model."])
+        XCTAssertEqual(subscriber.committedLines, ["번역"])
         XCTAssertEqual(subscriber.liveSpokenText, "Then we applied it")
-        XCTAssertFalse(subscriber.committedSourceLines.contains("Today we trained the model. Then we applied it"))
+    }
+
+    func testContinuousSpeechKeepsEachPairedTranslation() async {
+        let settings = SettingsStore.shared
+        let originalSource = settings.translationSourceLanguageID
+        let originalTarget = settings.translationTargetLanguageID
+        defer {
+            settings.translationSourceLanguageID = originalSource
+            settings.translationTargetLanguageID = originalTarget
+        }
+        settings.translationSourceLanguageID = "en"
+        settings.translationTargetLanguageID = "ko"
+
+        let engine = FakeTranslationEngine()
+        engine.resultsByText = [
+            "Today we trained the model.": "오늘 모델을 학습했습니다.",
+            "Then we applied it.": "그걸 적용했습니다.",
+            "And we shipped it to production.": "그리고 프로덕션에 올렸습니다.",
+        ]
+        engine.result = .success("번역")
+        let subscriber = LiveTranslationSubscriber(translator: engine)
+        subscriber.beginListening()
+        subscriber.handlePartial(
+            "Today we trained the model. Then we applied it. And we shipped it to production."
+        )
+        XCTAssertEqual(subscriber.liveSpokenText, "And we shipped it to production.")
+        await subscriber.waitForIdleForTesting()
+        XCTAssertEqual(
+            subscriber.committedSourceLines,
+            ["Today we trained the model.", "Then we applied it."]
+        )
+        XCTAssertEqual(
+            subscriber.committedLines,
+            ["오늘 모델을 학습했습니다.", "그걸 적용했습니다."]
+        )
+
+        subscriber.handleEndOfUtterance()
+        await subscriber.waitForIdleForTesting()
+        XCTAssertEqual(
+            subscriber.committedSourceLines,
+            [
+                "Today we trained the model.",
+                "Then we applied it.",
+                "And we shipped it to production.",
+            ]
+        )
+        XCTAssertEqual(
+            subscriber.committedLines,
+            [
+                "오늘 모델을 학습했습니다.",
+                "그걸 적용했습니다.",
+                "그리고 프로덕션에 올렸습니다.",
+            ]
+        )
     }
 }

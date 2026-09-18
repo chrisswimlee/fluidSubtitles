@@ -809,13 +809,13 @@ private let automaticDictionaryAXObserverCallback: AXObserverCallback = { _, _, 
     let tracker = Unmanaged<AutomaticDictionaryCorrectionTracker>.fromOpaque(context).takeUnretainedValue()
     Task { @MainActor in
         switch notification as String {
-        case kAXValueChangedNotification as String:
+        case kAXValueChangedNotification:
             tracker.handleObservedValueChange()
-        case kAXSelectedTextChangedNotification as String:
+        case kAXSelectedTextChangedNotification:
             // Web-backed editors may move the caret without emitting a value-change notification.
             tracker.handleObservedValueChange()
             tracker.handleObservedSelectionChange()
-        case kAXFocusedUIElementChangedNotification as String:
+        case kAXFocusedUIElementChangedNotification:
             tracker.handleObservedFocusChange()
         default:
             break

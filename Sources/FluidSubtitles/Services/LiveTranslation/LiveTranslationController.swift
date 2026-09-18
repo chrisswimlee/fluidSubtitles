@@ -74,9 +74,13 @@ final class LiveTranslationController: ObservableObject {
         if kind == .captions {
             self.startFreshTheaterBoard()
         }
+        self.subscriber.startSessionRecord()
         self.subscriber.beginListening()
         self.warmAppleTranslation()
-        if kind == .captions, !SettingsStore.shared.theaterWindowEnabled {
+        // A minimized (hidden) panel must come back for a new talk.
+        if kind == .captions,
+           !SettingsStore.shared.theaterWindowEnabled || SettingsStore.shared.theaterMinimized
+        {
             PresenterCaptionController.shared.setVisible(true)
         }
         self.refreshPresenter()
@@ -235,6 +239,12 @@ final class LiveTranslationController: ObservableObject {
         self.finishLanguageChange()
     }
 
+    /// Either way is a later product. The setting stays so a later release can restore the toggle.
+    func applyDynamicPairing(_ enabled: Bool) {
+        SettingsStore.shared.theaterDynamicPairing = enabled
+        self.finishLanguageChange()
+    }
+
     private func finishLanguageChange() {
         if self.isSessionActive {
             self.stopListening()
@@ -281,9 +291,32 @@ final class LiveTranslationController: ObservableObject {
         TranslationSessionHostController.install()
         self.appleEngine.prepare(source: source, target: target)
         Task {
-            await self.appleEngine.warm(source: source, target: target)
+            await self.warmTranslationPair(source: source, target: target)
             await self.refreshPackAvailability(source: source, target: target)
         }
+    }
+
+    private var didAwaitInitialTranslationWarmup = false
+
+    /// `warmAppleTranslation` is fire-and-forget, so a session's first commit
+    /// can race a cold Apple Translation session start (model load, first
+    /// `.translationTask` attach). That race is what causes the choppy,
+    /// retry-heavy first few seconds of a fresh Listen — captions repeating,
+    /// translations landing on the wrong sentence. Call this once, before the
+    /// very first Listen of the process, to absorb that cold start up front
+    /// instead of during the session.
+    func awaitInitialTranslationWarmupIfNeeded() async {
+        let source = SpokenLanguageResolver.sourceLanguage()
+        let target = SpokenLanguageResolver.targetLanguage()
+        // Voice / same-language Listen must not consume the one-shot. Translate
+        // after Voice still needs the cold Apple Translation start absorbed
+        // here, not on the first committed clause.
+        guard source.id != target.id else { return }
+        guard !self.didAwaitInitialTranslationWarmup else { return }
+        self.didAwaitInitialTranslationWarmup = true
+        TranslationSessionHostController.install()
+        self.appleEngine.prepare(source: source, target: target)
+        await self.appleEngine.warm(source: source, target: target, timeoutSeconds: 10)
     }
 
     func applyEditedDocument(_ text: String) {
@@ -388,16 +421,17 @@ final class LiveTranslationController: ObservableObject {
             self.packAvailability = .installed
             return true
         }
-        await self.appleEngine.warm(source: source, target: target)
-        let availability = await self.appleEngine.packAvailability(source: source, target: target)
-        self.packAvailability = availability
-        switch availability {
+        await self.warmTranslationPair(source: source, target: target)
+        let resolved = await self.resolvePairPacks(source: source, target: target)
+        self.packAvailability = resolved.availability
+        switch resolved.availability {
         case .installed:
+            await self.appleEngine.warm(source: source, target: target)
             return true
         case .supported:
             self.subscriber.reportFailure("Download the language pack before Listen.")
             self.refreshPresenter()
-            self.appleEngine.requestLanguagePackDownload()
+            await self.presentPackDownload(resolved)
             return false
         case .unsupported:
             self.subscriber.reportFailure("This pair is not supported by Apple Translation.")
@@ -527,8 +561,8 @@ final class LiveTranslationController: ObservableObject {
         self.objectWillChange.send()
     }
 
-    /// Empty Theater and the session archive. A crash leftover or last talk
-    /// must not come back on launch or a new caption Listen.
+    /// Empty Theater. A leftover file from an older build must not come back
+    /// on launch or a new caption Listen.
     func startFreshTheaterBoard() {
         PresenterCaptionController.shared.cancelEditing()
         self.subscriber.reset(clearArchive: true)
@@ -547,7 +581,90 @@ final class LiveTranslationController: ObservableObject {
             self.packAvailability = .installed
             return
         }
-        self.packAvailability = await self.appleEngine.packAvailability(source: source, target: target)
+        let resolved = await self.resolvePairPacks(source: source, target: target)
+        self.packAvailability = resolved.availability
+    }
+
+    /// Warms the I speak → Show as pack, then attaches the download sheet.
+    /// Both-direction warm is a later Either way product.
+    func requestNeededLanguagePackDownload(
+        source: TranslationLanguage? = nil,
+        target: TranslationLanguage? = nil
+    ) async {
+        let source = source ?? SpokenLanguageResolver.sourceLanguage()
+        let target = target ?? SpokenLanguageResolver.targetLanguage()
+        guard source.id != target.id else { return }
+        await self.warmTranslationPair(source: source, target: target)
+        let resolved = await self.resolvePairPacks(source: source, target: target)
+        self.packAvailability = resolved.availability
+        await self.presentPackDownload(resolved)
+    }
+
+    func pairAvailabilityCopy(
+        source: TranslationLanguage? = nil,
+        target: TranslationLanguage? = nil
+    ) async -> String {
+        let source = source ?? SpokenLanguageResolver.sourceLanguage()
+        let target = target ?? SpokenLanguageResolver.targetLanguage()
+        await self.warmTranslationPair(source: source, target: target)
+        let resolved = await self.resolvePairPacks(source: source, target: target)
+        self.packAvailability = resolved.availability
+        return await self.appleEngine.checkAvailability(
+            source: resolved.downloadSource,
+            target: resolved.downloadTarget
+        )
+    }
+
+    private struct PairPackResolution {
+        let availability: TranslationPackAvailability
+        let downloadSource: TranslationLanguage
+        let downloadTarget: TranslationLanguage
+    }
+
+    private func resolvePairPacks(
+        source: TranslationLanguage,
+        target: TranslationLanguage
+    ) async -> PairPackResolution {
+        let forward = await self.appleEngine.packAvailability(source: source, target: target)
+        let bidirectional = SpokenLanguageResolver.isDynamicPairingEnabled() && source.id != target.id
+        let reverse: TranslationPackAvailability? = bidirectional
+            ? await self.appleEngine.packAvailability(source: target, target: source)
+            : nil
+        let pair = TheaterPairPacks.downloadPair(
+            source: source,
+            target: target,
+            forward: forward,
+            reverse: reverse,
+            bidirectional: bidirectional
+        )
+        return PairPackResolution(
+            availability: TheaterPairPacks.combined(
+                forward: forward,
+                reverse: reverse,
+                bidirectional: bidirectional
+            ),
+            downloadSource: pair.source,
+            downloadTarget: pair.target
+        )
+    }
+
+    private func warmTranslationPair(
+        source: TranslationLanguage,
+        target: TranslationLanguage
+    ) async {
+        await self.appleEngine.warm(source: source, target: target)
+        if SpokenLanguageResolver.isDynamicPairingEnabled(), source.id != target.id {
+            await self.appleEngine.warm(source: target, target: source)
+            await self.appleEngine.warm(source: source, target: target)
+        }
+    }
+
+    private func presentPackDownload(_ resolved: PairPackResolution) async {
+        await self.appleEngine.warm(
+            source: resolved.downloadSource,
+            target: resolved.downloadTarget
+        )
+        self.appleEngine.requestLanguagePackDownload()
     }
 
     func restoreTheaterIfNeeded() {
@@ -559,10 +676,7 @@ final class LiveTranslationController: ObservableObject {
         }
         self.alignSpokenEngineWithTheater()
         TranslationSessionHostController.install()
-        let wasEnabled = SettingsStore.shared.theaterWindowEnabled
-        if wasEnabled {
-            SettingsStore.shared.theaterWindowEnabled = false
-        }
+        SettingsStore.shared.theaterWindowEnabled = false
         if !self.didStartFreshThisProcess {
             self.didStartFreshThisProcess = true
             self.startFreshTheaterBoard()
@@ -587,14 +701,19 @@ final class LiveTranslationController: ObservableObject {
             status = window
             statusKind = .info
         }
+        let liveSpoken = self.subscriber.liveSpokenText
+        // Prefetch / cached Show-as only. liveCaptionText is empty when the
+        // draft is the last committed title, so a restless MT guess cannot
+        // retype a line already on the board.
         PresenterCaptionController.shared.update(
-            source: self.subscriber.liveSpokenText,
+            source: liveSpoken,
             draft: self.subscriber.liveCaptionText,
             committed: self.subscriber.committedLines,
             committedIDs: self.subscriber.committedLineIDs,
             nextCaptionID: self.subscriber.nextCaptionID,
             committedSources: self.subscriber.committedSourceLines,
             pendingSources: self.subscriber.pendingSpokenLines,
+            inFlightCount: self.subscriber.inFlightCaptionCount,
             pairLabel: SpokenLanguageResolver.pairLabel(),
             status: status,
             statusKind: statusKind,
@@ -603,7 +722,16 @@ final class LiveTranslationController: ObservableObject {
             canRetryTranslation: self.subscriber.canRetryTranslation,
             approachingLineLimit: self.subscriber.isApproachingLineLimit,
             latencyReadout: self.subscriber.lastLatencySample.displayText,
-            compactLatencyReadout: self.subscriber.lastLatencySample.compactText
+            compactLatencyReadout: self.subscriber.lastLatencySample.compactText,
+            paceCue: TheaterPaceCue.snapshot(
+                isTranslating: SettingsStore.shared.theaterSessionMode.showsTranslation
+                    && !SpokenLanguageResolver.isSameLanguagePair(),
+                isListening: self.isSessionActive,
+                isPaused: self.isPaused,
+                liveSpoken: self.subscriber.liveSpokenText,
+                lastTranslation: self.subscriber.committedLines.last ?? "",
+                pendingWaitMilliseconds: self.subscriber.oldestInFlightWaitMilliseconds
+            )
         )
     }
 }

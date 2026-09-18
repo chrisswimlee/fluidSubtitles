@@ -17,18 +17,18 @@ final class LiveTranslationArchiveTests: XCTestCase {
             archive.append(committed.overflow)
         }
 
-        XCTAssertEqual(LiveTranslationTiming.maxCommittedLines, 200)
-        XCTAssertEqual(log.entries.count, 200)
-        XCTAssertEqual(archive.overflowCount, 2800)
-        XCTAssertEqual(log.translatedLines.first, "caption 2801.")
+        XCTAssertEqual(LiveTranslationTiming.maxCommittedLines, LiveTranslationTiming.visibleTheaterLines)
+        XCTAssertEqual(log.entries.count, LiveTranslationTiming.visibleTheaterLines)
+        XCTAssertEqual(archive.overflowCount, 3000 - LiveTranslationTiming.visibleTheaterLines)
+        XCTAssertEqual(log.translatedLines.first, "caption \(3000 - LiveTranslationTiming.visibleTheaterLines + 1).")
         XCTAssertEqual(log.translatedLines.last, "caption 3000.")
-        XCTAssertEqual(archive.loadAll().count, 2800)
+        XCTAssertEqual(archive.loadAll().count, 3000 - LiveTranslationTiming.visibleTheaterLines)
         XCTAssertEqual(archive.loadAll().first?.translated, "caption 1.")
 
         let counted = LectureCaptionArchive(url: url)
         XCTAssertEqual(counted.overflowCount, 0)
         counted.recount()
-        XCTAssertEqual(counted.overflowCount, 2800)
+        XCTAssertEqual(counted.overflowCount, 3000 - LiveTranslationTiming.visibleTheaterLines)
     }
 
     func testLegacySnapshotDecodesWithoutCommittedAt() throws {
@@ -133,11 +133,14 @@ final class LiveTranslationArchiveTests: XCTestCase {
         for index in 1...205 {
             subscriber.seedCommittedForTesting(source: "line \(index).", translated: "caption \(index).")
         }
-        XCTAssertEqual(subscriber.committedLines.count, 200)
-        XCTAssertEqual(subscriber.sessionLineCount, 205)
-        XCTAssertEqual(subscriber.exportCaptionPairs.count, 205)
-        XCTAssertEqual(subscriber.exportCaptionPairs.first?.translated, "caption 1.")
-        XCTAssertEqual(subscriber.lineWindowStatus, "Showing last 200 of 205")
+        XCTAssertEqual(subscriber.committedLines.count, LiveTranslationTiming.visibleTheaterLines)
+        XCTAssertEqual(subscriber.sessionLineCount, LiveTranslationTiming.visibleTheaterLines)
+        XCTAssertEqual(subscriber.exportCaptionPairs.count, LiveTranslationTiming.visibleTheaterLines)
+        XCTAssertEqual(
+            subscriber.exportCaptionPairs.first?.translated,
+            "caption \(205 - LiveTranslationTiming.visibleTheaterLines + 1)."
+        )
+        XCTAssertNil(subscriber.lineWindowStatus)
 
         subscriber.reset(clearArchive: true)
         XCTAssertTrue(subscriber.committedLines.isEmpty)
