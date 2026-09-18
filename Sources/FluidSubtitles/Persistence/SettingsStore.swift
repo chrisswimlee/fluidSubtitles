@@ -29,7 +29,24 @@ final class SettingsStore: ObservableObject {
     private static let privateAIDenseBytesPerToken = 2
     nonisolated static let privateAIBackendPreferenceDefaultsKey = "FluidIntelligenceBackendPreference"
     private static let forcedOnboardingResetIntroducedAt = Date(timeIntervalSince1970: 1_782_091_732)
-    let defaults = UserDefaults.standard
+    /// A test host is a second copy of the app with the same bundle ID. On the
+    /// shared domain it would mark Theater closed and rewrite languages under
+    /// the copy you are using, so tests get their own suite.
+    let defaults: UserDefaults = SettingsStore.backingDefaults
+
+    /// Resolved once, independent of `shared`, so extensions can read it while
+    /// `shared` is still being built.
+    nonisolated(unsafe) static let backingDefaults: UserDefaults = {
+        guard SettingsStore.isRunningTests else { return .standard }
+        let suite = "com.fluidsubtitles.tests"
+        // Every test run starts clean; a crashed run must not leave edits behind.
+        UserDefaults.standard.removePersistentDomain(forName: suite)
+        return UserDefaults(suiteName: suite) ?? .standard
+    }()
+
+    nonisolated static var isRunningTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
     let keychain = KeychainService.shared
     var launchAtStartupEnabled = false
     var launchAtStartupErrorMessage: String?
