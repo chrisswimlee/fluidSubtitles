@@ -91,7 +91,7 @@ In-app updates are off for previews. Download each new preview by hand; macOS ma
 
 The app is unsandboxed (Hardened Runtime on). Theater needs microphone access. Insert-into-another-app needs Accessibility. Voice models and Apple Translation packs download on first use; they are not inside the zip.
 
-Maintainers: Actions → **Preview** → Run workflow publishes a preview pre-release (`./build.sh preview`, tag `preview-<version>-<run>`). A signed release needs a Developer ID: `./build.sh release` with `APPLE_ID`, `APPLE_TEAM_ID`, and `APPLE_APP_SPECIFIC_PASSWORD`, then a `v*` tag runs `.github/workflows/release.yml`. Hosted CI cannot prove a live Theater listen.
+Maintainers: push a tag like `preview-1.6.11-1` (`git tag preview-1.6.11-1 && git push origin preview-1.6.11-1`) and the Preview workflow publishes that commit as a pre-release (`./build.sh preview`). A signed release needs a Developer ID: `./build.sh release` with `APPLE_ID`, `APPLE_TEAM_ID`, and `APPLE_APP_SPECIFIC_PASSWORD`, then a `v*` tag runs `.github/workflows/release.yml`. Hosted CI cannot prove a live Theater listen.
 
 ---
 

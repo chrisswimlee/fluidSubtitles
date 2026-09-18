@@ -4,7 +4,7 @@ All notable changes to fluidSubtitles are documented in this file.
 
 ## [Unreleased]
 
-- An unsigned preview zip can be downloaded from GitHub pre-releases without Xcode. macOS asks for Open Anyway the first time. `./build.sh preview` builds it and the Preview workflow publishes it; signed releases still need a Developer ID.
+- An unsigned preview zip can be downloaded from GitHub pre-releases without Xcode. macOS asks for Open Anyway the first time. `./build.sh preview` builds it and a `preview-<version>-<n>` tag publishes it; signed releases still need a Developer ID.
 - Theater's first idle Overlay says how to get back: slides stay clickable, Control-Option-T shows tools, Control-Option-L starts Listen. With presenter shortcuts off it points to the menu bar.
 - Theater Home asks who sees captions: Slides in the room (hidden from screen share, still the default) or Zoom or Meet (shown). The window shows a Hidden from Zoom badge, and the menu-bar item says so.
 - The Settings shortcut is now Listen and type: it starts its own Listen and types the translation of what you say. The window button stays Type into app and types captions already on the board. The shortcut card shows before the first caption and unlocks after it.

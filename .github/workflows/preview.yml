@@ -1,10 +1,15 @@
 name: Preview
 
-# Unsigned preview zip for people who do not build from source. Run it from
-# Actions → Preview → Run workflow. It tags preview-<version>-<run>, never v*,
-# so release.yml (Developer ID + notarization) does not start.
+# Unsigned preview zip for people who do not build from source. Push a tag:
+#   git tag preview-1.6.11-1 && git push origin preview-1.6.11-1
+# The tag must start with preview-<CFBundleShortVersionString>-. It is never v*,
+# so release.yml (Developer ID + notarization) does not start. The release is
+# made for the pushed tag; GITHUB_TOKEN cannot create a tag on a commit that is
+# no longer the branch head.
 on:
-  workflow_dispatch:
+  push:
+    tags:
+      - "preview-*"
 
 jobs:
   preview:
@@ -31,7 +36,14 @@ jobs:
           set -euo pipefail
           version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Info.plist)"
           zip="dist/fluidsubtitles-${version}-preview-unsigned.zip"
-          tag="preview-${version}-${GITHUB_RUN_NUMBER}"
+          tag="${GITHUB_REF_NAME}"
+          case "${tag}" in
+            "preview-${version}-"*) ;;
+            *)
+              echo "Tag ${tag} must start with preview-${version}- to match Info.plist." >&2
+              exit 1
+              ;;
+          esac
           if [ ! -f "${zip}" ]; then
             echo "Expected preview zip at ${zip}" >&2
             exit 1
@@ -49,7 +61,7 @@ jobs:
           Built from ${GITHUB_SHA}. Checksum in \`SHA256SUMS\`.
           EOF
           gh release create "${tag}" "${zip}" "dist/SHA256SUMS" \
-            --target "${GITHUB_SHA}" \
+            --verify-tag \
             --prerelease \
             --title "fluidSubtitles ${version} preview (unsigned)" \
             --notes-file "${RUNNER_TEMP}/notes.md"
