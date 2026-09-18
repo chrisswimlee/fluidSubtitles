@@ -561,7 +561,7 @@ struct NotchExpandedView: View {
         if let appIcon = self.contentState.targetAppIcon ?? self.activeAppMonitor.activeAppIcon {
             Image(nsImage: appIcon)
                 .resizable()
-                .aspectRatio(contentMode: .fit)
+                .scaledToFit()
                 .frame(width: 18, height: 18)
                 .clipShape(RoundedRectangle(cornerRadius: 3))
         }
@@ -1115,7 +1115,7 @@ struct NotchCompactLeadingView: View {
             if let appIcon = self.contentState.targetAppIcon ?? self.activeAppMonitor.activeAppIcon {
                 Image(nsImage: appIcon)
                     .resizable()
-                    .aspectRatio(contentMode: .fit)
+                    .scaledToFit()
                     .frame(width: 16, height: 16)
                     .clipShape(RoundedRectangle(cornerRadius: 3))
             } else {
