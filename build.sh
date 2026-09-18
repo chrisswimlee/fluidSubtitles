@@ -7,6 +7,7 @@
 #   ./build.sh public     # signed Debug build
 #   ./build.sh unsigned   # unsigned Debug build (CI / no signing identity)
 #   ./build.sh release    # signed Release zip; notarize when Apple credentials are set
+#   ./build.sh preview    # ad-hoc signed Release zip for a GitHub pre-release
 
 set -euo pipefail
 
@@ -178,6 +179,55 @@ run_release_build() {
     echo "Checksums: ${PROJECT_DIR}/dist/SHA256SUMS"
 }
 
+# Ad-hoc signed Release zip for GitHub pre-releases. No Apple account needed.
+# Gatekeeper blocks it until the user picks Open Anyway, and macOS may ask for
+# Microphone and Accessibility again after each new preview.
+run_preview_build() {
+    local version
+    local app_path
+    local zip_name
+    local zip_path
+    local -a build_args=(
+        -project fluidSubtitles.xcodeproj
+        -scheme fluidSubtitles
+        -configuration Release
+        -destination 'platform=macOS'
+        -derivedDataPath "${DERIVED_DATA_PATH}"
+        build
+    )
+
+    cd "${PROJECT_DIR}"
+    echo "Running unsigned Release fluidSubtitles build for a preview zip..."
+    xcodebuild "${build_args[@]}" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM=
+
+    app_path="${DERIVED_DATA_PATH}/Build/Products/Release/fluidSubtitles.app"
+    if [ ! -d "${app_path}" ]; then
+        app_path="$(find "${DERIVED_DATA_PATH}/Build/Products/Release" -maxdepth 1 -name '*.app' | head -n 1)"
+    fi
+    if [ -z "${app_path}" ] || [ ! -d "${app_path}" ]; then
+        echo "Release app was not found in ${DERIVED_DATA_PATH}/Build/Products/Release." >&2
+        exit 1
+    fi
+
+    restore_ctranscribe_layout "${app_path}"
+    codesign --force --deep --sign - --options runtime \
+        "${app_path}/Contents/Frameworks/CTranscribe.framework"
+    codesign --force --deep --sign - --options runtime \
+        --entitlements "${PROJECT_DIR}/fluidSubtitles.entitlements" \
+        "${app_path}"
+    codesign --verify --deep --strict "${app_path}"
+
+    version="$(app_version)"
+    zip_name="fluidsubtitles-${version}-preview-unsigned.zip"
+    zip_path="${PROJECT_DIR}/dist/${zip_name}"
+    mkdir -p "${PROJECT_DIR}/dist"
+    rm -f "${zip_path}"
+    ditto -c -k --keepParent "${app_path}" "${zip_path}"
+    (cd "${PROJECT_DIR}/dist" && shasum -a 256 "${zip_name}" > SHA256SUMS)
+    echo "Preview zip: ${zip_path}"
+    echo "Checksums: ${PROJECT_DIR}/dist/SHA256SUMS"
+}
+
 case "${PROFILE}" in
     public|oss|incremental|fast|"")
         run_public_build signed
@@ -188,9 +238,12 @@ case "${PROFILE}" in
     release|notarize)
         run_release_build
         ;;
+    preview)
+        run_preview_build
+        ;;
     *)
         echo "Unknown build profile: ${PROFILE}"
-        echo "Valid profiles: public, unsigned, release"
+        echo "Valid profiles: public, unsigned, release, preview"
         exit 1
         ;;
 esac

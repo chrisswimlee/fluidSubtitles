@@ -1,0 +1,55 @@
+name: Preview
+
+# Unsigned preview zip for people who do not build from source. Run it from
+# Actions → Preview → Run workflow. It tags preview-<version>-<run>, never v*,
+# so release.yml (Developer ID + notarization) does not start.
+on:
+  workflow_dispatch:
+
+jobs:
+  preview:
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
+        with:
+          xcode-version: "26.3"
+
+      - name: Build preview zip
+        run: ./build.sh preview
+
+      - name: Upload GitHub pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Info.plist)"
+          zip="dist/fluidsubtitles-${version}-preview-unsigned.zip"
+          tag="preview-${version}-${GITHUB_RUN_NUMBER}"
+          if [ ! -f "${zip}" ]; then
+            echo "Expected preview zip at ${zip}" >&2
+            exit 1
+          fi
+          cat > "${RUNNER_TEMP}/notes.md" <<EOF
+          **Unsigned preview.** This build is not signed with a Developer ID or notarized, so macOS blocks it the first time.
+
+          1. Download \`$(basename "${zip}")\`, unzip it, and drag **fluidSubtitles** to Applications.
+          2. Open it. When macOS says it cannot verify the app, click **Done**.
+          3. Open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to fluidSubtitles. Confirm.
+          4. Allow the microphone. Allow Accessibility only if you use Type into app.
+
+          In-app updates are off for previews. Download the next preview by hand; macOS may ask for Microphone and Accessibility again.
+
+          Built from ${GITHUB_SHA}. Checksum in \`SHA256SUMS\`.
+          EOF
+          gh release create "${tag}" "${zip}" "dist/SHA256SUMS" \
+            --target "${GITHUB_SHA}" \
+            --prerelease \
+            --title "fluidSubtitles ${version} preview (unsigned)" \
+            --notes-file "${RUNNER_TEMP}/notes.md"

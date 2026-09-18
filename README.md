@@ -76,13 +76,22 @@ fluidSubtitles only hears and captions **Korean, English, Thai, and Japanese**. 
 
 ## Install
 
-This is a **Developer ID zip**, not TestFlight and not the Mac App Store. The app is unsandboxed (Hardened Runtime on). Theater needs microphone access. Insert-into-another-app needs Accessibility. Voice models and Apple Translation packs download on first use; they are not inside the zip.
+There is no signed download yet. Pick one:
 
-1. Download `fluidsubtitles-{version}.zip` from [GitHub Releases](https://github.com/chrisswimlee/fluidSubtitles/releases).
-2. Open the app. A notarized zip should stay quiet in Gatekeeper.
-3. Open **Theater**, allow the microphone, pick **Voice** or **Translate**, and press **Listen**.
+**Preview zip (no Xcode).** Download `fluidsubtitles-{version}-preview-unsigned.zip` from the newest pre-release on [GitHub Releases](https://github.com/chrisswimlee/fluidSubtitles/releases). It is not signed with a Developer ID or notarized, so macOS blocks it the first time:
 
-`./build.sh release` writes `dist/fluidsubtitles-{version}.zip` and `dist/SHA256SUMS`. Set `APPLE_ID`, `APPLE_TEAM_ID`, and `APPLE_APP_SPECIFIC_PASSWORD` to notarize. A GitHub tag `v*` runs `.github/workflows/release.yml`. Hosted CI cannot sign unless a Developer ID certificate is imported. After that first Developer ID zip, add the team ID to `FluidProduct.allowedUpdateTeamIDs` — the set is empty today, so updates reject every build. Hosted CI cannot prove a live Theater listen.
+1. Unzip it and drag **fluidSubtitles** to Applications.
+2. Open it. When macOS says it cannot verify the app, click **Done**.
+3. Open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to fluidSubtitles. Confirm.
+4. Open **Theater**, allow the microphone, pick **Voice** or **Translate**, and press **Listen**.
+
+In-app updates are off for previews. Download each new preview by hand; macOS may ask for Microphone and Accessibility again.
+
+**Build from source (Xcode).** Permissions stay across rebuilds. See [Building from Source](#building-from-source).
+
+The app is unsandboxed (Hardened Runtime on). Theater needs microphone access. Insert-into-another-app needs Accessibility. Voice models and Apple Translation packs download on first use; they are not inside the zip.
+
+Maintainers: Actions → **Preview** → Run workflow publishes a preview pre-release (`./build.sh preview`, tag `preview-<version>-<run>`). A signed release needs a Developer ID: `./build.sh release` with `APPLE_ID`, `APPLE_TEAM_ID`, and `APPLE_APP_SPECIFIC_PASSWORD`, then a `v*` tag runs `.github/workflows/release.yml`. Hosted CI cannot prove a live Theater listen.
 
 ---
 
