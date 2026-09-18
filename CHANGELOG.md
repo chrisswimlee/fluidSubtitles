@@ -4,6 +4,7 @@ All notable changes to fluidSubtitles are documented in this file.
 
 ## [Unreleased]
 
+- Launch no longer crashes when SettingsStore reads login-item state. Init uses this store's defaults instead of SettingsStore.shared.
 - Apple Translation no longer asks macOS for every locale pair. That list can crash Theater on macOS 26. Pack checks stay on Korean, English, Thai, and Japanese.
 - Theater drops a Whisper restitch that repeats the last clause, so the live row does not print the same sentence twice.
 - Theater Minimize hides the board so it is not always in front. Listen stays. Open Theater or Show Theater brings it back.
