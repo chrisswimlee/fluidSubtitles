@@ -62,7 +62,14 @@ Do not commit `xcconfig/Local.xcconfig` or a `DEVELOPMENT_TEAM` value in `projec
 cp scripts/check-team-id.sh .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
 ```
 
-Unsigned fallback for machines without a team: `./build.sh unsigned`.
+Unsigned fallback for machines without a team: `./build.sh unsigned`. To run the tests without a team, sign ad hoc:
+
+```bash
+xcodebuild test -project fluidSubtitles.xcodeproj -scheme fluidSubtitles \
+  -destination 'platform=macOS,arch=arm64' \
+  -skip-testing:FluidSubtitlesUITests \
+  CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM=
+```
 
 Optional experimental first-print sharpening uses a local MLX runner. Install Python 3.12 (`brew install python@3.12`), then set `FLUID_PYTHON` if it is not on `PATH`.
 
