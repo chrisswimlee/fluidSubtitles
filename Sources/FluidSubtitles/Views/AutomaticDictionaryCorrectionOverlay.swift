@@ -263,7 +263,7 @@ final class MicrophoneChangeOverlayController {
     static let shared = MicrophoneChangeOverlayController()
 
     private static let displayDurationNanoseconds: UInt64 = 5_000_000_000
-    private static let supportedBundleIdentifiers = [
+    private nonisolated static let supportedBundleIdentifiers = [
         "com.FluidApp.app",
         "com.FluidApp.app.debug",
     ]

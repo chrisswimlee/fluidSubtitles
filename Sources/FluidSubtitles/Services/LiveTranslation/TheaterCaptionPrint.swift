@@ -50,6 +50,8 @@ enum TheaterCaptionPrintStyle: String, CaseIterable, Identifiable {
     }
 
     /// One Latin letter. Close to reading pace, not a four-letter dump.
+    static let catchUpBacklogCharacters = 40
+    static let catchUpSpeedFactor: TimeInterval = 0.35
     static let latinFlowStepSeconds: TimeInterval = 0.038
     /// Compact Show-as titles walk slower so Korean reads as a title, not a dump.
     static let compactFlowStepSeconds: TimeInterval = 0.068
@@ -68,18 +70,21 @@ enum TheaterCaptionPrintStyle: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Next tick after what is already on screen. Slows at word and sentence edges.
+    /// Next tick after what is already on screen. Slows at word and sentence
+    /// edges. Must check spoken before translated, matching the order
+    /// TheaterLinePrinter.nextPrintStep advances (top row first) — otherwise
+    /// this times the tick off a string that is not the one being typed.
     func printStepSeconds(
         printedSpoken: String,
         targetSpoken: String,
         printedTranslated: String,
         targetTranslated: String
     ) -> TimeInterval {
-        if printedTranslated != targetTranslated {
-            return self.printStepSeconds(after: printedTranslated, toward: targetTranslated)
-        }
         if printedSpoken != targetSpoken {
             return self.printStepSeconds(after: printedSpoken, toward: targetSpoken)
+        }
+        if printedTranslated != targetTranslated {
+            return self.printStepSeconds(after: printedTranslated, toward: targetTranslated)
         }
         return 0
     }
@@ -94,6 +99,11 @@ enum TheaterCaptionPrintStyle: String, CaseIterable, Identifiable {
             rest = target
         }
         guard let next = rest.first else { return step }
+        // A big chunk landing at once (pause reveal, slow translation) must
+        // not type for seconds behind the speaker's voice.
+        if rest.count > Self.catchUpBacklogCharacters {
+            return step * Self.catchUpSpeedFactor
+        }
         if self == .flow {
             if next.isWhitespace {
                 step += 0.028
@@ -169,6 +179,43 @@ enum TheaterWindowPlacement {
     }
 }
 
+/// One-click board positions on the chosen display, inside a 5% safe margin.
+enum TheaterPositionPreset: String, CaseIterable, Identifiable {
+    case lowerThird
+    case topBand
+    case sideColumn
+
+    static let safeMargin: CGFloat = 0.05
+    static let sideColumnMinimumWidth: CGFloat = 480
+
+    var id: String { self.rawValue }
+
+    var displayName: String {
+        switch self {
+        case .lowerThird: "Lower third"
+        case .topBand: "Top band"
+        case .sideColumn: "Side column"
+        }
+    }
+
+    func frame(in visible: CGRect) -> CGRect {
+        let safe = visible.insetBy(
+            dx: visible.width * Self.safeMargin,
+            dy: visible.height * Self.safeMargin
+        )
+        switch self {
+        case .lowerThird:
+            return CGRect(x: safe.minX, y: safe.minY, width: safe.width, height: safe.height / 3)
+        case .topBand:
+            let height = safe.height / 3
+            return CGRect(x: safe.minX, y: safe.maxY - height, width: safe.width, height: height)
+        case .sideColumn:
+            let width = min(safe.width, max(safe.width * 0.32, Self.sideColumnMinimumWidth))
+            return CGRect(x: safe.maxX - width, y: safe.minY, width: width, height: safe.height)
+        }
+    }
+}
+
 /// Grow captions with the board so a full-screen window is not stuck at 42 pt.
 enum TheaterCaptionScale {
     static let referenceWidth: CGFloat = 1100
@@ -190,5 +237,18 @@ enum TheaterCaptionScale {
 
     static func translatedSize(setting: CGFloat) -> CGFloat {
         min(max(setting, 1) * Self.translatedMultiplier, Self.maxPointSize)
+    }
+}
+
+/// Keep the live row on screen without flipping top/bottom every height tick.
+enum TheaterBoardScroll {
+    static let viewportSlop: CGFloat = 8
+
+    static func pinsToBottom(boardHeight: CGFloat, viewportHeight: CGFloat) -> Bool {
+        boardHeight + Self.viewportSlop > viewportHeight
+    }
+
+    static func shouldFollowReveal(from previous: CGFloat, to next: CGFloat) -> Bool {
+        next > previous + 0.5
     }
 }

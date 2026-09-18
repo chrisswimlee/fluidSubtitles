@@ -11,6 +11,7 @@ on:
       - 'fluidSubtitles.xcodeproj/**'
       - 'Package.swift'
       - 'Package.resolved'
+      - 'fluidSubtitles.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved'
       - 'Info.plist'
       - 'fluidSubtitles.entitlements'
 

@@ -4,9 +4,9 @@
   <img src="docs/screenshots/app-icon.png" width="96" alt="fluidSubtitles icon">
 </p>
 
-**Captions after each sentence. Korean, English, Thai, and Japanese.**
+**Captions that grow while you talk. Korean, English, Thai, and Japanese.**
 
-fluidSubtitles is a live translation and captioning app for macOS. It works among **Korean, English, Thai, and Japanese** in either direction, including same-language captions (English → English, Korean → Korean, Thai → Thai, Japanese → Japanese). Speak one of those languages. After each finished sentence, see a translation or a caption on screen, or type it into the app you are using. It is lectern captions, not word-by-word interpretation. Best with one speaker and a close mic.
+fluidSubtitles is a live translation and captioning app for macOS. It works among **Korean, English, Thai, and Japanese** in either direction, including same-language captions (English → English, Korean → Korean, Thai → Thai, Japanese → Japanese). Speak one of those languages. A finished sentence plus more speech starts the next pair. A pause commits leftover speech. See a translation or a caption on screen, or type it into the app you are using. Best with one speaker and a close mic.
 
 ![Translate home](docs/screenshots/translate-home.png)
 
@@ -21,9 +21,9 @@ Open **Theater** in the sidebar, pick Korean, English, Thai, or Japanese on each
 ## Theater captions
 
 1. Use **macOS 15** or later on Apple Silicon. First run uses Apple Speech (Analyzer on macOS 26). Same-language captions need no translation pack.
-2. Open **Theater** and pick **Voice** or **Translate**. **Voice Engine** sharpens speech into text. **Translation Engine** is Apple Translation on this Mac (not a chat model). Download the pack only for Translate with two languages.
+2. Open **Theater** and pick **Voice** or **Translate**. **Voice Engine** and **Translation Engine** are Setup tabs. Voice Engine sharpens speech into text. Translation Engine is Apple Translation on this Mac (not a chat model). An experimental local LLM can sharpen the first print. Download the Apple pack only for Translate with two languages.
 3. Allow the microphone. **Listen** stays off until Voice Engine and (for Translate) the pack are green.
-4. Speak one sentence. **Type into app** unlocks after that first caption. **Copy** always takes everything on screen. **Clear** wipes the board and the session archive; Listen can keep going.
+4. Optional: import notes or a deck on Theater Home for this talk. Names stay on this Mac. Speak one sentence. **Type into app** unlocks after that first caption. **Copy** always takes everything on screen. **Clear** wipes the board. Talk notes stay. Listen can keep going.
 
 Accessibility permission is only required if you want a translation typed into other apps. Theater captions on your screen do not need it.
 
@@ -35,9 +35,9 @@ Theater is a measured on-device pipeline, not a cloud caption API.
 
 1. **Capture** — The microphone is a first-party Core Audio HAL path, not `AVAudioEngine` on the live path. Voice and Translate both use it.
 2. **Speech edges** — Live PCM stays in a 30-second ring. The first ASR tick is immediate. After 400 ms of RMS silence, later ticks are skipped so a long pause does not keep the Neural Engine hot. There is no neural VAD in front of first words.
-3. **Commit, then translate** — The current spoken line can type while you talk. A finished sentence or a natural pause starts the Show-as title. Apple Translation runs on commit. Same-language pairs skip the pack. Korean, Japanese, and Thai send the last 4 source clauses from this Listen, then peel the new caption. A clause-boundary approximation may prefetch Apple Translation.
+3. **Grow, then commit** — The live spoken line grows while you talk. End-of-utterance, silence, Pause, or Stop commits leftover speech and starts the next pair. Apple Translation runs on that commit. Same-language pairs skip the pack. Korean, Japanese, and Thai send the last 4 source clauses from this Listen, then peel the new caption. Prefetch may warm Apple Translation; it does not commit.
 4. **Stage window** — A nonactivating panel over Keynote. Hide from Zoom and screen share with `NSWindow.sharingType`. The Show-as title sits above a smaller spoken undertone. Wrap fills left to right. YouTube boilerplate is dropped before print.
-5. **Bounded memory** — 30 s of 16 kHz float, the newest 2,400 transcript characters, 200 visible lines, and JSONL overflow for a 3-hour keynote.
+5. **Bounded memory** — 30 s of 16 kHz float, unread leftover speech, and the 3 on-screen captions. Off-screen lines are dropped.
 6. **Measured clock** — Theater shows `mic · e2e · ASR · MT` from Core Audio host time. Those values come from a real Listen. Hosted CI cannot prove a live Theater listen.
 
 The systems write-up is [docs/APPLE_SILICON_STREAMING.md](docs/APPLE_SILICON_STREAMING.md). Latency budgets and the HUD are in [docs/LIVE_TRANSLATION_LATENCY.md](docs/LIVE_TRANSLATION_LATENCY.md).
@@ -47,8 +47,8 @@ The systems write-up is [docs/APPLE_SILICON_STREAMING.md](docs/APPLE_SILICON_STR
 ## Features
 
 - **Korean, English, Thai, and Japanese** — any pair, either direction, including same-language captions without a translation pack. Listen uses a Voice Engine that can hear I speak (Apple Speech, Cohere, or Whisper for Korean and Japanese; Apple Speech or Whisper for Thai; Parakeet Flash is English-only)
-- **Theater captions** — a floating window you turn on, edit, and close. Use **Pop-up** for a solid board or **Transparent** so slides show through. On-screen `mic · e2e · ASR · MT` clock. Hide it from screen share. Pause keeps the session warm. Minimize shrinks to a pill. Clear wipes the board and the session archive. A line prints after the sentence, usually a few seconds later.
-- **Voice / Translate** — Voice Engine sharpens speech into text. Translate uses Apple Translation on this Mac for Korean, English, Thai, and Japanese captions. Press the mode control to switch. Both use the microphone.
+- **Theater captions** — a floating window you turn on, edit, and close. Use **Pop-up** for a solid board or **Transparent** so slides show through. On-screen `mic · e2e · ASR · MT` clock. Hide it from screen share. Pause keeps the session warm. Minimize hides Theater; Listen stays. Clear wipes the board. Talk notes stay. Off-screen captions are already gone. Translate shows Behind or Caught up so you do not outrun the caption. The live line grows while you talk; a pause starts the next pair.
+- **Voice / Translate** — Voice Engine sharpens speech into text. Translate uses Apple Translation on this Mac for Korean, English, Thai, and Japanese captions. A Setup tab can add an experimental local LLM for first-print sharpening. Press the mode control to switch. Both use the microphone.
 - **Translate into an app** — a separate shortcut from dictation; types this listen’s translation into the app you clicked. Korean, Japanese, and Thai depend on that app’s input method. Accessibility is required.
 - **On-device translation** — Apple Translation language packs, processed locally
 - **Multiple speech models** — Nemotron, Parakeet, Cohere, Apple Speech, and Whisper
@@ -103,7 +103,7 @@ This is a **Developer ID zip**, not TestFlight and not the Mac App Store. The ap
 open fluidSubtitles.xcodeproj
 ```
 
-Build and run in Xcode. All dependencies are managed via Swift Package Manager and pinned in `Package.resolved`.
+Build and run in Xcode. App Swift packages are pinned in `fluidSubtitles.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`. Root `Package.swift` only builds the C capture helper.
 
 For local signing, copy the example xcconfig and set your Apple team ID (a free Personal Team is enough):
 

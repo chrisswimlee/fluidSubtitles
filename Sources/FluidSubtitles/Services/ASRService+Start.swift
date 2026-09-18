@@ -383,7 +383,7 @@ extension ASRService {
             DebugLogger.shared.info("✅ START() completed successfully", source: "ASRService")
             return .started
         } catch {
-            await self.audioCaptureReadinessGate.cancel(
+            self.audioCaptureReadinessGate.cancel(
                 sessionID: captureSessionID,
                 attemptID: readinessAttemptID
             )
@@ -553,7 +553,7 @@ extension ASRService {
             "capture_start_cancel reason=\(reason) session=\(cancelledSessionID) " +
                 "generation=\(self.audioCaptureStartGeneration)"
         )
-        await self.audioCaptureReadinessGate.cancel(
+        self.audioCaptureReadinessGate.cancel(
             sessionID: cancelledSessionID,
             attemptID: self.audioCaptureAttemptID
         )

@@ -1,11 +1,11 @@
 import Foundation
 
 /// User-facing identity for fluidSubtitles.
-enum FluidProduct {
+nonisolated enum FluidProduct {
     static let displayName = "fluidSubtitles"
     static let shortName = "Subtitles"
     static let bundleIdentifier = "com.fluidsubtitles.app"
-    static let tagline = "Captions after each sentence. Korean, English, Thai, and Japanese."
+    static let tagline = "Captions that grow while you talk. Korean, English, Thai, and Japanese."
     static let manifesto = "Language is no longer a barrier."
 
     static let supportFolderName = "fluidSubtitles"

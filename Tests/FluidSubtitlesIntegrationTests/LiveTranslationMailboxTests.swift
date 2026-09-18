@@ -15,6 +15,20 @@ final class LiveTranslationMailboxTests: XCTestCase {
         XCTAssertFalse(mailbox.isReady)
     }
 
+    func testPackCacheKeyUsesCatalogIDs() {
+        XCTAssertEqual(
+            AppleTranslationEngine.packCacheKey(
+                source: TranslationLanguageCatalog.english,
+                target: TranslationLanguageCatalog.korean
+            ),
+            "en->ko"
+        )
+        for language in TranslationLanguageCatalog.all {
+            XCTAssertFalse(language.localeLanguage.minimalIdentifier.isEmpty)
+            XCTAssertEqual(language.appleLanguageCode, language.id)
+        }
+    }
+
     @MainActor
     func testWarmMailboxIsPreferredOverAPerClauseInstall() {
         XCTAssertEqual(

@@ -1,3 +1,5 @@
+import AppKit
+import Carbon
 import SwiftUI
 import XCTest
 @testable import FluidSubtitles_Debug
@@ -196,14 +198,14 @@ final class LiveTranslationClauseTests: XCTestCase {
                 "Yesterday we trained the model. Then we applied it to production and shipped",
                 already: ["Then we applied it to production"]
             ),
-            "Yesterday we trained the model. Then we applied it to production and shipped"
+            "and shipped"
         )
         XCTAssertEqual(
             TranslationClauseSegmenter.leftoverTail(
                 "이전문장입니다저는 모델을 학습했습니다그걸 적용하면",
                 already: ["저는 모델을 학습했습니다"]
             ),
-            "이전문장입니다저는 모델을 학습했습니다그걸 적용하면"
+            "그걸 적용하면"
         )
         XCTAssertEqual(
             TranslationClauseSegmenter.leftoverTail(
@@ -306,6 +308,7 @@ final class LiveTranslationClauseTests: XCTestCase {
         )
     }
 
+    /// lineCut / liveOpenText are commit-time helpers. Live display uses leftover.
     func testJammedPeriodsDoNotDumpAsOneClause() {
         let spoken = "Today we trained the model.Then we applied it.And we shipped it to production."
         let split = TranslationClauseSegmenter.split(spoken, languageID: "en")
@@ -325,28 +328,30 @@ final class LiveTranslationClauseTests: XCTestCase {
         )
         XCTAssertEqual(next?.unit, "Today we trained the model.")
         XCTAssertEqual(next?.rest, "Then we applied it.And we shipped it to production.")
-        XCTAssertEqual(
-            TranslationClauseSegmenter.liveOpenText(
-                "Today we trained the model.Then we applied it.And we shipped it to",
-                languageID: "en"
-            ),
-            "Today we trained the model."
+        let jammedLive = TranslationClauseSegmenter.liveOpenText(
+            "Today we trained the model.Then we applied it.And we shipped it to",
+            languageID: "en"
         )
+        XCTAssertTrue(jammedLive.hasPrefix("Today we trained"))
+        XCTAssertFalse(jammedLive.hasSuffix("Today we trained the model."))
         XCTAssertEqual(
-            TranslationClauseSegmenter.liveOpenText(spoken, languageID: "en"),
-            "Today we trained the model."
+            TranslationClauseSegmenter.liveOpenText(spoken, languageID: "en").split(whereSeparator: { $0.isWhitespace }).count,
+            LiveTranslationTiming.maxLineWords
         )
         let preview = TranslationClauseSegmenter.livePreview(
             "Today we trained the model.Then we applied it.And we shipped it to",
             languageID: "en"
         )
-        XCTAssertEqual(preview.pinned, ["Today we trained the model.", "Then we applied it."])
-        XCTAssertEqual(preview.open, "And we shipped it to")
-        XCTAssertTrue(
+        XCTAssertFalse(preview.open.isEmpty)
+        XCTAssertFalse(
             TranslationClauseSegmenter.hasUnreadSpeechAfterCompleted(
                 "Today we trained the model. Then we applied it",
                 languageID: "en"
             )
+        )
+        let longFirst = (1...12).map { "word\($0)" }.joined(separator: " ") + ". And more"
+        XCTAssertTrue(
+            TranslationClauseSegmenter.hasUnreadSpeechAfterCompleted(longFirst, languageID: "en")
         )
         XCTAssertFalse(
             TranslationClauseSegmenter.hasUnreadSpeechAfterCompleted(
@@ -371,19 +376,22 @@ final class LiveTranslationClauseTests: XCTestCase {
         XCTAssertEqual(lowercase.tail, "")
     }
 
-    func testCaptionLogReplacesPrefixInsteadOfDuplicatingTheTalk() {
+    func testCaptionLogAppendsPeeledDeltaInsteadOfReplacingOrDuplicatingTheTalk() {
         var log = LectureCaptionLog()
         log.commit(source: "Hello", translated: "안녕")
         log.commit(source: "Hello world today", translated: "안녕 세상 오늘")
-        XCTAssertEqual(log.sourceLines, ["Hello world today"])
-        XCTAssertEqual(log.translatedLines, ["안녕 세상 오늘"])
+        // A growing correction never rewrites "Hello" — only the new
+        // delta is appended as its own line. Nothing already on the
+        // board is ever rewritten or removed.
+        XCTAssertEqual(log.sourceLines, ["Hello", "world today"])
+        XCTAssertEqual(log.translatedLines, ["안녕", "세상 오늘"])
 
         log.commit(source: "Hello world", translated: "안녕 세상")
-        XCTAssertEqual(log.sourceLines, ["Hello world today"])
-        XCTAssertEqual(log.translatedLines, ["안녕 세상 오늘"])
+        XCTAssertEqual(log.sourceLines, ["Hello", "world today", "Hello world"])
+        XCTAssertEqual(log.translatedLines, ["안녕", "세상 오늘", "안녕 세상"])
 
         log.commit(source: "Next we measure it.", translated: "다음으로 측정합니다.")
-        XCTAssertEqual(log.sourceLines, ["Hello world today", "Next we measure it."])
+        XCTAssertEqual(log.sourceLines.last, "Next we measure it.")
         XCTAssertEqual(log.contextSourceLines.last, "Next we measure it.")
 
         log.commit(source: "Today we trained the model.", translated: "오늘 모델을 학습했습니다.")
@@ -485,9 +493,9 @@ final class LiveTranslationClauseTests: XCTestCase {
             sourceDraft: "And we shipped it",
             spokenDisplay: .paired
         )
-        XCTAssertEqual(spokenLeads.last?.text, "")
-        XCTAssertEqual(spokenLeads.last?.source, "And we shipped it")
-        XCTAssertEqual(spokenLeads.last?.id, TheaterCaptionFlow.liveID(after: [1]))
+        XCTAssertEqual(spokenLeads.map(\.text), ["안녕.", ""])
+        XCTAssertEqual(spokenLeads.map(\.source), ["Hello we trained", "And we shipped it"])
+        XCTAssertEqual(spokenLeads.map(\.id), ["c-1", TheaterCaptionFlow.liveID(after: [1])])
         XCTAssertEqual(spokenLeads.last?.isDraft, true)
 
         let spokenThenTranslation = TheaterCaptionFlow.lines(
@@ -512,6 +520,18 @@ final class LiveTranslationClauseTests: XCTestCase {
         XCTAssertEqual(reprinted.map(\.text), ["I trained the model."])
         XCTAssertEqual(reprinted.last?.isDraft, false)
 
+        let restitch = TheaterCaptionFlow.lines(
+            committed: ["오늘 모델을 학습했습니다."],
+            committedIDs: [1],
+            committedSources: ["Today we trained the model."],
+            draft: "",
+            sourceDraft: "Today we trained the model. Then we applied it.",
+            spokenDisplay: .paired
+        )
+        XCTAssertEqual(restitch.map(\.text), ["오늘 모델을 학습했습니다.", ""])
+        XCTAssertEqual(restitch.last?.source, "Then we applied it.")
+        XCTAssertEqual(restitch.last?.isDraft, true)
+
         let many = (1...16).map { "Line \($0)." }
         let recent = TheaterCaptionFlow.lines(
             committed: many,
@@ -520,9 +540,37 @@ final class LiveTranslationClauseTests: XCTestCase {
         )
         XCTAssertEqual(recent.count, LiveTranslationTiming.visibleTheaterLines)
         XCTAssertEqual(recent.map(\.text), Array(many.suffix(LiveTranslationTiming.visibleTheaterLines)))
-        XCTAssertEqual(recent.first?.id, "c-5")
+        XCTAssertEqual(recent.first?.id, "c-\(16 - LiveTranslationTiming.visibleTheaterLines + 1)")
         XCTAssertEqual(recent.last?.id, "c-16")
         XCTAssertEqual(recent.last?.text, "Line 16.")
+
+        func cue(
+            translating: Bool = true,
+            listening: Bool = true,
+            paused: Bool = false,
+            spoken: String = "Then we applied it.",
+            last: String = "오늘 모델을 학습했습니다.",
+            wait: Int? = nil
+        ) -> TheaterPaceCue.Snapshot? {
+            TheaterPaceCue.snapshot(
+                isTranslating: translating,
+                isListening: listening,
+                isPaused: paused,
+                liveSpoken: spoken,
+                lastTranslation: last,
+                pendingWaitMilliseconds: wait
+            )
+        }
+        XCTAssertNil(cue(listening: false))
+        XCTAssertNil(cue(translating: false))
+        XCTAssertNil(cue(paused: true, wait: 4000))
+        // Mid-sentence speech with nothing waiting is not "behind".
+        XCTAssertEqual(cue()?.kind, .caughtUp)
+        XCTAssertEqual(cue(wait: 800)?.kind, .caughtUp)
+        XCTAssertEqual(cue(wait: 4200)?.kind, .behind)
+        XCTAssertEqual(cue(wait: 4200)?.label, "Behind · 4s")
+        XCTAssertEqual(cue(spoken: "")?.kind, .caughtUp)
+        XCTAssertNil(cue(spoken: "", last: ""))
 
         let recentPlusLive = TheaterCaptionFlow.lines(
             committed: many,
@@ -530,8 +578,8 @@ final class LiveTranslationClauseTests: XCTestCase {
             draft: "",
             sourceDraft: "Line 17 lives here"
         )
-        XCTAssertEqual(recentPlusLive.count, LiveTranslationTiming.visibleTheaterLines + 1)
-        XCTAssertEqual(recentPlusLive.first?.id, "c-5")
+        XCTAssertEqual(recentPlusLive.count, LiveTranslationTiming.visibleTheaterLines)
+        XCTAssertEqual(recentPlusLive.first?.id, "c-\(18 - LiveTranslationTiming.visibleTheaterLines)")
         XCTAssertEqual(recentPlusLive.last?.id, TheaterCaptionFlow.liveID(after: Array(1...16).map(UInt64.init)))
         XCTAssertEqual(recentPlusLive.last?.text, "Line 17 lives here")
 
@@ -639,6 +687,25 @@ final class LiveTranslationClauseTests: XCTestCase {
             TheaterCaptionFlow.liveID(after: [], nextID: 1, pendingCount: 1),
             "c-2"
         )
+        XCTAssertEqual(
+            TheaterCaptionFlow.liveID(after: [], nextID: 1, inFlightCount: 1),
+            "c-2"
+        )
+        // In production `pendingSources` always already includes whatever is
+        // in flight (`pendingSpokenLines` = `inFlightSources` + pinned), so
+        // the live row's id comes from `pendingCount` alone — passing
+        // `inFlightCount` without matching `pendingSources` no longer shifts
+        // it, since that would double count the same in-flight item.
+        let inFlightLive = TheaterCaptionFlow.lines(
+            committed: [],
+            nextCaptionID: 1,
+            draft: "",
+            sourceDraft: "Then we applied it",
+            pendingSources: ["Today we trained the model."],
+            spokenDisplay: .paired
+        )
+        XCTAssertEqual(inFlightLive.last?.source, "Then we applied it")
+        XCTAssertEqual(inFlightLive.last?.id, "c-2")
     }
 
     func testTheaterLinePrinterGrowsALineWithoutRewinding() {
@@ -656,15 +723,19 @@ final class LiveTranslationClauseTests: XCTestCase {
         XCTAssertEqual(TheaterLinePrinter.follow("Hello world", toward: ""), "Hello world")
         XCTAssertEqual(
             TheaterLinePrinter.follow("Hello world today. Then we applied it", toward: "Hello world today"),
-            "Hello world today. Then we applied"
+            "Hello world today. Then we applied it"
         )
         XCTAssertEqual(
             TheaterLinePrinter.follow("I went to the shop", toward: "I went to the store"),
-            "I went to the s"
+            "I went to the store"
         )
         XCTAssertEqual(
             TheaterLinePrinter.follow("Hello world today", toward: "Hello there everyone"),
-            "Hello world"
+            "Hello there everyone"
+        )
+        XCTAssertEqual(
+            TheaterLinePrinter.follow("I went to the shop", toward: "I went to the sto"),
+            "I went to the shop"
         )
         XCTAssertTrue(TheaterLinePrinter.isContinuation("Hello we trained", of: "Hello we trained the model"))
         XCTAssertFalse(TheaterLinePrinter.isContinuation("Hello we trained the model", of: "Next we applied"))
@@ -700,7 +771,7 @@ final class LiveTranslationClauseTests: XCTestCase {
                 nextTranslated: ""
             )
         )
-        XCTAssertTrue(
+        XCTAssertFalse(
             TheaterLinePrinter.shouldStartNewCaption(
                 currentSpoken: "Today we trained the model.",
                 currentTranslated: "오늘 모델을 학습했습니다.",
@@ -724,7 +795,7 @@ final class LiveTranslationClauseTests: XCTestCase {
                 nextTranslated: ""
             )
         )
-        XCTAssertFalse(
+        XCTAssertTrue(
             TheaterLinePrinter.shouldAdoptPrintedCaption(
                 currentSpoken: "Today we trained the model.",
                 currentTranslated: "",
@@ -732,7 +803,7 @@ final class LiveTranslationClauseTests: XCTestCase {
                 nextTranslated: ""
             )
         )
-        XCTAssertTrue(
+        XCTAssertFalse(
             TheaterLinePrinter.shouldStartNewCaption(
                 currentSpoken: "Today we trained the model.",
                 currentTranslated: "",
@@ -751,7 +822,7 @@ final class LiveTranslationClauseTests: XCTestCase {
                 currentSpoken: "Today we trained the model.",
                 nextSpoken: "Today we trained the model. Then we applied it."
             ),
-            "Then we applied it."
+            "Today we trained the model. Then we applied it."
         )
         XCTAssertEqual(TheaterLinePrinter.advance("Hello", toward: "Hello world"), "Hello world")
         XCTAssertEqual(TheaterLinePrinter.advance("", toward: String(repeating: "가", count: 40)).count, 3)
@@ -767,6 +838,26 @@ final class LiveTranslationClauseTests: XCTestCase {
             TheaterLinePrinter.advance("", toward: "Hello world", style: .fade),
             "Hello world"
         )
+        let oneLanguage = TheaterLinePrinter.nextPrintStep(
+            printedSpoken: "Hello",
+            targetSpoken: "Hello world",
+            printedTranslated: "안녕",
+            targetTranslated: "안녕하세요",
+            style: .word
+        )
+        // Top row (spoken) types first; the title below waits for it.
+        XCTAssertEqual(oneLanguage.spoken, "Hello world")
+        XCTAssertEqual(oneLanguage.translated, "안녕")
+        let titleAfterSpoken = TheaterLinePrinter.nextPrintStep(
+            printedSpoken: "Hello world",
+            targetSpoken: "Hello world",
+            printedTranslated: "안녕",
+            targetTranslated: "안녕하세요",
+            style: .word
+        )
+        XCTAssertEqual(titleAfterSpoken.spoken, "Hello world")
+        XCTAssertTrue(titleAfterSpoken.translated.hasPrefix("안녕"))
+        XCTAssertNotEqual(titleAfterSpoken.translated, "안녕")
         XCTAssertEqual(
             TheaterLinePrinter.extend("", toward: "Hello world", style: .flow),
             "H"
@@ -777,7 +868,43 @@ final class LiveTranslationClauseTests: XCTestCase {
         )
     }
 
-    func testBilingualWrapStacksTranslationAboveSpoken() {
+    func testLineChangeDoesNotResetProgressOnPendingToCommittedHandoff() {
+        // A pending row's id is a forecast (nextCaptionID + offset); the
+        // committed id can differ once the clause actually lands. The
+        // English was already fully typed while pending, and the Korean is
+        // only just arriving — this must not look like a different clause.
+        XCTAssertFalse(
+            TheaterLinePrinter.shouldResetPrintProgressOnLineChange(
+                printedSpoken: "Today we trained the model.",
+                printedTranslated: "",
+                nextSpoken: "Today we trained the model.",
+                nextTranslated: "오늘 모델을 학습했습니다."
+            )
+        )
+        // Show-as landing mid-type (partial → fuller) on the same clause is
+        // also a continuation, not a new one.
+        XCTAssertFalse(
+            TheaterLinePrinter.shouldResetPrintProgressOnLineChange(
+                printedSpoken: "Today we trained the model.",
+                printedTranslated: "오늘 모델을",
+                nextSpoken: "Today we trained the model.",
+                nextTranslated: "오늘 모델을 학습했습니다."
+            )
+        )
+    }
+
+    func testLineChangeResetsProgressForAGenuinelyDifferentClause() {
+        XCTAssertTrue(
+            TheaterLinePrinter.shouldResetPrintProgressOnLineChange(
+                printedSpoken: "Today we trained the model.",
+                printedTranslated: "오늘 모델을 학습했습니다.",
+                nextSpoken: "Then we applied it.",
+                nextTranslated: "그걸 적용했습니다."
+            )
+        )
+    }
+
+    func testBilingualWrapStacksSpokenAboveTranslation() {
         let font = NSFont.systemFont(ofSize: 48, weight: .semibold)
         let spoken = "Hello world today friends"
         let translated = "안녕하세요 여러분 오늘도"
@@ -790,15 +917,15 @@ final class LiveTranslationClauseTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(rows.count, 4)
         XCTAssertEqual(rows.filter(\.isSpoken).map(\.text).joined(), spoken)
         XCTAssertEqual(rows.filter { !$0.isSpoken }.map(\.text).joined(), translated)
-        XCTAssertFalse(rows[0].isSpoken)
+        XCTAssertTrue(rows[0].isSpoken)
         let spokenIndexes = rows.enumerated().compactMap { $0.element.isSpoken ? $0.offset : nil }
         let translatedIndexes = rows.enumerated().compactMap { $0.element.isSpoken ? nil : $0.offset }
-        XCTAssertEqual(translatedIndexes, Array(0..<translatedIndexes.count))
-        XCTAssertEqual(spokenIndexes.first, translatedIndexes.count)
-        XCTAssertLessThan(translatedIndexes.last ?? 0, spokenIndexes.first ?? 0)
+        // Spoken keeps a fixed slot on top; a growing translation never moves it.
+        XCTAssertEqual(spokenIndexes, Array(0..<spokenIndexes.count))
+        XCTAssertEqual(translatedIndexes.first, spokenIndexes.count)
     }
 
-    func testBilingualWrapPutsEnglishTitleAboveSpokenKorean() {
+    func testBilingualWrapPutsSpokenKoreanAboveEnglishTitle() {
         let font = NSFont.systemFont(ofSize: 48, weight: .semibold)
         let rows = TheaterBilingualWrap.rows(
             spoken: "안녕하세요 여러분 오늘도 반갑습니다",
@@ -807,13 +934,13 @@ final class LiveTranslationClauseTests: XCTestCase {
             width: 140
         )
         XCTAssertGreaterThanOrEqual(rows.count, 4)
-        XCTAssertFalse(rows[0].isSpoken)
-        XCTAssertTrue(rows.last?.isSpoken ?? false)
+        XCTAssertTrue(rows[0].isSpoken)
+        XCTAssertTrue(rows.contains(where: \.isSpoken))
         XCTAssertEqual(rows.filter(\.isSpoken).map(\.text).joined(), "안녕하세요 여러분 오늘도 반갑습니다")
         XCTAssertEqual(rows.filter { !$0.isSpoken }.map(\.text).joined(), "Hello world today friends")
     }
 
-    func testBilingualWrapPutsEnglishTitleAboveSpokenThai() {
+    func testBilingualWrapPutsSpokenThaiAboveEnglishTitle() {
         let font = NSFont.systemFont(ofSize: 48, weight: .semibold)
         let rows = TheaterBilingualWrap.rows(
             spoken: "สวัสดีครับทุกคน วันนี้ก็ยินดีที่ได้พบกัน",
@@ -822,13 +949,13 @@ final class LiveTranslationClauseTests: XCTestCase {
             width: 140
         )
         XCTAssertGreaterThanOrEqual(rows.count, 4)
-        XCTAssertFalse(rows[0].isSpoken)
-        XCTAssertTrue(rows.last?.isSpoken ?? false)
+        XCTAssertTrue(rows[0].isSpoken)
+        XCTAssertTrue(rows.contains(where: \.isSpoken))
         XCTAssertEqual(rows.filter(\.isSpoken).map(\.text).joined(), "สวัสดีครับทุกคน วันนี้ก็ยินดีที่ได้พบกัน")
         XCTAssertEqual(rows.filter { !$0.isSpoken }.map(\.text).joined(), "Hello world today friends")
     }
 
-    func testBilingualWrapPutsThaiTitleAboveSpokenEnglish() {
+    func testBilingualWrapPutsSpokenEnglishAboveThaiTitle() {
         let font = NSFont.systemFont(ofSize: 48, weight: .semibold)
         let spoken = "Hello world today friends"
         let translated = "สวัสดีครับทุกคน วันนี้ก็ยินดีที่ได้พบกัน"
@@ -839,8 +966,8 @@ final class LiveTranslationClauseTests: XCTestCase {
             width: 140
         )
         XCTAssertGreaterThanOrEqual(rows.count, 4)
-        XCTAssertFalse(rows[0].isSpoken)
-        XCTAssertTrue(rows.last?.isSpoken ?? false)
+        XCTAssertTrue(rows[0].isSpoken)
+        XCTAssertTrue(rows.contains(where: \.isSpoken))
         XCTAssertEqual(rows.filter(\.isSpoken).map(\.text).joined(), spoken)
         XCTAssertEqual(rows.filter { !$0.isSpoken }.map(\.text).joined(), translated)
     }
@@ -872,6 +999,7 @@ final class LiveTranslationClauseTests: XCTestCase {
             width: 140
         )
         XCTAssertEqual(whileTyping.filter(\.isSpoken).map(\.text).joined(), firstSpoken)
+        XCTAssertEqual(whileTyping.filter(\.isSpoken).count, 1)
         XCTAssertEqual(whileTyping.filter { !$0.isSpoken }.map(\.text).joined(), partialKorean)
 
         let englishAhead = TheaterBilingualWrap.revealedRows(
@@ -924,6 +1052,7 @@ final class LiveTranslationClauseTests: XCTestCase {
             width: 140
         )
         XCTAssertEqual(reserved.filter(\.isSpoken).map(\.text).joined(), firstSpoken)
+        XCTAssertEqual(reserved.filter(\.isSpoken).count, 1)
         XCTAssertTrue(reserved.filter { !$0.isSpoken }.isEmpty)
         XCTAssertLessThan(
             TheaterBilingualWrap.boardHeight(rows: reserved, spokenFont: font, translatedFont: font),
@@ -943,6 +1072,165 @@ final class LiveTranslationClauseTests: XCTestCase {
         XCTAssertFalse(first.isEmpty)
         XCTAssertGreaterThanOrEqual(grown.count, first.count)
         XCTAssertTrue(grown[0].hasPrefix(first[0]))
+    }
+
+    func testBilingualWrapKeepsAFittingPhraseOnOneLine() {
+        let font = NSFont.systemFont(ofSize: 32, weight: .semibold)
+        let lines = TheaterBilingualWrap.visualLines("Hello there", font: font, width: 2000)
+        XCTAssertEqual(lines, ["Hello there"])
+    }
+
+    func testBilingualWrapFillsTheBoardInsteadOfWrappingEarly() {
+        let font = NSFont.systemFont(ofSize: 32, weight: .semibold)
+        let text = "Hello there friends"
+        var lo: CGFloat = 80
+        var hi: CGFloat = 900
+        while hi - lo > 1 {
+            let mid = floor((lo + hi) / 2)
+            if TheaterBilingualWrap.visualLines(text, font: font, width: mid).count == 1 {
+                hi = mid
+            } else {
+                lo = mid
+            }
+        }
+        XCTAssertEqual(TheaterBilingualWrap.visualLines(text, font: font, width: hi + 6), [text])
+        XCTAssertGreaterThan(TheaterBilingualWrap.visualLines(text, font: font, width: max(lo - 2, 80)).count, 1)
+    }
+
+    func testBoardHeightGrowsWhenTheTitleWraps() {
+        let font = NSFont.systemFont(ofSize: 32, weight: .semibold)
+        let spoken = NSFont.systemFont(ofSize: 24, weight: .semibold)
+        let text = "Hello there friends today"
+        var lo: CGFloat = 80
+        var hi: CGFloat = 900
+        while hi - lo > 1 {
+            let mid = floor((lo + hi) / 2)
+            if TheaterBilingualWrap.visualLines(text, font: font, width: mid).count > 1 {
+                lo = mid
+            } else {
+                hi = mid
+            }
+        }
+        let width = max(lo, 80)
+        let wrapped = TheaterBilingualWrap.visualLines(text, font: font, width: width)
+        XCTAssertGreaterThan(wrapped.count, 1)
+        XCTAssertTrue(TheaterBilingualWrap.lastLineIsNearlyFull(wrapped[0], font: font, width: width))
+        let before = TheaterBilingualWrap.rows(
+            spoken: "",
+            translated: wrapped[0],
+            spokenFont: spoken,
+            translatedFont: font,
+            width: width
+        )
+        let after = TheaterBilingualWrap.rows(
+            spoken: "",
+            translated: text,
+            spokenFont: spoken,
+            translatedFont: font,
+            width: width
+        )
+        XCTAssertEqual(before.filter { !$0.isSpoken }.count, 1)
+        XCTAssertGreaterThan(after.filter { !$0.isSpoken }.count, 1)
+        XCTAssertGreaterThan(
+            TheaterBilingualWrap.reservedDisplayHeight(
+                rows: after,
+                spokenFont: spoken,
+                translatedFont: font,
+                width: width
+            ),
+            TheaterBilingualWrap.reservedDisplayHeight(
+                rows: before,
+                spokenFont: spoken,
+                translatedFont: font,
+                width: width
+            )
+        )
+    }
+
+    func testBilingualWrapKeepsTrailingPunctuationOnTheSameToken() {
+        let font = NSFont.systemFont(ofSize: 32, weight: .semibold)
+        let lines = TheaterBilingualWrap.visualLines("Hello, there.", font: font, width: 2000)
+        XCTAssertEqual(lines, ["Hello, there."])
+        let tight = TheaterBilingualWrap.visualLines("안녕하세요.", font: font, width: 80)
+        XCTAssertFalse(tight.contains("."))
+        XCTAssertTrue(tight.contains { $0.contains("요.") || $0.hasSuffix(".") })
+    }
+
+    func testLayoutWrapWidthIgnoresTheFirstFrameUntilTheBoardIsReal() {
+        XCTAssertNil(TheaterBilingualWrap.layoutWrapWidth(proposed: 1, locked: 0))
+        XCTAssertNil(TheaterBilingualWrap.layoutWrapWidth(proposed: 40, locked: 0))
+        XCTAssertEqual(TheaterBilingualWrap.layoutWrapWidth(proposed: 40, locked: 800), 800)
+        XCTAssertEqual(TheaterBilingualWrap.layoutWrapWidth(proposed: 900, locked: 0), 900)
+    }
+
+    func testBoardScrollPinsBottomOnlyWhenTheBoardOverflows() {
+        XCTAssertFalse(TheaterBoardScroll.pinsToBottom(boardHeight: 200, viewportHeight: 400))
+        XCTAssertTrue(TheaterBoardScroll.pinsToBottom(boardHeight: 400, viewportHeight: 400))
+        XCTAssertFalse(TheaterBoardScroll.shouldFollowReveal(from: 120, to: 80))
+        XCTAssertFalse(TheaterBoardScroll.shouldFollowReveal(from: 120, to: 120))
+        XCTAssertTrue(TheaterBoardScroll.shouldFollowReveal(from: 120, to: 180))
+    }
+
+    func testOpeningBoardHeightClearsOneTitleLine() {
+        let font = NSFont.systemFont(ofSize: 48, weight: .semibold)
+        XCTAssertGreaterThanOrEqual(
+            TheaterBilingualWrap.openingBoardHeight(font: font),
+            TheaterBilingualWrap.lineHeight(for: font)
+        )
+    }
+
+    func testDisplayHeightKeepsAnEmptyFirstPaintAtOneTitleLine() {
+        let spoken = NSFont.systemFont(ofSize: 32, weight: .semibold)
+        let translated = NSFont.systemFont(ofSize: 48, weight: .semibold)
+        XCTAssertEqual(
+            TheaterBilingualWrap.displayHeight(
+                rows: [],
+                spokenFont: spoken,
+                translatedFont: translated
+            ),
+            TheaterBilingualWrap.openingBoardHeight(font: translated)
+        )
+        let spokenOnly = TheaterBilingualWrap.rows(
+            spoken: "Hello there",
+            translated: "",
+            spokenFont: spoken,
+            translatedFont: translated,
+            width: 800
+        )
+        // Once real rows exist, displayHeight reports their actual height
+        // rather than also reserving room for a full translated-size line
+        // that is not on screen (see the doc comment on displayHeight).
+        XCTAssertEqual(
+            TheaterBilingualWrap.displayHeight(
+                rows: spokenOnly,
+                spokenFont: spoken,
+                translatedFont: translated
+            ),
+            TheaterBilingualWrap.boardHeight(
+                rows: spokenOnly,
+                spokenFont: spoken,
+                translatedFont: translated
+            )
+        )
+    }
+
+    func testResolvedWrapWidthRewrapsWhenTheBoardGetsNarrower() {
+        XCTAssertEqual(
+            TheaterBilingualWrap.resolvedWrapWidth(proposed: 800, locked: 823),
+            800
+        )
+        XCTAssertEqual(
+            TheaterBilingualWrap.resolvedWrapWidth(proposed: 812, locked: 800),
+            800
+        )
+    }
+
+    func testCaptionLineHeightClearsTheFontInk() {
+        let font = NSFont.systemFont(ofSize: 48, weight: .semibold)
+        XCTAssertGreaterThanOrEqual(
+            TheaterBilingualWrap.lineHeight(for: font),
+            ceil(font.boundingRectForFont.height)
+        )
     }
 
     func testTranslatedCaptionIsLargerThanTheSpokenLine() {
@@ -1017,7 +1305,7 @@ final class LiveTranslationClauseTests: XCTestCase {
             font: font,
             width: 8
         )
-        XCTAssertEqual(rows.map(\.text), ["안녕하세요 여러분", "Hello world today friends"])
+        XCTAssertEqual(rows.map(\.text), ["Hello world today friends", "안녕하세요 여러분"])
     }
 
     func testTheaterCaptionFlowKeepsPendingClausesVisible() {
@@ -1275,14 +1563,15 @@ final class LiveTranslationClauseTests: XCTestCase {
 
     func testCaptionLogKeepsALongLecture() {
         var log = LectureCaptionLog()
-        for index in 1...12 {
+        let cap = LiveTranslationTiming.maxCommittedLines
+        for index in 1...cap {
             log.commit(source: "line \(index)", translated: "caption \(index)")
         }
-        XCTAssertEqual(log.translatedLines.count, 12)
+        XCTAssertEqual(log.translatedLines.count, cap)
         XCTAssertEqual(log.translatedLines.first, "caption 1")
         XCTAssertEqual(log.lineIDs.first, 1)
-        XCTAssertEqual(log.lineIDs.last, 12)
-        XCTAssertEqual(LiveTranslationTiming.maxCommittedLines, 200)
+        XCTAssertEqual(log.lineIDs.last, UInt64(cap))
+        XCTAssertEqual(LiveTranslationTiming.maxCommittedLines, LiveTranslationTiming.visibleTheaterLines)
     }
 
     func testTheaterCaptionDocumentKeepsCommittedLinesAndOpenDraft() {
@@ -1396,6 +1685,25 @@ final class LiveTranslationClauseTests: XCTestCase {
             allowPauseFinalize: false
         )
         XCTAssertFalse(trimmedCut?.unit.hasSuffix(" the") ?? true)
+
+        let midTalk = TranslationClauseSegmenter.nextCompletedSentence(
+            "Today we trained the model. Then we applied it",
+            languageID: "en"
+        )
+        XCTAssertEqual(midTalk?.unit, "Today we trained the model.")
+        XCTAssertEqual(midTalk?.rest, "Then we applied it")
+        XCTAssertNil(
+            TranslationClauseSegmenter.nextCompletedSentence(
+                "Today we trained the model.",
+                languageID: "en"
+            )
+        )
+        XCTAssertNil(
+            TranslationClauseSegmenter.nextCompletedSentence(
+                commaRun,
+                languageID: "en"
+            )
+        )
     }
 
     @MainActor
@@ -1449,7 +1757,9 @@ final class LiveTranslationClauseTests: XCTestCase {
         var sameListen = LectureCaptionLog()
         sameListen.commit(source: "Hello", translated: "안녕")
         sameListen.commit(source: "Hello world today", translated: "안녕 세상 오늘")
-        XCTAssertEqual(sameListen.sourceLines, ["Hello world today"])
+        // The growing correction appends the new delta rather than
+        // rewriting "Hello" in place.
+        XCTAssertEqual(sameListen.sourceLines, ["Hello", "world today"])
     }
 
     func testLectureTimingWaitsForANaturalPause() {
@@ -1534,7 +1844,7 @@ final class LiveTranslationClauseTests: XCTestCase {
             )
         )
         XCTAssertEqual(LiveTranslationTiming.contextSentenceCount, 4)
-        XCTAssertEqual(LiveTranslationTiming.visibleTheaterLines, 12)
+        XCTAssertEqual(LiveTranslationTiming.visibleTheaterLines, 3)
         XCTAssertEqual(LiveTranslationTiming.maxDraftCharacters, 240)
         XCTAssertEqual(LiveTranslationTiming.eouHoldNanoseconds, 400_000_000)
         XCTAssertEqual(TheaterQualityScore.wordErrorRate(reference: "today we trained", hypothesis: "today we trained"), 0)
@@ -1563,7 +1873,20 @@ final class LiveTranslationClauseTests: XCTestCase {
 
     func testKoreanConversationalEndingsCompleteAClause() {
         XCTAssertFalse(TranslationClauseSegmenter.looksComplete("그건 그렇거든요", languageID: "ko"))
+        XCTAssertFalse(TranslationClauseSegmenter.isCaptionReadyConnective("그건 그렇거든요", languageID: "ko"))
         XCTAssertFalse(TranslationClauseSegmenter.looksComplete("제가 할게요", languageID: "ko"))
+        XCTAssertTrue(
+            TranslationClauseSegmenter.looksComplete("이번 분기 매출은 목표를 크게 넘겼거든요", languageID: "ko")
+        )
+        XCTAssertTrue(
+            TranslationClauseSegmenter.isCaptionReadyConnective(
+                "今日の講義ではそのモデルを学習したので",
+                languageID: "ja"
+            )
+        )
+        XCTAssertEqual(LiveTranslationTiming.completeSettleNanoseconds(languageID: "ko"), 1_000_000_000)
+        XCTAssertEqual(LiveTranslationTiming.completeSettleNanoseconds(languageID: "ja"), 1_000_000_000)
+        XCTAssertEqual(LiveTranslationTiming.openSettleNanoseconds(languageID: "ko"), 6_000_000_000)
         XCTAssertTrue(TranslationClauseSegmenter.isInternalBoundary("그건 그렇거든요", languageID: "ko"))
         XCTAssertTrue(TranslationClauseSegmenter.looksComplete("지금 갑니까", languageID: "ko"))
         XCTAssertTrue(TranslationClauseSegmenter.looksComplete("그렇죠", languageID: "ko"))
@@ -1670,6 +1993,21 @@ final class LiveTranslationClauseTests: XCTestCase {
         log.commit(source: "Today we trained the model.", translated: "오늘 모델을 학습했어요.")
         XCTAssertEqual(log.sourceLines, ["Today we trained the modal."])
         XCTAssertEqual(log.translatedLines, ["오늘 모델을 학습했습니다."])
+    }
+
+    func testLeftoverTailDropsOffscreenPrefixOfACumulativeTalk() {
+        let hidden = (1...12).map { "This is committed sentence number \($0) of the talk." }
+        let printed = (13...24).map { "This is committed sentence number \($0) of the talk." }
+        let tail = "And this is the open tail we are speaking now"
+        let transcript = (hidden + printed).joined(separator: " ") + " " + tail
+        XCTAssertEqual(
+            TranslationClauseSegmenter.leftoverTail(
+                transcript,
+                already: printed,
+                languageID: "en"
+            ),
+            tail
+        )
     }
 
     /// Theater peels printed clauses off the cumulative transcript on every ASR
@@ -1793,7 +2131,7 @@ final class LiveTranslationClauseTests: XCTestCase {
                 currentSpoken: "Today we trained the model",
                 nextSpoken: "Today we trained the model Then we applied it"
             ),
-            "Then we applied it"
+            "Today we trained the model Then we applied it"
         )
         var log = LectureCaptionLog()
         log.commit(source: "Today we trained the model", translated: "오늘 모델을 학습했습니다.")
@@ -1947,6 +2285,27 @@ final class LiveTranslationClauseTests: XCTestCase {
         )
         XCTAssertEqual(unpunctuated.last?.text, "Then we applied it")
         XCTAssertEqual(unpunctuated.first?.text, "Today we trained the model")
+
+        let jammed = TheaterCaptionFlow.lines(
+            committed: [],
+            draft: "",
+            sourceDraft: "Hello there friends. Next we measure it. And we shipped it."
+        )
+        XCTAssertEqual(jammed.count, 1)
+        XCTAssertTrue(jammed.first?.text.contains("Hello there friends.") ?? false)
+        XCTAssertTrue(jammed.first?.text.contains("Next we measure it.") ?? false)
+
+        let pairedRestitch = TheaterCaptionFlow.lines(
+            committed: ["오늘 모델을 학습했습니다."],
+            committedIDs: [1],
+            committedSources: ["Today we trained the model."],
+            draft: "오늘 모델을 학습했습니다. 그다음 적용했습니다.",
+            sourceDraft: "Today we trained the model. Then we applied it.",
+            spokenDisplay: .paired
+        )
+        XCTAssertEqual(pairedRestitch.map(\.text), ["오늘 모델을 학습했습니다.", "그다음 적용했습니다."])
+        XCTAssertEqual(pairedRestitch.last?.source, "Then we applied it.")
+        XCTAssertEqual(pairedRestitch.count, 2)
     }
 
     func testEnglishOnlyPrinterPeelsTheNextTitleAfterSentenceOne() {
@@ -1957,9 +2316,9 @@ final class LiveTranslationClauseTests: XCTestCase {
             nextTranslated: "Today we trained the model. Then we applied it.",
             translationStarted: true
         )
-        XCTAssertTrue(peeled.reset)
+        XCTAssertFalse(peeled.reset)
         XCTAssertEqual(peeled.spoken, "")
-        XCTAssertEqual(peeled.translated, "Then we applied it.")
+        XCTAssertEqual(peeled.translated, "Today we trained the model. Then we applied it.")
 
         let hold = TheaterLinePrinter.resolveIncoming(
             currentSpoken: "",
@@ -1978,10 +2337,10 @@ final class LiveTranslationClauseTests: XCTestCase {
             nextTranslated: "Then we applied it.",
             translationStarted: true
         )
-        XCTAssertTrue(nextSentence.reset)
-        XCTAssertEqual(nextSentence.translated, "Then we applied it.")
+        XCTAssertFalse(nextSentence.reset)
+        XCTAssertEqual(nextSentence.translated, "Today we trained the model.")
 
-        XCTAssertFalse(
+        XCTAssertTrue(
             TheaterLinePrinter.shouldAdoptPrintedCaption(
                 currentSpoken: "",
                 currentTranslated: "Today we trained the model.",
@@ -1989,7 +2348,7 @@ final class LiveTranslationClauseTests: XCTestCase {
                 nextTranslated: "Today we trained the model. Then we applied it."
             )
         )
-        XCTAssertTrue(
+        XCTAssertFalse(
             TheaterLinePrinter.shouldStartNewCaption(
                 currentSpoken: "",
                 currentTranslated: "Today we trained the model.",
@@ -2007,6 +2366,12 @@ final class LiveTranslationClauseTests: XCTestCase {
             TheaterLinePrinter.isAlreadyPeeledTail(
                 current: "Hello",
                 incoming: "Hello world"
+            )
+        )
+        XCTAssertFalse(
+            TheaterLinePrinter.isAlreadyPeeledTail(
+                current: "the model.",
+                incoming: "Today we trained the model."
             )
         )
         XCTAssertTrue(
@@ -2036,6 +2401,17 @@ final class LiveTranslationClauseTests: XCTestCase {
         )
         XCTAssertFalse(growth.reset)
         XCTAssertEqual(growth.translated, "Today we trained the model")
+
+        let restitchWhileTyping = TheaterLinePrinter.resolveIncoming(
+            currentSpoken: "Today we trained the",
+            currentTranslated: "",
+            nextSpoken: "Today we trained the model. Then we applied it.",
+            nextTranslated: "",
+            translationStarted: false
+        )
+        XCTAssertFalse(restitchWhileTyping.reset)
+        XCTAssertTrue(restitchWhileTyping.spoken.hasPrefix("Today we trained the model."))
+        XCTAssertTrue(restitchWhileTyping.spoken.contains("Then we applied"))
     }
 
     func testWrapProgressKeepsTheFirstLineWhenASpaceWasDropped() {
@@ -2064,4 +2440,503 @@ final class LiveTranslationClauseTests: XCTestCase {
         XCTAssertEqual(mid.first?.text, first)
         XCTAssertEqual(String(mid.dropFirst().first?.text.prefix(2) ?? ""), String(lines[1].prefix(2)))
     }
+
+    func testPairingsGrowThisCaptionAndHoldAPeeledTail() {
+        let settings = SettingsStore.shared
+        let originalSource = settings.translationSourceLanguageID
+        let originalTarget = settings.translationTargetLanguageID
+        let originalMode = settings.theaterSessionMode
+        let originalDynamic = settings.theaterDynamicPairing
+        defer {
+            settings.translationSourceLanguageID = originalSource
+            settings.translationTargetLanguageID = originalTarget
+            settings.theaterSessionMode = originalMode
+            settings.theaterDynamicPairing = originalDynamic
+        }
+        settings.theaterSessionMode = .translation
+        settings.theaterDynamicPairing = false
+
+        struct Pairing {
+            let sourceID: String
+            let targetID: String
+            let first: String
+            let restitch: String
+            let second: String
+            let titleFirst: String
+            let titleRestitch: String
+        }
+
+        let pairings = [
+            Pairing(
+                sourceID: "en",
+                targetID: "ko",
+                first: "Today we trained the model.",
+                restitch: "Today we trained the model. Then we applied it.",
+                second: "Then we applied it.",
+                titleFirst: "오늘 모델을 학습했습니다.",
+                titleRestitch: "오늘 모델을 학습했습니다. 그다음 적용했습니다."
+            ),
+            Pairing(
+                sourceID: "ko",
+                targetID: "en",
+                first: "오늘 모델을 학습했습니다.",
+                restitch: "오늘 모델을 학습했습니다. 그다음 적용했습니다.",
+                second: "그다음 적용했습니다.",
+                titleFirst: "Today we trained the model.",
+                titleRestitch: "Today we trained the model. Then we applied it."
+            ),
+            Pairing(
+                sourceID: "ja",
+                targetID: "en",
+                first: "今日はモデルを学習しました。",
+                restitch: "今日はモデルを学習しました。次に適用しました。",
+                second: "次に適用しました。",
+                titleFirst: "Today we trained the model.",
+                titleRestitch: "Today we trained the model. Then we applied it."
+            ),
+            Pairing(
+                sourceID: "th",
+                targetID: "en",
+                first: "วันนี้เราฝึกโมเดลแล้วครับ",
+                restitch: "วันนี้เราฝึกโมเดลแล้วครับแล้วนำไปใช้ครับ",
+                second: "แล้วนำไปใช้ครับ",
+                titleFirst: "Today we trained the model.",
+                titleRestitch: "Today we trained the model. Then we applied it."
+            ),
+        ]
+
+        for pairing in pairings {
+            settings.translationSourceLanguageID = pairing.sourceID
+            settings.translationTargetLanguageID = pairing.targetID
+
+            XCTAssertEqual(
+                TranslationClauseSegmenter.leftoverTail(
+                    pairing.restitch,
+                    already: [pairing.first],
+                    languageID: pairing.sourceID
+                ),
+                pairing.second,
+                pairing.sourceID
+            )
+
+            let voice = TheaterLinePrinter.resolveIncoming(
+                currentSpoken: "",
+                currentTranslated: pairing.first,
+                nextSpoken: "",
+                nextTranslated: pairing.restitch,
+                translationStarted: true
+            )
+            XCTAssertFalse(voice.reset, pairing.sourceID)
+            XCTAssertTrue(voice.translated.hasPrefix(pairing.first), pairing.sourceID)
+
+            let paired = TheaterLinePrinter.resolveIncoming(
+                currentSpoken: pairing.first,
+                currentTranslated: pairing.titleFirst,
+                nextSpoken: pairing.restitch,
+                nextTranslated: pairing.titleRestitch,
+                translationStarted: true
+            )
+            XCTAssertFalse(paired.reset, pairing.sourceID)
+            XCTAssertTrue(paired.spoken.hasPrefix(pairing.first), pairing.sourceID)
+            XCTAssertTrue(paired.translated.hasPrefix(pairing.titleFirst), pairing.sourceID)
+
+            let hold = TheaterLinePrinter.resolveIncoming(
+                currentSpoken: pairing.second,
+                currentTranslated: pairing.titleFirst,
+                nextSpoken: pairing.restitch,
+                nextTranslated: pairing.titleRestitch,
+                translationStarted: true
+            )
+            XCTAssertFalse(hold.reset, pairing.sourceID)
+            XCTAssertEqual(hold.spoken, pairing.second, pairing.sourceID)
+
+            let hidden = TheaterCaptionFlow.lines(
+                committed: [],
+                draft: pairing.titleRestitch,
+                sourceDraft: pairing.restitch,
+                spokenDisplay: .hidden
+            )
+            XCTAssertEqual(hidden.count, 1, pairing.sourceID)
+            XCTAssertTrue(hidden.first?.text.hasPrefix(pairing.titleFirst) ?? false, pairing.sourceID)
+
+            let sameLanguage = TheaterCaptionFlow.lines(
+                committed: [],
+                draft: pairing.restitch,
+                sourceDraft: pairing.restitch,
+                spokenDisplay: .isTheCaption
+            )
+            XCTAssertEqual(sameLanguage.count, 1, pairing.sourceID)
+            XCTAssertTrue(sameLanguage.first?.text.hasPrefix(pairing.first) ?? false, pairing.sourceID)
+        }
+
+        settings.translationSourceLanguageID = "en"
+        settings.translationTargetLanguageID = "ko"
+        settings.theaterDynamicPairing = true
+        let eitherWay = TheaterLinePrinter.resolveIncoming(
+            currentSpoken: "오늘 모델을 학습했습니다.",
+            currentTranslated: "Today we trained the model.",
+            nextSpoken: "오늘 모델을 학습했습니다. 그다음 적용했습니다.",
+            nextTranslated: "",
+            translationStarted: true
+        )
+        XCTAssertFalse(eitherWay.reset)
+        XCTAssertTrue(eitherWay.spoken.hasPrefix("오늘 모델을 학습했습니다."))
+    }
 }
+
+final class TheaterPresenterAidTests: XCTestCase {
+    private let visible = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+
+    func testPresetsStayInsideSafeMargin() {
+        let safe = self.visible.insetBy(dx: 96, dy: 54)
+        for preset in TheaterPositionPreset.allCases {
+            let frame = preset.frame(in: self.visible)
+            XCTAssertTrue(safe.contains(frame), "\(preset) leaves the safe margin")
+        }
+    }
+
+    func testPresetShapes() {
+        let lower = TheaterPositionPreset.lowerThird.frame(in: self.visible)
+        let top = TheaterPositionPreset.topBand.frame(in: self.visible)
+        let side = TheaterPositionPreset.sideColumn.frame(in: self.visible)
+        XCTAssertEqual(lower.minY, 54, accuracy: 0.5)
+        XCTAssertEqual(top.maxY, 1026, accuracy: 0.5)
+        XCTAssertEqual(lower.height, top.height, accuracy: 0.5)
+        XCTAssertEqual(side.maxX, 1824, accuracy: 0.5)
+        XCTAssertGreaterThanOrEqual(side.width, TheaterPositionPreset.sideColumnMinimumWidth)
+    }
+
+    func testPresetsFollowOffsetDisplay() {
+        let projector = CGRect(x: 1920, y: -200, width: 1280, height: 720)
+        let frame = TheaterPositionPreset.lowerThird.frame(in: projector)
+        XCTAssertTrue(projector.contains(frame))
+    }
+
+    func testPresenterHotkeysRequireControlOption() {
+        let chord: NSEvent.ModifierFlags = [.control, .option]
+        XCTAssertEqual(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_H), modifiers: chord), .toggleVisible)
+        XCTAssertEqual(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_P), modifiers: chord), .togglePause)
+        XCTAssertEqual(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_K), modifiers: chord), .clear)
+        XCTAssertEqual(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_Equal), modifiers: chord), .fontLarger)
+        XCTAssertEqual(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_Minus), modifiers: chord), .fontSmaller)
+        XCTAssertNil(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_H), modifiers: [.control]))
+        XCTAssertNil(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_H), modifiers: [.control, .option, .command]))
+        XCTAssertNil(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_A), modifiers: chord))
+        // Caps Lock / Fn must not break the chord.
+        XCTAssertEqual(
+            TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_P), modifiers: [.control, .option, .capsLock]),
+            .togglePause
+        )
+    }
+}
+
+final class TheaterStableTextTests: XCTestCase {
+    func testShowsOnlyWordsTwoGuessesAgreeOn() {
+        var stable = TheaterStableText()
+        XCTAssertEqual(stable.ingest("Today we"), "")
+        XCTAssertEqual(stable.ingest("Today we trained"), "Today we")
+        XCTAssertEqual(stable.ingest("Today we trained the model"), "Today we trained")
+        XCTAssertTrue(stable.hasHiddenTail)
+        XCTAssertEqual(stable.revealAll(), "Today we trained the model")
+    }
+
+    func testRevisedTailNeverShrinksShownText() {
+        var stable = TheaterStableText()
+        _ = stable.ingest("the model train")
+        XCTAssertEqual(stable.ingest("the model trained on"), "the model")
+        // Recognition rewrites the unconfirmed tail: shown text holds.
+        XCTAssertEqual(stable.ingest("the model we trained on"), "the model")
+        XCTAssertEqual(stable.ingest("the model we trained on data"), "the model we trained on")
+    }
+
+    func testCutsBackToWholeWord() {
+        XCTAssertEqual(TheaterStableText.agreedPrefix("we train", "we trained"), "we")
+        XCTAssertEqual(TheaterStableText.agreedPrefix("we trained it", "we trained on"), "we trained")
+        XCTAssertEqual(TheaterStableText.agreedPrefix("same line", "same line"), "same line")
+        XCTAssertEqual(TheaterStableText.agreedPrefix("今日は学習", "今日は学習した"), "今日は学習")
+    }
+
+    func testCommittedClauseLeavingResetsToNewLeftover() {
+        var stable = TheaterStableText()
+        _ = stable.ingest("First sentence here")
+        _ = stable.ingest("First sentence here")
+        XCTAssertEqual(stable.ingest("Second one"), "")
+        XCTAssertEqual(stable.ingest("Second one begins"), "Second one")
+        XCTAssertEqual(stable.ingest(""), "")
+    }
+}
+
+final class TheaterStableTextRefreshTests: XCTestCase {
+    func testRepeatedRefreshOfSameGuessDoesNotConfirmIt() {
+        var stable = TheaterStableText()
+        XCTAssertEqual(stable.ingest("Today we trained"), "")
+        XCTAssertEqual(stable.ingest("Today we trained"), "")
+        XCTAssertEqual(stable.ingest("Today we trained"), "")
+        XCTAssertEqual(stable.ingest("Today we trained the"), "Today we trained")
+        XCTAssertEqual(stable.ingest("Today we trained the"), "Today we trained")
+    }
+}
+
+final class TheaterPrintCatchUpTests: XCTestCase {
+    func testLargeBacklogTypesFaster() {
+        let style = TheaterCaptionPrintStyle.flow
+        let long = String(repeating: "word ", count: 20)
+        let normal = style.printStepSeconds(after: "", toward: "Hello")
+        let catchUp = style.printStepSeconds(after: "", toward: long)
+        XCTAssertLessThan(catchUp, normal)
+    }
+}
+
+final class TheaterRunOnCutTests: XCTestCase {
+    func testUnpunctuatedRunOnPrintsWhileTalking() {
+        let runOn = Array(repeating: "and then we kept going with the model", count: 8).joined(separator: " ")
+        XCTAssertGreaterThanOrEqual(runOn.count, LiveTranslationTiming.maxDraftCharacters)
+        let next = TranslationClauseSegmenter.nextCompletedSentence(runOn, languageID: "en")
+        XCTAssertNotNil(next)
+        XCTAssertFalse(next?.rest.isEmpty ?? true)
+    }
+
+    func testShortUnpunctuatedSpeechStillWaits() {
+        XCTAssertNil(TranslationClauseSegmenter.nextCompletedSentence("and then we kept going", languageID: "en"))
+    }
+}
+
+@MainActor
+final class TheaterSentenceEndCommitTests: XCTestCase {
+    func testFinishedSentenceTranslatesOnceTwoUpdatesAgree() async {
+        let settings = SettingsStore.shared
+        let originalSource = settings.translationSourceLanguageID
+        let originalTarget = settings.translationTargetLanguageID
+        defer {
+            settings.translationSourceLanguageID = originalSource
+            settings.translationTargetLanguageID = originalTarget
+        }
+        settings.translationSourceLanguageID = "en"
+        settings.translationTargetLanguageID = "ko"
+        let engine = FakeTranslationEngine()
+        engine.result = .success("오늘 모델을 학습했습니다.")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
+        let subscriber = LiveTranslationSubscriber(translator: engine, archive: LectureCaptionArchive(url: url))
+        subscriber.beginListening()
+        subscriber.handlePartial("Today we trained the model.")
+        XCTAssertTrue(engine.calls.isEmpty, "one update is not enough")
+        subscriber.handlePartial("Today we trained the model.")
+        await subscriber.waitForIdleForTesting()
+        XCTAssertEqual(engine.calls.count, 1)
+    }
+}
+
+/// Scripted talks through the real subscriber: what gets translated, in what order.
+@MainActor
+final class TheaterTalkSimulationTests: XCTestCase {
+    private var originalSource = ""
+    private var originalTarget = ""
+
+    override func setUp() async throws {
+        let settings = SettingsStore.shared
+        self.originalSource = settings.translationSourceLanguageID
+        self.originalTarget = settings.translationTargetLanguageID
+        settings.translationSourceLanguageID = "en"
+        settings.translationTargetLanguageID = "ko"
+    }
+
+    override func tearDown() async throws {
+        SettingsStore.shared.translationSourceLanguageID = self.originalSource
+        SettingsStore.shared.translationTargetLanguageID = self.originalTarget
+    }
+
+    private func makeSubscriber() -> (LiveTranslationSubscriber, FakeTranslationEngine) {
+        let engine = FakeTranslationEngine()
+        engine.result = .success("번역")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
+        let subscriber = LiveTranslationSubscriber(translator: engine, archive: LectureCaptionArchive(url: url))
+        subscriber.beginListening()
+        return (subscriber, engine)
+    }
+
+    private func settle() async {
+        try? await Task.sleep(nanoseconds: 50_000_000)
+    }
+
+    func testContinuousTalkTranslatesEachSentenceOnceInOrder() async {
+        let (subscriber, engine) = self.makeSubscriber()
+        for partial in [
+            "Today we",
+            "Today we trained the",
+            "Today we trained the model.",
+            "Today we trained the model. Then we",
+            "Today we trained the model. Then we tested it.",
+            "Today we trained the model. Then we tested it.",
+        ] {
+            subscriber.handlePartial(partial)
+            await self.settle()
+        }
+        await subscriber.waitForIdleForTesting()
+        // Engine calls include the context request (prior + new), so check the board.
+        XCTAssertEqual(subscriber.committedSourceLines, ["Today we trained the model.", "Then we tested it."])
+        XCTAssertEqual(subscriber.sourceDraft, "")
+    }
+
+    func testFinishedSentenceStartsBeforeAnyPause() async {
+        let (subscriber, engine) = self.makeSubscriber()
+        subscriber.handlePartial("Welcome to the lecture.")
+        await self.settle()
+        subscriber.handlePartial("Welcome to the lecture.")
+        await self.settle()
+        // No silence hold, no end of utterance: printing already started.
+        XCTAssertEqual(engine.calls, ["Welcome to the lecture."])
+    }
+
+    func testRestitchAfterLoneCommitDoesNotDuplicate() async {
+        let (subscriber, engine) = self.makeSubscriber()
+        subscriber.handlePartial("We trained the model.")
+        await self.settle()
+        subscriber.handlePartial("We trained the model.")
+        await self.settle()
+        subscriber.handlePartial("We trained the model on new data.")
+        await self.settle()
+        subscriber.handlePartial("We trained the model on new data. It worked well")
+        await self.settle()
+        subscriber.handlePartial("We trained the model on new data. It worked well.")
+        await self.settle()
+        subscriber.handlePartial("We trained the model on new data. It worked well.")
+        await subscriber.waitForIdleForTesting()
+        // The newest line is fixed in place: no "on new data." fragment row.
+        XCTAssertEqual(subscriber.committedSourceLines, ["We trained the model on new data.", "It worked well."])
+        XCTAssertTrue(engine.calls.contains("It worked well."))
+        XCTAssertEqual(engine.calls.filter { $0 == "It worked well." }.count, 1)
+    }
+
+    func testRestitchAfterNextSentenceStartedFixesNewestLine() async {
+        let (subscriber, _) = self.makeSubscriber()
+        subscriber.handlePartial("We trained the model. And")
+        await self.settle()
+        subscriber.handlePartial("We trained the model on new data. And then")
+        await self.settle()
+        subscriber.handlePartial("We trained the model on new data. And then it worked.")
+        await self.settle()
+        subscriber.handlePartial("We trained the model on new data. And then it worked.")
+        await subscriber.waitForIdleForTesting()
+        XCTAssertEqual(
+            subscriber.committedSourceLines,
+            ["We trained the model on new data.", "And then it worked."]
+        )
+    }
+
+    func testRealNextSentenceIsNotMergedIntoPrintedLine() async {
+        let (subscriber, _) = self.makeSubscriber()
+        subscriber.handlePartial("We trained the model.")
+        await self.settle()
+        subscriber.handlePartial("We trained the model.")
+        await self.settle()
+        subscriber.handlePartial("We trained the model. on the other hand it failed.")
+        await self.settle()
+        subscriber.handlePartial("We trained the model. on the other hand it failed.")
+        await subscriber.waitForIdleForTesting()
+        // The period stayed, so this is a new line even though it starts lowercase.
+        XCTAssertEqual(subscriber.committedSourceLines.first, "We trained the model.")
+    }
+
+    func testSimilarNextSentenceIsNotSwallowedAsARevision() async {
+        let (subscriber, _) = self.makeSubscriber()
+        let first = "We tested it on English data."
+        let second = "We tested it on Korean data."
+        subscriber.handlePartial(first)
+        await self.settle()
+        subscriber.handlePartial(first)
+        await self.settle()
+        subscriber.handlePartial(first + " " + second)
+        await self.settle()
+        subscriber.handlePartial(first + " " + second)
+        await subscriber.waitForIdleForTesting()
+        XCTAssertEqual(subscriber.committedSourceLines, [first, second])
+    }
+
+    func testResumingSpeechCancelsTheSilentTailPrint() async {
+        let (subscriber, engine) = self.makeSubscriber()
+        subscriber.handlePartial("and that's it")
+        await self.settle()
+        subscriber.noteSilenceHold()
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        XCTAssertTrue(engine.calls.isEmpty, "a short pause keeps the tail open")
+        subscriber.noteSpeechStart(uptime: ProcessInfo.processInfo.systemUptime)
+        subscriber.handlePartial("and that's it for today.")
+        await self.settle()
+        subscriber.handlePartial("and that's it for today.")
+        await subscriber.waitForIdleForTesting()
+        XCTAssertEqual(engine.calls, ["and that's it for today."])
+    }
+
+    func testSilentTailPrintsAfterSustainedSilence() async {
+        let (subscriber, engine) = self.makeSubscriber()
+        subscriber.handlePartial("and that's it")
+        await self.settle()
+        subscriber.noteSilenceHold()
+        await subscriber.waitForIdleForTesting()
+        XCTAssertEqual(engine.calls, ["and that's it"])
+    }
+
+    func testPausedSentenceWithoutPunctuationPrintsOnPause() async {
+        let (subscriber, engine) = self.makeSubscriber()
+        subscriber.handlePartial("so this is how the attention layer works")
+        await self.settle()
+        subscriber.noteSilenceHold()
+        try? await Task.sleep(nanoseconds: 700_000_000)
+        XCTAssertEqual(engine.calls, ["so this is how the attention layer works"])
+    }
+}
+
+/// An hour-scale talk through the real subscriber, fed like ASRService feeds it:
+/// the cumulative transcript, bounded by `boundLiveTranscript`.
+@MainActor
+final class TheaterLongTalkTests: XCTestCase {
+    func testLongTalkPrintsEverySentenceOnceWithoutSlowingDown() async {
+        let settings = SettingsStore.shared
+        let originalSource = settings.translationSourceLanguageID
+        let originalTarget = settings.translationTargetLanguageID
+        defer {
+            settings.translationSourceLanguageID = originalSource
+            settings.translationTargetLanguageID = originalTarget
+        }
+        settings.translationSourceLanguageID = "en"
+        settings.translationTargetLanguageID = "ko"
+        let engine = FakeTranslationEngine()
+        engine.result = .success("번역")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
+        let subscriber = LiveTranslationSubscriber(translator: engine, archive: LectureCaptionArchive(url: url))
+        subscriber.beginListening()
+
+        let topics = ["the model", "the dataset", "attention", "the encoder", "our results", "the baseline"]
+        let verbs = ["improves", "changes", "explains", "limits", "shapes", "drives"]
+        let sentenceCount = 600
+        var transcript = ""
+        var printed: [String] = []
+        var firstBatch: TimeInterval = 0
+        var lastBatch: TimeInterval = 0
+        for index in 0..<sentenceCount {
+            let sentence = "Point \(index) is that \(topics[index % topics.count]) "
+                + "\(verbs[(index / 6) % verbs.count]) everything we measured."
+            let words = sentence.split(separator: " ")
+            let half = words.prefix(words.count / 2).joined(separator: " ")
+            let started = ProcessInfo.processInfo.systemUptime
+            for partial in [transcript + " " + half, transcript + " " + sentence, transcript + " " + sentence] {
+                subscriber.handlePartial(StreamingTranscriptStitcher.boundLiveTranscript(partial))
+                await Task.yield()
+            }
+            await subscriber.waitForIdleForTesting()
+            let elapsed = ProcessInfo.processInfo.systemUptime - started
+            if index < 50 { firstBatch += elapsed }
+            if index >= sentenceCount - 50 { lastBatch += elapsed }
+            transcript = (transcript + " " + sentence).trimmingCharacters(in: .whitespaces)
+            printed.append(contentsOf: subscriber.committedSourceLines.filter { !printed.suffix(5).contains($0) })
+        }
+        XCTAssertEqual(subscriber.captionPairs.count, sentenceCount, "history/export must hold the whole talk")
+        let unique = Set(printed)
+        XCTAssertEqual(printed.count, unique.count, "a sentence printed twice")
+        XCTAssertEqual(unique.count, sentenceCount, "sentences missing: \(sentenceCount - unique.count)")
+        XCTAssertLessThan(lastBatch, max(firstBatch * 3, 0.5), "per-sentence work grew over the talk")
+        print("LONG first50=\(firstBatch)s last50=\(lastBatch)s printed=\(unique.count) calls=\(engine.calls.count)")
+    }
+}
+
+

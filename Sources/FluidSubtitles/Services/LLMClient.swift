@@ -209,7 +209,8 @@ final nonisolated class LLMClient: @unchecked Sendable {
     /// Execute request with retry logic (extracted for timeout wrapper)
     private func executeWithRetry(request: URLRequest, config: Config) async throws -> Response {
         var lastError: Error?
-        for attempt in 1...config.maxRetries {
+        let attempts = max(1, config.maxRetries)
+        for attempt in 1...attempts {
             do {
                 self.benchmark(config, "attempt_start attempt=\(attempt)")
                 if config.streaming {
@@ -222,8 +223,8 @@ final nonisolated class LLMClient: @unchecked Sendable {
                 }
             } catch let error as URLError where self.isRetryableError(error) {
                 lastError = LLMError.networkError(error)
-                DebugLogger.shared.warning("LLMClient: Retry \(attempt)/\(config.maxRetries) due to \(error.code.rawValue)", source: "LLMClient")
-                if attempt < config.maxRetries {
+                DebugLogger.shared.warning("LLMClient: Retry \(attempt)/\(attempts) due to \(error.code.rawValue)", source: "LLMClient")
+                if attempt < attempts {
                     // Exponential backoff
                     let delayNs = UInt64(config.retryDelayMs * 1_000_000 * attempt)
                     try? await Task.sleep(nanoseconds: delayNs)

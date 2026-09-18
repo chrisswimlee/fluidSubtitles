@@ -4,16 +4,16 @@ import Foundation
 /// First-run and stage-call checks. Listen still gates on engine + pack.
 enum TheaterReadiness {
     static let captionsPrintAfterSentence =
-        "A sentence prints when it finishes. The next sentence starts on a new line while you talk."
+        "The live caption grows while you talk. A finished sentence plus more speech starts the next pair. A pause commits leftover speech."
 
     static let listeningStatus =
-        "Listening. The current sentence prints as you go. The next one starts underneath."
+        "Listening. A finished sentence plus more speech starts the next pair. Spoken and Show-as stay paired."
 
     static let listeningEmpty =
-        "Listening… the current sentence prints as you go. The next one starts underneath."
+        "Listening… a finished sentence plus more speech starts the next pair. Spoken and Show-as stay paired."
 
     static let pressListen =
-        "Press Listen. The current sentence prints as you go. The next one starts underneath."
+        "Press Listen. A finished sentence plus more speech starts the next pair. Spoken and Show-as stay paired."
 
     static let stopHelp =
         "Stop. Printed lines stay."
@@ -32,6 +32,28 @@ enum TheaterReadiness {
     static let openTheaterHelp =
         "Open Theater. Choose Pop-up or Transparent in Theater Window."
 
+    static let showTheater = "Show Theater"
+
+    static let closeTheater = "Close Theater"
+
+    static let showTheaterHelp =
+        "Show Theater. Listen stayed."
+
+    static let closeTheaterHelp =
+        "Close Theater."
+
+    static let minimizeHelp =
+        "Minimize. Theater leaves the stage. Listen stays."
+
+    static let expandTheaterHelp =
+        "Show the caption board"
+
+    static let theaterMinimizedStatus =
+        "Theater is minimized."
+
+    static let theaterOpenStatus =
+        "Theater is open."
+
     static let openTheaterAndListen = "Open Theater and Listen"
 
     static let openTheaterPressListen =
@@ -48,7 +70,7 @@ enum TheaterReadiness {
         "A caption appeared. Open Theater anytime from the sidebar."
 
     static let gettingStartedOpenDetail =
-        "Voice Engine sharpens speech into text. Translate uses Apple Translation on this Mac. Both use the microphone. Open Theater, pick Voice or Translate, then press Listen."
+        "Voice Engine sharpens speech into text. Translation Engine is Apple Translation on this Mac, with an optional experimental local LLM. Both use the microphone. Open Theater, pick Voice or Translate, then press Listen."
 
     static let gettingStartedMicrophone =
         "Theater needs the microphone to hear you."
@@ -60,10 +82,16 @@ enum TheaterReadiness {
         "A line already on screen stays. Pause and Stop do not rewrite it."
 
     static let clearCaptions =
-        "Clear removes every caption. Listen can keep going."
+        "Clear removes every caption. Talk notes stay. Listen can keep going."
 
     static let clearCaptionsConfirm =
-        "This removes every caption. Listen can keep going."
+        "This removes every caption. Talk notes stay. Listen can keep going."
+
+    static let talkPack =
+        "Lock names from notes, a PDF, or a JSON list. They stay on this Mac."
+
+    static let paceCue =
+        "Behind means keep talking slower. Caught up means the last clause is on screen."
 
     static let oneSpeakerCloseMic =
         "Best with one speaker and a close mic. Halls, PA bleed, and Q&A will miss words."
@@ -87,7 +115,7 @@ enum TheaterReadiness {
         "Separate from dictation. Types the current caption only."
 
     static let undoLastCaption =
-        "Remove the last printed line. Older archive lines stay. Listen can keep going."
+        "Remove the last printed line. Off-screen captions are already gone. Listen can keep going."
 
     static let closeWhileListening =
         "Close Theater stops Listen."
@@ -130,7 +158,16 @@ enum TheaterReadiness {
         "SRT/VTT times are when the caption committed, not the spoken word."
 
     static let hideFromScreenShare =
-        "Hide from screen share keeps Theater off Zoom, Keynote, and recordings. The window still shows on your display and on a wired projector."
+        "Hide from screen share keeps Theater off Zoom, Keynote, and recordings. The window still shows on your display and on a wired projector. Turn it off for a Zoom or Meet talk so remote viewers see captions. On macOS 15 and later some apps still capture hidden windows, so share one window, not the whole screen."
+
+    static let backingBar =
+        "Backing bar puts a dark band behind transparent captions so they stay readable on white slides."
+
+    static let talkPackClear =
+        "Clear these notes so their names do not carry into the next talk."
+
+    static let presenterHotkeys =
+        "Control-Option-H hides or shows Theater, P pauses, K clears, = and - change the text size. Your slides keep focus."
 
     static let popupStyle =
         "Pop-up is a solid floating board you can place over slides or a second display."
@@ -143,6 +180,16 @@ enum TheaterReadiness {
 
     static let alsoHearOtherLanguages =
         "Whisper can auto-detect English, Korean, Japanese, and Thai questions. Apple Speech stays on I speak."
+
+    /// Either way copy. The toggle is off until a later release.
+    static let dynamicPairing =
+        "Speak either language of this pair. Theater shows both. Whisper hears both; Apple Speech stays on I speak."
+
+    static func dynamicPairingHint(isWhisper: Bool) -> String {
+        isWhisper
+            ? "Either way: speak either language of this pair. Captions stay both."
+            : "Either way can flip captions, but this Voice Engine stays on I speak. Whisper hears both languages."
+    }
 
     static var macOSNote: String {
         TheaterAvailability.isSupported
@@ -205,7 +252,7 @@ enum TheaterReadyGate {
             if !self.firstCaptionPrinted {
                 return self.mode == .transcription
                     ? "Press Listen and speak."
-                    : "Press Listen and speak one sentence."
+                    : "Press Listen and speak."
             }
             return "Ready."
         }

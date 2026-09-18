@@ -1,6 +1,6 @@
 import Foundation
 
-enum AppSupportDirectory {
+nonisolated enum AppSupportDirectory {
     static func url(fileManager: FileManager = .default) -> URL {
         let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? fileManager.homeDirectoryForCurrentUser.appendingPathComponent(

@@ -23,9 +23,20 @@ gh repo edit "${FULL}" \
     --visibility public \
     --accept-visibility-change-consequences \
     --enable-issues \
-    --enable-discussions
+    --enable-discussions \
+    --description "Live Korean, English, Thai, and Japanese captions for macOS. A FluidVoice branch by Chris Swim Lee."
 
 gh api --method PUT "repos/${FULL}/private-vulnerability-reporting" >/dev/null
+gh api --method PUT "repos/${FULL}/vulnerability-alerts" >/dev/null || true
+gh api --method PUT "repos/${FULL}/automated-security-fixes" >/dev/null || true
+gh api --method PATCH "repos/${FULL}" --input - >/dev/null <<'EOF' || true
+{
+  "security_and_analysis": {
+    "secret_scanning": { "status": "enabled" },
+    "secret_scanning_push_protection": { "status": "enabled" }
+  }
+}
+EOF
 
 echo "Discussion categories should include Ideas, Q&A, and General (GitHub defaults)."
 gh api graphql -f query='query { repository(owner:"chrisswimlee", name:"fluidSubtitles") { discussionCategories(first:20) { nodes { name } } } }' --jq '.data.repository.discussionCategories.nodes[].name'

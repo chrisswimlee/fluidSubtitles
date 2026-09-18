@@ -425,23 +425,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
                 if result.hasUpdate {
                     DebugLogger.shared.info("✅ Update available: \(result.latestVersion)", source: "AppDelegate")
-
-                    guard !SimpleUpdater.shared.isUpdateInProgress else {
-                        DebugLogger.shared.debug(
-                            "Update prompt skipped because installation is already in progress",
-                            source: "AppDelegate"
-                        )
-                        return
-                    }
-
-                    // Check if user snoozed this version (clicked "Later")
-                    if SettingsStore.shared.shouldShowUpdatePrompt(forVersion: result.latestVersion) {
-                        // Show update notification on main thread
-                        await MainActor.run {
-                            self.showUpdateNotification(version: result.latestVersion)
+                    await MainActor.run {
+                        guard !SimpleUpdater.shared.isUpdateInProgress else {
+                            DebugLogger.shared.debug(
+                                "Update prompt skipped because installation is already in progress",
+                                source: "AppDelegate"
+                            )
+                            return
                         }
-                    } else {
-                        DebugLogger.shared.debug("Update prompt snoozed for \(result.latestVersion), skipping notification", source: "AppDelegate")
+                        if SettingsStore.shared.shouldShowUpdatePrompt(forVersion: result.latestVersion) {
+                            self.showUpdateNotification(version: result.latestVersion)
+                        } else {
+                            DebugLogger.shared.debug(
+                                "Update prompt snoozed for \(result.latestVersion), skipping notification",
+                                source: "AppDelegate"
+                            )
+                        }
                     }
                 } else {
                     DebugLogger.shared.info("✅ App is up to date", source: "AppDelegate")

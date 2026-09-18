@@ -7,8 +7,10 @@ struct TheaterEngineCards: View {
     @ObservedObject private var controller = LiveTranslationController.shared
 
     var openVoiceEngine: (() -> Void)?
+    var openTranslationEngine: (() -> Void)?
     var showsVoiceSection = true
     var showsVoiceCustomize = true
+    var showsTranslationCustomize = true
     var showsPurpose = true
 
     var body: some View {
@@ -39,12 +41,17 @@ struct TheaterEngineCards: View {
                     title: TheaterEngineCopy.translationTitle,
                     systemImage: "globe",
                     purpose: self.showsPurpose ? TheaterEngineCopy.translationPurpose : nil,
-                    engineName: TheaterEngineCopy.translationName,
+                    engineName: TheaterEngineCopy.translationName(),
                     running: self.translationRunningLine,
                     runningIsWarning: self.translationRunningIsWarning,
                     accessibilityIdentifier: "theater.translationEngine"
                 ) {
-                    EmptyView()
+                    if self.showsTranslationCustomize, let openTranslationEngine {
+                        Button("Customize", action: openTranslationEngine)
+                            .buttonStyle(.bordered)
+                            .controlSize(.regular)
+                            .accessibilityIdentifier("theater.customizeTranslationEngine")
+                    }
                 }
             }
         }
@@ -74,7 +81,8 @@ struct TheaterEngineCards: View {
         TheaterEngineCopy.translationRunningLine(
             mode: self.settings.theaterSessionMode,
             sameLanguage: SpokenLanguageResolver.isSameLanguagePair(),
-            pack: self.controller.packAvailability
+            pack: self.controller.packAvailability,
+            engine: self.settings.theaterTranslationEngine
         )
     }
 

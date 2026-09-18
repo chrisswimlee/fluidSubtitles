@@ -1972,7 +1972,6 @@ struct PromptSelectorAnchorReader: NSViewRepresentable {
 
     func updateNSView(_ nsView: AnchorReportingView, context: Context) {
         nsView.onFrameChange = self.onFrameChange
-        nsView.reportFrame(force: true)
     }
 
     final class AnchorReportingView: NSView {
@@ -2030,7 +2029,10 @@ struct PromptSelectorAnchorReader: NSViewRepresentable {
                 if force || !self.lastReportedFrameInScreen.isNull {
                     self.lastReportedFrameInScreen = .null
                     self.lastReportedWindow = nil
-                    self.onFrameChange?(CGRect.zero, nil)
+                    let callback = self.onFrameChange
+                    DispatchQueue.main.async {
+                        callback?(CGRect.zero, nil)
+                    }
                 }
                 return
             }
@@ -2050,7 +2052,10 @@ struct PromptSelectorAnchorReader: NSViewRepresentable {
 
             self.lastReportedFrameInScreen = frameInScreen
             self.lastReportedWindow = window
-            self.onFrameChange?(frameInScreen, window)
+            let callback = self.onFrameChange
+            DispatchQueue.main.async {
+                callback?(frameInScreen, window)
+            }
         }
     }
 }

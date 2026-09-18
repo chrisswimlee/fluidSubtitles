@@ -17,7 +17,7 @@ extension OnboardingFlowView {
                 VStack(alignment: .center, spacing: self.theme.metrics.onboardingSurface.landing.sectionSpacing) {
                     FluidOnboardingLandingHero(
                         eyebrow: FluidProduct.displayName,
-                        title: "Captions after each sentence.",
+                        title: "Captions that grow while you talk.",
                         accentTitle: "Korean, English, Thai, and Japanese.",
                         firstDetail: FluidProduct.manifesto,
                         secondDetail: "Theater runs on macOS 15 and later. Swap I speak and Show as, then press Listen."

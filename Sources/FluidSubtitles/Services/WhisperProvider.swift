@@ -344,7 +344,7 @@ final class WhisperProvider: TranscriptionProvider {
         )
         return SpokenLanguageHints.whisperLanguageCode(
             stored: locked ?? settings.selectedWhisperLanguageCode,
-            alsoHearOthers: settings.theaterAlsoHearOtherLanguages
+            alsoHearOthers: SpokenLanguageResolver.shouldAutoDetectWhisper(settings: settings)
         )
     }
 

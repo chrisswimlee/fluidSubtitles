@@ -650,7 +650,7 @@ final class AIEnhancementSettingsViewModel: ObservableObject {
                 kSecClass as String: kSecClassGenericPassword,
                 kSecAttrService as String: service,
                 kSecAttrAccount as String: account,
-                kSecReturnData as String: kCFBooleanTrue,
+                kSecReturnData as String: true,
                 kSecMatchLimit as String: kSecMatchLimitOne,
             ]
             readStatus = SecItemCopyMatching(query as CFDictionary, nil)

@@ -299,10 +299,14 @@ final class LiveTranslationLatencyTests: XCTestCase {
         subscriber.handlePartial("Hello world today")
         XCTAssertTrue(engine.calls.isEmpty)
         subscriber.handleEndOfUtterance()
-        await subscriber.waitForIdleForTesting()
+        // A brief pause keeps the thin tail open in case the thought goes on.
+        try? await Task.sleep(nanoseconds: 900_000_000)
         XCTAssertTrue(subscriber.committedLines.isEmpty)
         XCTAssertTrue(engine.calls.isEmpty)
         XCTAssertEqual(subscriber.sourceDraft, "Hello world today")
+        // Sustained silence prints it instead of holding it until Stop.
+        await subscriber.waitForIdleForTesting()
+        XCTAssertEqual(engine.calls.count, 1)
     }
 
     func testThermalReadoutLabels() {

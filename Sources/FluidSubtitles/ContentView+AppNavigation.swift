@@ -19,6 +19,7 @@ extension ContentView {
 
             Section {
                 self.sidebarNavigationLink(.voiceEngine, title: "Voice Engine", systemImage: "waveform")
+                self.sidebarNavigationLink(.translationEngine, title: "Translation Engine", systemImage: "globe")
                 self.sidebarNavigationLink(.customDictionary, title: "Custom Dictionary", systemImage: "text.book.closed.fill")
             } header: {
                 self.sidebarSectionHeader("Setup")
@@ -307,6 +308,9 @@ extension ContentView {
             return AnyView(LiveTranslationHomeView(
                 openVoiceEngine: {
                     self.navigateToApp(.voiceEngine)
+                },
+                openTranslationEngine: {
+                    self.navigateToApp(.translationEngine)
                 }
             ))
         case .welcome:
@@ -316,6 +320,8 @@ extension ContentView {
                 appServices: self.appServices,
                 theme: self.theme
             ))
+        case .translationEngine:
+            return AnyView(TranslationEngineSettingsScreen(theme: self.theme))
         case .aiEnhancements, .cleanupStyles:
             return AnyView(AIEnhancementSettingsScreen(
                 menuBarManager: self.menuBarManager,

@@ -60,7 +60,9 @@ final class SettingsNavigationStateTests: XCTestCase {
 
     func testUnrelatedRoutesDoNotSelectAIConfigurationSections() {
         XCTAssertNil(SidebarItem.voiceEngine.aiEnhancementConfigurationSection)
+        XCTAssertNil(SidebarItem.translationEngine.aiEnhancementConfigurationSection)
         XCTAssertNil(SidebarItem.customDictionary.aiEnhancementConfigurationSection)
+        XCTAssertEqual(SidebarItem.translationEngine.accessibilityIdentifier, "sidebar.translationEngine")
     }
 
     func testInactiveSettingsSearchResignsFirstResponder() {
@@ -91,6 +93,8 @@ final class SettingsNavigationStateTests: XCTestCase {
         XCTAssertTrue(SettingsSearchIndex.results(for: "speech to text").contains { $0.target == .liveTranslation })
         XCTAssertTrue(SettingsSearchIndex.results(for: "FluidVoice").contains { $0.target == .theaterAppearance })
         XCTAssertTrue(SettingsSearchIndex.results(for: "high contrast").contains { $0.target == .theaterAppearance })
+        XCTAssertTrue(SettingsSearchIndex.results(for: "talk notes").contains { $0.target == .theaterAppearance })
+        XCTAssertTrue(SettingsSearchIndex.results(for: "pace cue").contains { $0.target == .theaterAppearance })
         XCTAssertTrue(SettingsSearchIndex.results(for: "Caption Cleanup").isEmpty)
     }
 

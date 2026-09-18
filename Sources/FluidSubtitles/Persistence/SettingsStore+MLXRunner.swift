@@ -33,6 +33,13 @@ extension SettingsStore {
         }
     }
 
+    /// Setup picker. Apple Translation is the caption engine; a local small LLM
+    /// is optional first-print sharpening with the same MLX runner key.
+    var theaterTranslationEngine: TheaterTranslationEngineKind {
+        get { self.mlxRunnerEnabled ? .localLLM : .apple }
+        set { self.mlxRunnerEnabled = newValue == .localLLM }
+    }
+
     var mlxRunnerModelID: String {
         get { MLXRunnerCatalog.resolvedModelID(self.defaults.string(forKey: MLXRunnerDefaults.modelID) ?? "") }
         set {

@@ -16,8 +16,8 @@ flowchart TD
   clause --> mt[Apple Translation]
   mt --> hud[Theater HUD]
   thermal[thermalState readout] --> hud
-  clause --> window[200-line window]
-  window --> archive[JSONL overflow]
+  clause --> window[on-screen captions]
+  window --> drop[drop off-screen]
 ```
 
 1. Direct Core Audio captures one microphone input stream. Packets carry `inputHostTime`. Multi-channel float or int16 buffers are downmixed to mono. Pause drops packets before `handle` and resets the sample-time anchor on resume so a hole does not look like silence. Then the same 16 kHz pipeline. Leftover Watch / `SCStream` app-audio capture is not the product path and is not part of first-hour Theater.
@@ -25,7 +25,7 @@ flowchart TD
 3. ASR ticks on a timer (Parakeet Flash: 200 ms). The first tick is not gated. After 400 ms of RMS silence, later ticks are skipped.
 4. The growing transcript is split into finished clauses plus an open tail. Already-committed prefixes are stripped so the whole talk is not re-translated. During Theater, the live stitch is capped to the newest ~2,400 characters so a long listen cannot feed hours of text into every tick. Dictation Stop still stitches the full listen.
 5. The current spoken clause can print while you talk. Apple Translation runs when a clause commits, then the Show-as title types out. Same-language pairs print the spoken sentence without a pack.
-6. English, Thai, Korean, and Japanese wait for a finished sentence plus a short land (0.5 / 0.8 / 1.0 s) or a natural pause (~400 ms). A run-on with no period and no pause cuts at about twelve English words. Thin starters like “It.” do not print. Korean/Japanese/Thai 30-second confirm runs on Pause and Stop leftover only. A caption already on the board stays.
+6. The live caption grows while you talk. A finished sentence that already has more speech after it commits mid-talk. End-of-utterance or RMS silence (~400 ms) commits leftover speech. Stop flushes remaining leftover. The Pause button does not flush. A twelve-word lineCut splits leftover only at that hard commit. Thin starters like “It.” do not print. Korean/Japanese/Thai 30-second confirm runs on Stop and silence leftover only. A caption already on the board stays.
 
 ## Why first words are not VAD-gated
 
@@ -51,7 +51,7 @@ Host time on every packet is the e2e clock. Theater needs microphone permission.
 
 Devices must expose **one** input stream. Virtual devices are allowed (liveness fails open; clamshell still accepts external/virtual). Multi-stream aggregates fail with a clear error.
 
-The app is **not sandboxed**. Hardened Runtime is on. Language packs and voice weights are user-downloaded (Apple Translation packs, Hugging Face Core ML / GGUF). Nothing of substance is vendored in the zip.
+The app is **not sandboxed**. Hardened Runtime is on. Language packs and voice weights are user-downloaded (Apple Translation packs, Hugging Face Core ML / GGUF). Nothing of substance is vendored in the zip. Theater does not install a Zoom virtual microphone.
 
 ## Memory for a 3-hour keynote
 
@@ -59,11 +59,11 @@ The app is **not sandboxed**. Hardened Runtime is on. Language packs and voice w
 | --- | --- |
 | Live PCM | 30 s @ 16 kHz float |
 | Live Theater transcript | newest 2,400 characters |
-| Theater SwiftUI board | 200 committed lines |
-| Overflow | `TheaterSession.jsonl` under Application Support |
+| Theater SwiftUI board | 3 on-screen captions |
+| Overflow | dropped |
 | UserDefaults snapshot | visible window only |
 
-Theater status becomes `Showing last 200 of N` after overflow. Bilingual export reads the archive plus the window. SRT/VTT use commit times when every cue has a date; otherwise they fall back to 4-second slots.
+Theater is a live subtitle board. Off-screen captions are dropped. Bilingual export is the visible board. SRT/VTT use commit times when every cue has a date; otherwise they fall back to 4-second slots.
 
 ## Quantization and weights
 
@@ -82,7 +82,7 @@ Record raw. No deck.
 3. Speak a short clause. Show the HUD: `e2e · ASR · MT · thermal`.
 4. Hide chrome. The compact `Nms` readout stays in the corner.
 5. Pause, then speak again. The clock resets for the next clause.
-6. Optional: let the board pass 200 lines in a longer take and show `Showing last 200 of N`.
+6. Optional: fill the board, then confirm older captions disappear when they leave the screen.
 
 Fill the HUD numbers from that recording into this note before you publish the repo.
 

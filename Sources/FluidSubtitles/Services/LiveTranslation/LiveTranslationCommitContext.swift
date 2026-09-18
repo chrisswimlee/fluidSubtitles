@@ -1,5 +1,7 @@
 import Foundation
 
+/// Prior-4 MT context and confirmation peel. When-to-commit lives on
+/// TranslationClauseSegmenter (`nextCompletedSentence` / `nextCommitUnit`).
 enum LiveTranslationCommitContext {
     /// Only this Listen. A restored board or yesterday's talk must not prime MT.
     static func priorClauses(
@@ -74,7 +76,7 @@ enum LiveTranslationCommitContext {
             return LiveTranslationConfirm.prefersFirstConfirmation(confirmed: next, heard: current)
         }
 
-        let languageID = SpokenLanguageResolver.sourceLanguage().id
+        let languageID = SpokenLanguageResolver.listenLanguageID(for: next)
         let nextLeftover = TranslationClauseSegmenter.leftoverTail(
             next,
             already: already,

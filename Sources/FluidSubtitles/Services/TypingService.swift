@@ -337,12 +337,10 @@ final class TypingService {
         return nil
     }
 
-    /// Activation options used to restore focus to the external target app after dictation.
-    /// `.activateAllWindows` is intentionally omitted: raising every window of a multi-window
-    /// app (e.g. WebStorm) destroys the user's window layout on each dictation (issue #748).
-    static let focusRestoreActivationOptions: NSApplication.ActivationOptions = [
-        .activateIgnoringOtherApps,
-    ]
+    /// Empty on purpose. macOS 14+ `activate()` replaces `activateIgnoringOtherApps`.
+    /// Do not add `.activateAllWindows` — that raises every window of the target app
+    /// and destroys a multi-window layout on each dictation (issue #748).
+    static let focusRestoreActivationOptions: NSApplication.ActivationOptions = []
 
     /// Best-effort: activates the app with the given PID, unless it's Fluid itself.
     @discardableResult
@@ -358,7 +356,7 @@ final class TypingService {
             return false
         }
 
-        return app.activate(options: Self.focusRestoreActivationOptions)
+        return app.activate()
     }
 
     // MARK: - Public API
@@ -407,7 +405,7 @@ final class TypingService {
         guard text.isEmpty == false || postInsertionKey != nil else {
             self.bench("request_return reason=empty_text")
             self.log("[TypingService] ERROR: Empty text provided, aborting")
-            completion?(.rejected)
+            self.completeOnMain(.rejected, completion)
             return
         }
 
@@ -415,7 +413,7 @@ final class TypingService {
         guard !self.isCurrentlyTyping else {
             self.bench("request_return reason=already_typing")
             self.log("[TypingService] WARNING: Skipping text injection - already in progress")
-            completion?(.rejected)
+            self.completeOnMain(.rejected, completion)
             return
         }
 
@@ -424,7 +422,7 @@ final class TypingService {
             self.bench("request_return reason=accessibility_not_trusted")
             self.log("[TypingService] ERROR: Accessibility permissions required for text injection")
             self.log("[TypingService] Current accessibility status: \(AXIsProcessTrusted())")
-            completion?(.rejected)
+            self.completeOnMain(.rejected, completion)
             return
         }
 
@@ -535,6 +533,16 @@ final class TypingService {
                 }
                 outcome = hasTextToInsert ? .insertedAndActionDispatched : .actionDispatched
             }
+        }
+    }
+
+    private func completeOnMain(
+        _ outcome: DeliveryOutcome,
+        _ completion: (@MainActor (DeliveryOutcome) -> Void)?
+    ) {
+        guard let completion else { return }
+        Task { @MainActor in
+            completion(outcome)
         }
     }
 

@@ -1392,15 +1392,15 @@ final nonisolated class DirectCoreAudioLifecycleController: @unchecked Sendable 
     }
 
     private func recordStoppedHardwareNotification(generation: UInt64) {
-        self.stoppedHardwareLock.withLock {
-            self.stoppedHardwareGenerations.insert(generation)
-        }
+        self.stoppedHardwareLock.lock()
+        _ = self.stoppedHardwareGenerations.insert(generation)
+        self.stoppedHardwareLock.unlock()
     }
 
     private func consumeStoppedHardwareNotification(generation: UInt64) -> Bool {
-        self.stoppedHardwareLock.withLock {
-            self.stoppedHardwareGenerations.remove(generation) != nil
-        }
+        self.stoppedHardwareLock.lock()
+        defer { self.stoppedHardwareLock.unlock() }
+        return self.stoppedHardwareGenerations.remove(generation) != nil
     }
 
     private static func readDeviceLiveness(objectID: AudioObjectID) -> Bool? {

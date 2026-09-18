@@ -1,5 +1,10 @@
 import Foundation
 
+enum LiveTranslationMTError: Error {
+    case timedOut
+}
+
+@MainActor
 enum LiveTranslationMT {
     /// Apple Translation is `session.translate(text)` with no prompt. Isolated
     /// Korean/Thai clauses lose zero-subject context, so commit sends the last
@@ -15,16 +20,52 @@ enum LiveTranslationMT {
         llmEngine: LLMTranslationEngine,
         allowLocal: Bool = true
     ) async throws -> String {
-        if allowLocal, let local = await self.localCommitTranslation(
-            text,
-            priorSource: prior.sources,
-            source: source,
-            target: target,
-            terms: terms,
-            llmEngine: llmEngine
-        ) {
-            return local
+        do {
+            let apple = try await self.appleClause(
+                text,
+                source: source,
+                target: target,
+                terms: terms,
+                kind: kind,
+                prior: prior,
+                translator: translator
+            )
+            if allowLocal, let sharpened = await self.localFirstPrint(
+                text,
+                draft: apple,
+                prior: prior,
+                source: source,
+                target: target,
+                terms: terms,
+                llmEngine: llmEngine
+            ) {
+                return sharpened
+            }
+            return apple
+        } catch {
+            if allowLocal, let local = await self.localCommitTranslation(
+                text,
+                priorSource: prior.sources,
+                source: source,
+                target: target,
+                terms: terms,
+                llmEngine: llmEngine
+            ) {
+                return local
+            }
+            throw error
         }
+    }
+
+    static func appleClause(
+        _ text: String,
+        source: TranslationLanguage,
+        target: TranslationLanguage,
+        terms: [String],
+        kind: TranslationRequestKind,
+        prior: (sources: [String], translations: [String]),
+        translator: TranslationEngine
+    ) async throws -> String {
         if !prior.sources.isEmpty {
             let payload = TranslationClauseSegmenter.joinTranslatedLines(
                 prior.sources + [text],
@@ -54,6 +95,59 @@ enum LiveTranslationMT {
             kind: kind,
             translator: translator
         )
+    }
+
+    /// Sharpen an Apple draft before it prints. Does not start the runner.
+    static func localFirstPrint(
+        _ text: String,
+        draft: String,
+        prior: (sources: [String], translations: [String]),
+        source: TranslationLanguage,
+        target: TranslationLanguage,
+        terms: [String],
+        llmEngine: LLMTranslationEngine
+    ) async -> String? {
+        guard llmEngine.isReadyForCommitTranslation() else { return nil }
+        do {
+            let polished = try await llmEngine.polish(
+                sourceText: text,
+                draft: draft,
+                priorSource: prior.sources,
+                priorCaptions: prior.translations,
+                source: source,
+                target: target
+            )
+            let cleaned = polished.trimmingCharacters(in: .whitespacesAndNewlines)
+            let draftTrimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard cleaned != draftTrimmed else { return nil }
+            guard let accepted = LLMTranslationEngine.acceptedPolished(
+                cleaned,
+                draft: draft,
+                target: target,
+                priorSource: prior.sources,
+                priorCaptions: prior.translations
+            ) else {
+                llmEngine.noteListenFailure()
+                return nil
+            }
+            if !TranslationGlossary.lostProtectedTerms(
+                source: text,
+                polished: accepted,
+                terms: terms
+            ).isEmpty {
+                llmEngine.noteListenFailure()
+                return nil
+            }
+            llmEngine.noteListenEcho(false)
+            return accepted
+        } catch {
+            llmEngine.noteListenFailure()
+            DebugLogger.shared.debug(
+                "Local first-print polish skipped: \(error.localizedDescription)",
+                source: "LiveTranslation"
+            )
+            return nil
+        }
     }
 
     static func localCommitTranslation(

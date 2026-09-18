@@ -8,7 +8,7 @@
 import CryptoKit
 import Foundation
 
-enum UpdateSignaturePolicy {
+nonisolated enum UpdateSignaturePolicy {
     static let expectedBundleIdentifier = FluidProduct.bundleIdentifier
 
     static func isUsableTeamID(_ raw: String?) -> Bool {
