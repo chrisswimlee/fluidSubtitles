@@ -7,7 +7,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>© Chris Swim Lee. fluidSubtitles is a branch of FluidVoice by altic-dev. Licensed under GPLv3.</string>
+	<string>© Chris Swim Lee. Licensed under GPLv3.</string>
 	<key>CFBundleDisplayName</key>
 	<string>fluidSubtitles</string>
 	<key>CFBundleName</key>

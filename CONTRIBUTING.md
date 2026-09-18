@@ -43,7 +43,7 @@ Launch `DerivedData/Build/Products/Debug/fluidSubtitles Debug.app`. Keep using t
 
 3. Open **Theater**. First run selects **Apple Speech Analyzer** on macOS 26, or **Apple Speech** on macOS 15. Use **Parakeet Flash** only for faster English lectern (Show other models). Do not start with Nemotron Thai.
 
-4. Allow the microphone. Pick **Voice** for FluidVoice transcription or **Translate** for captions. Press **Listen** and speak one sentence. Download an Apple Translation pack only for Translate with two languages. Theater Listen does not ask for Screen Recording.
+4. Allow the microphone. Pick **Voice** for transcription or **Translate** for captions. Press **Listen** and speak one sentence. Download an Apple Translation pack only for Translate with two languages. Theater Listen does not ask for Screen Recording.
 
 5. Format, lint, and test. `./scripts/format-and-lint.sh` is required before you open a PR (SwiftFormat, SwiftLint strict, and the PR-policy unit tests when those tools are installed):
 

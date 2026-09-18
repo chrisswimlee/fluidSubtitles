@@ -1,6 +1,6 @@
 # Architecture
 
-fluidSubtitles is a FluidVoice branch. Speech recognition and the macOS app shell come from upstream. This document is the map of **this product**: Theater captions and dictation insert among Korean, English, Thai, and Japanese.
+Speech recognition and the macOS app shell come from [FluidVoice](https://github.com/altic-dev/FluidVoice). This document is the map of **this product**: Theater captions and dictation insert among Korean, English, Thai, and Japanese.
 
 ```mermaid
 flowchart LR
@@ -41,7 +41,7 @@ Printed Theater lines stay put for this Listen. The board only slides up slowly 
 
 ## What this product does not include
 
-These FluidVoice surfaces were removed from this branch. Do not add them back without a product decision:
+These FluidVoice surfaces were removed. Do not add them back without a product decision:
 
 - Command Mode, terminal agent, and command chat history
 - Rewrite / Edit Mode
