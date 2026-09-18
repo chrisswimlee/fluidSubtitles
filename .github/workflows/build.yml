@@ -102,8 +102,22 @@ jobs:
           -destination 'platform=macOS,arch=arm64' \
           -skip-testing:FluidSubtitlesUITests \
           -skip-testing:FluidSubtitlesIntegrationTests/DictationE2ETests/testDictationEndToEnd_whisperTiny_transcribesFixture \
+          -test-timeouts-enabled YES \
+          -default-test-execution-time-allowance 60 \
+          -maximum-test-execution-time-allowance 180 \
+          -resultBundlePath "${RUNNER_TEMP}/Tests.xcresult" \
           CODE_SIGN_IDENTITY="-" \
           | xcpretty
+
+    # A hung test fails after its allowance instead of eating the job timeout.
+    # The result bundle keeps the failing test name and a spindump.
+    - name: Upload test results
+      if: failure() || cancelled()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      with:
+        name: Tests.xcresult
+        path: ${{ runner.temp }}/Tests.xcresult
+        retention-days: 7
 
   ci-ok:
     name: Build and Test
