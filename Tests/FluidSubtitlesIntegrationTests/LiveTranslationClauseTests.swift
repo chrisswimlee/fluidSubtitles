@@ -2922,6 +2922,9 @@ final class TheaterTalkSimulationTests: XCTestCase {
 @MainActor
 final class TheaterLongTalkTests: XCTestCase {
     func testLongTalkPrintsEverySentenceOnceWithoutSlowingDown() async {
+        // 600 sentences through real settle and end-of-utterance timers take
+        // about 75 s on an M-series Mac and longer on a hosted runner.
+        self.executionTimeAllowance = 300
         let settings = SettingsStore.shared
         let originalSource = settings.translationSourceLanguageID
         let originalTarget = settings.translationTargetLanguageID
