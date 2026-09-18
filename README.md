@@ -76,13 +76,22 @@ fluidSubtitles only hears and captions **Korean, English, Thai, and Japanese**. 
 
 ## Install
 
-This is a **Developer ID zip**, not TestFlight and not the Mac App Store. The app is unsandboxed (Hardened Runtime on). Theater needs microphone access. Insert-into-another-app needs Accessibility. Voice models and Apple Translation packs download on first use; they are not inside the zip.
+There is no signed download yet. Pick one:
 
-1. Download `fluidsubtitles-{version}.zip` from [GitHub Releases](https://github.com/chrisswimlee/fluidSubtitles/releases).
-2. Open the app. A notarized zip should stay quiet in Gatekeeper.
-3. Open **Theater**, allow the microphone, pick **Voice** or **Translate**, and press **Listen**.
+**Preview zip (no Xcode).** Download `fluidsubtitles-{version}-preview-unsigned.zip` from the newest pre-release on [GitHub Releases](https://github.com/chrisswimlee/fluidSubtitles/releases). It is not signed with a Developer ID or notarized, so macOS blocks it the first time:
 
-`./build.sh release` writes `dist/fluidsubtitles-{version}.zip` and `dist/SHA256SUMS`. Set `APPLE_ID`, `APPLE_TEAM_ID`, and `APPLE_APP_SPECIFIC_PASSWORD` to notarize. A GitHub tag `v*` runs `.github/workflows/release.yml`. Hosted CI cannot sign unless a Developer ID certificate is imported. After that first Developer ID zip, add the team ID to `FluidProduct.allowedUpdateTeamIDs` — the set is empty today, so updates reject every build. Hosted CI cannot prove a live Theater listen.
+1. Unzip it and drag **fluidSubtitles** to Applications.
+2. Open it. When macOS says it cannot verify the app, click **Done**.
+3. Open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to fluidSubtitles. Confirm.
+4. Open **Theater**, allow the microphone, pick **Voice** or **Translate**, and press **Listen**.
+
+In-app updates are off for previews. Download each new preview by hand; macOS may ask for Microphone and Accessibility again.
+
+**Build from source (Xcode).** Permissions stay across rebuilds. See [Building from Source](#building-from-source).
+
+The app is unsandboxed (Hardened Runtime on). Theater needs microphone access. Insert-into-another-app needs Accessibility. Voice models and Apple Translation packs download on first use; they are not inside the zip.
+
+Maintainers: Actions → **Preview** → Run workflow publishes a preview pre-release (`./build.sh preview`, tag `preview-<version>-<run>`). A signed release needs a Developer ID: `./build.sh release` with `APPLE_ID`, `APPLE_TEAM_ID`, and `APPLE_APP_SPECIFIC_PASSWORD`, then a `v*` tag runs `.github/workflows/release.yml`. Hosted CI cannot prove a live Theater listen.
 
 ---
 
@@ -99,36 +108,37 @@ This is a **Developer ID zip**, not TestFlight and not the Mac App Store. The ap
 
 ## Building from Source
 
-```bash
-open fluidSubtitles.xcodeproj
-```
+You need an Apple Silicon Mac on macOS 15 or later, **Xcode 26** (CI uses 26.3), and a free Apple Account. No paid developer membership.
 
-Build and run in Xcode. App Swift packages are pinned in `fluidSubtitles.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`. Root `Package.swift` only builds the C capture helper.
+1. **Get a free signing certificate** (once). In Xcode, open **Settings → Accounts**, add your Apple Account, select its **Personal Team**, click **Manage Certificates…**, then **+ → Apple Development**. Signing keeps Microphone and Accessibility granted across rebuilds.
 
-For local signing, copy the example xcconfig and set your Apple team ID (a free Personal Team is enough):
+2. **Clone and build:**
 
-```bash
-cp xcconfig/Local.xcconfig.example xcconfig/Local.xcconfig
-```
+   ```bash
+   git clone https://github.com/chrisswimlee/fluidSubtitles.git
+   cd fluidSubtitles
+   ./build.sh
+   ```
 
-Then run a signed Debug build:
+   `./build.sh` finds your Apple Development certificate and its team. The first build resolves Swift packages and takes several minutes. With more than one team, pin one:
 
-```bash
-./build.sh
-```
+   ```bash
+   cp xcconfig/Local.xcconfig.example xcconfig/Local.xcconfig
+   # set DEVELOPMENT_TEAM to your 10-character team ID
+   ```
 
-The signed build is written to `DerivedData/Build/Products/Debug/fluidSubtitles Debug.app`.
-Keep launching that product after each rebuild so macOS can preserve its Accessibility
-authorization.
+3. **Launch** `DerivedData/Build/Products/Debug/fluidSubtitles Debug.app`. Always launch this same path after rebuilding so macOS keeps its permissions.
 
-For CI or contributors who do not have a signing identity, use the unsigned fallback:
+4. **First run.** Open **Theater**, allow the microphone, pick **Voice** or **Translate**, and press **Listen**. For Translate, download the Apple Translation pack when asked. Allow Accessibility only if you use Type into app.
 
-```bash
-./build.sh unsigned
-```
+5. **Update later:**
 
-Unsigned builds are tied to a specific executable version and may require Accessibility
-permission to be removed and granted again after rebuilding.
+   ```bash
+   git pull
+   ./build.sh
+   ```
+
+No certificate? `./build.sh unsigned` builds without one, but macOS may ask for Accessibility again after each rebuild. You can also open `fluidSubtitles.xcodeproj` and run from Xcode. App Swift packages are pinned in `fluidSubtitles.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`; root `Package.swift` only builds the C capture helper.
 
 Architecture notes live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Latency budgets and the Theater HUD are in [docs/LIVE_TRANSLATION_LATENCY.md](docs/LIVE_TRANSLATION_LATENCY.md). Score a recorded talk with [docs/STAGE_SCORE.md](docs/STAGE_SCORE.md). Signing and notarization are in [docs/SIGNING.md](docs/SIGNING.md). The systems write-up is [docs/APPLE_SILICON_STREAMING.md](docs/APPLE_SILICON_STREAMING.md).
 
