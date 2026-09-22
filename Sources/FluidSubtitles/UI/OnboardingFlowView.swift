@@ -26,7 +26,6 @@ struct OnboardingFlowView: View {
     var finishOnboardingAtTranslate: () -> Void = {}
     let openAccessibilitySettings: () -> Void
     let restartApp: () -> Void
-    let startRecording: () -> Void
     var startCaptionListening: () -> Void = {}
     let stopAndProcessTranscription: () async -> Void
     let menuBarManager: MenuBarManager
@@ -36,7 +35,6 @@ struct OnboardingFlowView: View {
 
     @State var selectedLanguageID = SettingsStore.shared.onboardingSelectedLanguageID
     @State var selectedModelRouteID: String?
-    @State var hoveredLanguageID: String?
     @State var hoveredModelRouteID: String?
     @State var hoveredModelActionButtonID: String?
     @State var hoveredPermissionButtonID: String?
@@ -112,9 +110,9 @@ struct OnboardingFlowView: View {
             case .landing:
                 return "Theater captions on your screen, or typed translation into an app."
             case .language:
-                return "Korean, English, Thai, and Japanese. Pick the one you speak, then the one you want."
+                return "Pick the language you speak, then the one you want."
             case .voiceModel:
-                return "Download the speech engine for Korean, English, Thai, or Japanese."
+                return "Download a speech engine that can hear the language you speak."
             case .permissions:
                 return "Microphone is required. Accessibility is only if you want a translation typed into other apps."
             case .playground:
@@ -133,14 +131,6 @@ struct OnboardingFlowView: View {
 
     var compactProgressValue: Double {
         Double(self.step.rawValue + 1) / Double(Step.allCases.count)
-    }
-
-    var popularOnboardingLanguages: [VoiceEngineLanguage] {
-        VoiceEngineLanguageCatalog.popularLanguages()
-    }
-
-    var onboardingTargetLanguages: [TranslationLanguage] {
-        TranslationLanguageCatalog.all
     }
 
     var selectedOnboardingLanguage: VoiceEngineLanguage {

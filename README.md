@@ -4,7 +4,7 @@
   <img src="docs/screenshots/app-icon.png" width="96" alt="fluidSubtitles icon">
 </p>
 
-**Captions that grow while you talk. Korean, English, Thai, and Japanese.**
+**Each sentence appears when it is ready. Korean, English, Thai, and Japanese.**
 
 fluidSubtitles is a live translation and captioning app for macOS. It works among **Korean, English, Thai, and Japanese** in either direction, including same-language captions (English → English, Korean → Korean, Thai → Thai, Japanese → Japanese). Speak one of those languages. A finished sentence plus more speech starts the next pair. A pause commits leftover speech. See a translation or a caption on screen, or type it into the app you are using. Best with one speaker and a close mic.
 
@@ -16,12 +16,14 @@ Open **Theater** in the sidebar, pick Korean, English, Thai, or Japanese on each
 
 **fluidSubtitles is by [Chris Swim Lee](https://chrisswimlee.com), a branch of [FluidVoice](https://github.com/altic-dev/FluidVoice) by altic-dev.** Speech recognition, live engines, and the core macOS app are theirs. This branch adds live translation and Theater captions. Licensed under GPLv3 — please star and support the original project.
 
+**For work:** if IT or legal need a named commercial license or an SLA, [request one](https://chrisswimlee.com/fluidSubtitles/license/). Personal and evaluation use stays free.
+
 ---
 
 ## Theater captions
 
 1. Use **macOS 15** or later on Apple Silicon. First run uses Apple Speech (Analyzer on macOS 26). Same-language captions need no translation pack.
-2. Open **Theater** and pick **Voice** or **Translate**. **Voice Engine** and **Translation Engine** are Setup tabs. Voice Engine sharpens speech into text. Translation Engine is Apple Translation on this Mac (not a chat model). An experimental local LLM can sharpen the first print. Download the Apple pack only for Translate with two languages.
+2. Open **Theater** and pick **Voice** or **Translate**. First run finishes with **Setup Wizard**: languages, how captions appear, and who sees the board. **Spoken line** is Off, After a pause, or While talking. **Voice Engine** and **Translation Engine** are Setup tabs. Voice Engine sharpens speech into text. Translation Engine is Apple Translation on this Mac (not a chat model). An experimental local LLM can sharpen the first print. Download the Apple pack only for Translate with two languages.
 3. Allow the microphone. **Listen** stays off until Voice Engine and (for Translate) the pack are green.
 4. Optional: import notes or a deck on Theater Home for this talk. Names stay on this Mac. Speak one sentence. **Type into app** unlocks after that first caption. **Copy** always takes everything on screen. **Clear** wipes the board. Talk notes stay. Listen can keep going.
 
@@ -35,7 +37,7 @@ Theater is a measured on-device pipeline, not a cloud caption API.
 
 1. **Capture** — The microphone is a first-party Core Audio HAL path, not `AVAudioEngine` on the live path. Voice and Translate both use it.
 2. **Speech edges** — Live PCM stays in a 30-second ring. The first ASR tick is immediate. After 400 ms of RMS silence, later ticks are skipped so a long pause does not keep the Neural Engine hot. There is no neural VAD in front of first words.
-3. **Grow, then commit** — The live spoken line grows while you talk. End-of-utterance, silence, Pause, or Stop commits leftover speech and starts the next pair. Apple Translation runs on that commit. Same-language pairs skip the pack. Korean, Japanese, and Thai send the last 4 source clauses from this Listen, then peel the new caption. Prefetch may warm Apple Translation; it does not commit.
+3. **Appear when ready** — The board stays quiet while a sentence is still being heard. A real clause (finished sentence, or silence/Stop confirmation of a leftover clause) is accepted and appears once. Caption Pause and Stop drop a fragment that is not a real clause. Listen and type Stop is the only path that still types a trailing fragment. Apple Translation may warm the clause before it appears. Same-language pairs skip the pack. Korean, Japanese, and Thai send the last 4 source clauses from this Listen, then peel the new caption.
 4. **Stage window** — A nonactivating panel over Keynote. Hide from Zoom and screen share with `NSWindow.sharingType`. The Show-as title sits above a smaller spoken undertone. Wrap fills left to right. YouTube boilerplate is dropped before print.
 5. **Bounded memory** — 30 s of 16 kHz float, unread leftover speech, and the 3 on-screen captions. Off-screen lines are dropped.
 6. **Measured clock** — Theater shows `mic · e2e · ASR · MT` from Core Audio host time. Those values come from a real Listen. Hosted CI cannot prove a live Theater listen.
@@ -47,9 +49,9 @@ The systems write-up is [docs/APPLE_SILICON_STREAMING.md](docs/APPLE_SILICON_STR
 ## Features
 
 - **Korean, English, Thai, and Japanese** — any pair, either direction, including same-language captions without a translation pack. Listen uses a Voice Engine that can hear I speak (Apple Speech, Cohere, or Whisper for Korean and Japanese; Apple Speech or Whisper for Thai; Parakeet Flash is English-only)
-- **Theater captions** — a floating window you turn on, edit, and close. Use **Pop-up** for a solid board or **Overlay** so only caption text sits on slides. Change Overlay font, size, and plate from the menu-bar Theater menu. On-screen `mic · e2e · ASR · MT` clock. Hide it from screen share. Pause keeps the session warm. Minimize hides Theater; Listen stays. Clear wipes the board. Talk notes stay. Off-screen captions are already gone. Translate shows Behind or Caught up so you do not outrun the caption. The live line grows while you talk; a pause starts the next pair.
+- **Theater captions** — a floating window you turn on, edit, and close. Use **Pop-up** for a solid board or **Overlay** so only caption text sits on slides. Change Overlay font, size, and plate from the menu-bar Theater menu. On-screen `mic · e2e · ASR · MT` clock. Hide it from screen share. Pause holds capture, drops a leftover fragment, and lets an in-flight accepted translation finish; Resume does not bring the fragment back. Minimize hides Theater; Listen stays. Clear wipes the board. Talk notes stay. Off-screen captions are already gone. Translate shows Behind or Caught up so you do not outrun the caption. A real clause appears once when it is accepted.
 - **Voice / Translate** — Voice Engine sharpens speech into text. Translate uses Apple Translation on this Mac for Korean, English, Thai, and Japanese captions. A Setup tab can add an experimental local LLM for first-print sharpening. Press the mode control to switch. Both use the microphone.
-- **Translate into an app** — a separate shortcut from dictation; types this listen’s translation into the app you clicked. Korean, Japanese, and Thai depend on that app’s input method. Accessibility is required.
+- **Translate into an app** — a separate shortcut from dictation; types this listen’s translation into the app you clicked, including a trailing fragment. Korean, Japanese, and Thai depend on that app’s input method. Accessibility is required.
 - **On-device translation** — Apple Translation language packs, processed locally
 - **Multiple speech models** — Nemotron, Parakeet, Cohere, Apple Speech, and Whisper
 - **Local-first** — voice and text stay on your Mac unless you opt in to a cloud AI provider
@@ -76,22 +78,15 @@ fluidSubtitles only hears and captions **Korean, English, Thai, and Japanese**. 
 
 ## Install
 
-There is no signed download yet. Pick one:
+**Preferred.** Download `fluidsubtitles-{version}.zip` from [GitHub Releases](https://github.com/chrisswimlee/fluidSubtitles/releases). A notarized Developer ID zip should stay quiet in Gatekeeper. Drag **fluidSubtitles** to Applications, open Theater, allow the microphone, and press **Listen**.
 
-**Preview zip (no Xcode).** Download `fluidsubtitles-{version}-preview-unsigned.zip` from the newest pre-release on [GitHub Releases](https://github.com/chrisswimlee/fluidSubtitles/releases). It is not signed with a Developer ID or notarized, so macOS blocks it the first time:
-
-1. Unzip it and drag **fluidSubtitles** to Applications.
-2. Open it. When macOS says it cannot verify the app, click **Done**.
-3. Open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to fluidSubtitles. Confirm.
-4. Open **Theater**, allow the microphone, pick **Voice** or **Translate**, and press **Listen**.
-
-In-app updates are off for previews. Download each new preview by hand; macOS may ask for Microphone and Accessibility again.
+**Preview zip (unsigned).** If only a pre-release is published, download `fluidsubtitles-{version}-preview-unsigned.zip`. macOS blocks it the first time: click **Done**, then **System Settings → Privacy & Security → Open Anyway**. In-app updates stay off for previews.
 
 **Build from source (Xcode).** Permissions stay across rebuilds. See [Building from Source](#building-from-source).
 
 The app is unsandboxed (Hardened Runtime on). Theater needs microphone access. Insert-into-another-app needs Accessibility. Voice models and Apple Translation packs download on first use; they are not inside the zip.
 
-Maintainers: push a tag like `preview-1.6.11-1` (`git tag preview-1.6.11-1 && git push origin preview-1.6.11-1`) and the Preview workflow publishes that commit as a pre-release (`./build.sh preview`). A signed release needs a Developer ID: `./build.sh release` with `APPLE_ID`, `APPLE_TEAM_ID`, and `APPLE_APP_SPECIFIC_PASSWORD`, then a `v*` tag runs `.github/workflows/release.yml`. Hosted CI cannot prove a live Theater listen.
+Maintainers: a `v*` tag runs `.github/workflows/release.yml` (Developer ID + notarization). A `preview-<version>-<n>` tag publishes an unsigned pre-release. Hosted CI cannot prove a live Theater listen.
 
 ---
 
@@ -177,6 +172,21 @@ This release does not send analytics, feedback, or update checks to FluidVoice o
 - Voice, raw audio, or transcribed text
 - Selected text, prompts, or AI responses
 - Terminal commands, window titles, file paths, clipboard, or typed content
+
+---
+
+## Commercial license
+
+Personal, student, and evaluation use is free under GPLv3. Theater Listen stays unlocked.
+
+Firms that need a vendor they can sanction — a named license, a security contact, or a written SLA — request a commercial license:
+
+- [chrisswimlee.com/fluidSubtitles/license](https://chrisswimlee.com/fluidSubtitles/license/)
+- Email [suyoung.lee99@gmail.com](mailto:suyoung.lee99@gmail.com?subject=fluidSubtitles%20commercial%20license) with the organization, seat count, and whether you need an SLA
+
+A paid key is air-gapped. It replaces the in-app work notice with **Licensed to** your organization. It does not phone home. See [docs/COMMERCIAL.md](docs/COMMERCIAL.md).
+
+This is not consulting. Consulting is [Engage](https://chrisswimlee.com/engage/).
 
 ---
 

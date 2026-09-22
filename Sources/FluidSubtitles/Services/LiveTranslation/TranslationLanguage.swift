@@ -27,18 +27,78 @@ enum TranslationLanguageCatalog {
     static let korean = TranslationLanguage(id: "ko", displayName: "Korean", appleLanguageCode: "ko")
     static let japanese = TranslationLanguage(id: "ja", displayName: "Japanese", appleLanguageCode: "ja")
     static let thai = TranslationLanguage(id: "th", displayName: "Thai", appleLanguageCode: "th")
+    static let arabic = TranslationLanguage(id: "ar", displayName: "Arabic", appleLanguageCode: "ar")
+    static let chinese = TranslationLanguage(id: "zh", displayName: "Chinese", appleLanguageCode: "zh")
+    static let danish = TranslationLanguage(id: "da", displayName: "Danish", appleLanguageCode: "da")
+    static let dutch = TranslationLanguage(id: "nl", displayName: "Dutch", appleLanguageCode: "nl")
+    static let finnish = TranslationLanguage(id: "fi", displayName: "Finnish", appleLanguageCode: "fi")
+    static let french = TranslationLanguage(id: "fr", displayName: "French", appleLanguageCode: "fr")
+    static let german = TranslationLanguage(id: "de", displayName: "German", appleLanguageCode: "de")
+    static let hebrew = TranslationLanguage(id: "he", displayName: "Hebrew", appleLanguageCode: "he")
+    static let hindi = TranslationLanguage(id: "hi", displayName: "Hindi", appleLanguageCode: "hi")
+    static let indonesian = TranslationLanguage(id: "id", displayName: "Indonesian", appleLanguageCode: "id")
+    static let italian = TranslationLanguage(id: "it", displayName: "Italian", appleLanguageCode: "it")
+    static let malay = TranslationLanguage(id: "ms", displayName: "Malay", appleLanguageCode: "ms")
+    /// Voice engines use `no`. Apple Translation lists Norwegian as `nb`.
+    static let norwegian = TranslationLanguage(
+        id: "no",
+        displayName: "Norwegian",
+        appleLanguageCode: "nb",
+        localeLanguage: Locale.Language(identifier: "nb")
+    )
+    static let polish = TranslationLanguage(id: "pl", displayName: "Polish", appleLanguageCode: "pl")
+    static let portuguese = TranslationLanguage(id: "pt", displayName: "Portuguese", appleLanguageCode: "pt")
+    static let russian = TranslationLanguage(id: "ru", displayName: "Russian", appleLanguageCode: "ru")
+    static let spanish = TranslationLanguage(id: "es", displayName: "Spanish", appleLanguageCode: "es")
+    static let swedish = TranslationLanguage(id: "sv", displayName: "Swedish", appleLanguageCode: "sv")
+    static let turkish = TranslationLanguage(id: "tr", displayName: "Turkish", appleLanguageCode: "tr")
+    static let ukrainian = TranslationLanguage(id: "uk", displayName: "Ukrainian", appleLanguageCode: "uk")
+    static let vietnamese = TranslationLanguage(id: "vi", displayName: "Vietnamese", appleLanguageCode: "vi")
 
-    /// fluidSubtitles only translates among these four languages.
-    /// Theater speech: Korean and Japanese work with Apple Speech, Cohere, or Whisper.
+    /// Languages both Apple Translation and a Voice Engine can use.
+    /// Korean and Japanese work with Apple Speech, Cohere, or Whisper.
     /// Thai works best with Apple Speech or Whisper; Nemotron Thai is experimental.
+    /// Chinese is Apple's Simplified `zh`. Traditional locales share that language.
     static let all: [TranslationLanguage] = [
         Self.english,
         Self.korean,
         Self.japanese,
         Self.thai,
+        Self.arabic,
+        Self.chinese,
+        Self.danish,
+        Self.dutch,
+        Self.finnish,
+        Self.french,
+        Self.german,
+        Self.hebrew,
+        Self.hindi,
+        Self.indonesian,
+        Self.italian,
+        Self.malay,
+        Self.norwegian,
+        Self.polish,
+        Self.portuguese,
+        Self.russian,
+        Self.spanish,
+        Self.swedish,
+        Self.turkish,
+        Self.ukrainian,
+        Self.vietnamese,
     ]
 
+    static var languageCodeList: String {
+        self.all.map { $0.id.uppercased() }.sorted().joined(separator: ", ")
+    }
+
     static let supportedIDs: Set<String> = Set(Self.all.map(\.id))
+
+    /// Dropdown order. Display names, not the original four-language lead.
+    static var menuOrder: [TranslationLanguage] {
+        self.all.sorted {
+            $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+        }
+    }
 
     /// Shown under Theater language pickers when I speak is Thai and no mismatch is visible.
     static let thaiTheaterEngineHint = "Thai speech works best with Apple Speech or Whisper."

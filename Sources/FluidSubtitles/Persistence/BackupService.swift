@@ -75,6 +75,7 @@ struct SettingsBackupPayload: Codable, Equatable {
     let transcriptionPreviewCharLimit: Int
     let userTypingWPM: Int
     let saveTranscriptionHistory: Bool
+    let historyRetention: String?
     let saveAudioWithTranscriptionHistory: Bool?
     let audioHistoryBudgetGB: Double?
     let notifyAIProcessingFailures: Bool?
@@ -123,6 +124,7 @@ struct SettingsBackupPayload: Codable, Equatable {
     let theaterAlsoHearOtherLanguages: Bool?
     let theaterDynamicPairing: Bool?
     let theaterCaptionPrintStyle: String?
+    let theaterSpokenLineMode: String?
 }
 
 struct AppBackupDocument: Codable, Equatable {

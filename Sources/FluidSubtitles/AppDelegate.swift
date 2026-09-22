@@ -45,6 +45,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: firstOpenKey)
         }
         SettingsStore.shared.bootstrapOnboardingState(isTrueFirstOpen: isTrueFirstOpen)
+        SettingsStore.shared.bootstrapSetupWizardState()
 
         // Check for updates automatically if enabled (initial check on launch)
         self.checkForUpdatesAutomatically()
@@ -73,9 +74,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                 alert.informativeText = error
                 alert.addButton(withTitle: "Keep Open")
                 alert.addButton(withTitle: "Quit Anyway")
-                sender.reply(toApplicationShouldTerminate: alert.runModal() == .alertSecondButtonReturn)
-                return
+                if alert.runModal() != .alertSecondButtonReturn {
+                    sender.reply(toApplicationShouldTerminate: false)
+                    return
+                }
             }
+            await self.shutdownRuntimesForTermination()
             sender.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
@@ -83,48 +87,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
     func applicationWillTerminate(_ notification: Notification) {
         DebugLogger.shared.info("Application will terminate", source: "AppDelegate")
-        self.shutdownPrivateAIRuntimeForTermination()
-        self.shutdownASRRuntimeForTermination()
-        // Clean up the update check timer
         self.updateCheckTimer?.invalidate()
         self.updateCheckTimer = nil
     }
 
-    private func shutdownASRRuntimeForTermination() {
-        var didFinishShutdown = false
-        Task { @MainActor in
-            await AppServices.shared.shutdownForTermination()
-            didFinishShutdown = true
+    private func shutdownRuntimesForTermination() async {
+        let finished = await withTaskGroup(of: Bool.self) { group in
+            group.addTask { @MainActor in
+                await AppServices.shared.shutdownForTermination()
+                await PrivateAIIntegrationService.shared.shutdownForTermination()
+                return true
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 8_000_000_000)
+                return false
+            }
+            let first = await group.next() ?? false
+            group.cancelAll()
+            return first
         }
-
-        let deadline = Date().addingTimeInterval(8)
-        while !didFinishShutdown, Date() < deadline {
-            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
-        }
-
-        if !didFinishShutdown {
+        if !finished {
             DebugLogger.shared.warning(
-                "Timed out waiting for ASR runtime shutdown during termination",
-                source: "AppDelegate"
-            )
-        }
-    }
-
-    private func shutdownPrivateAIRuntimeForTermination() {
-        var didFinishShutdown = false
-        Task { @MainActor in
-            await PrivateAIIntegrationService.shared.shutdownForTermination()
-            didFinishShutdown = true
-        }
-
-        let deadline = Date().addingTimeInterval(8)
-        while !didFinishShutdown, Date() < deadline {
-            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
-        }
-
-        if !didFinishShutdown {
-            DebugLogger.shared.warning(
-                "Timed out waiting for private AI runtime shutdown during termination",
+                "Timed out waiting for runtime shutdown during termination",
                 source: "AppDelegate"
             )
         }
@@ -139,9 +123,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         // LaunchServices can restore the bundle's regular activation policy when
         // reopening a running app, so reapply the user's Dock preference first.
         self.applyDockVisibilityPolicy()
-        sender.activate(ignoringOtherApps: true)
-
-        return !self.bringMainWindowToFrontIfPresent()
+        NSApp.unhide(nil)
+        guard let mainWindow = MainWindowReveal.preferred(in: sender.windows) else {
+            return true
+        }
+        if mainWindow.isMiniaturized {
+            return true
+        }
+        MainWindowReveal.bringToFront(mainWindow)
+        return !mainWindow.isVisible
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -207,15 +197,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
         for delay in [0.1, 0.6, 1.2, 2.5, 4.0] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                guard let self else { return }
-                guard self.didRevealMainWindowOnLaunch == false else { return }
+                guard let self, self.didRevealMainWindowOnLaunch == false else { return }
 
                 if revealWindow {
                     NSApp.unhide(nil)
-                    NSApp.activate(ignoringOtherApps: true)
-
-                    if self.bringMainWindowToFrontIfPresent() {
+                    if let mainWindow = MainWindowReveal.preferred(in: NSApp.windows),
+                       MainWindowReveal.bringToFront(mainWindow)
+                    {
                         self.didRevealMainWindowOnLaunch = true
+                        DebugLogger.shared.debug("Brought main window to front", source: "AppDelegate")
                         return
                     }
                 } else if self.bootMainWindowHiddenIfPresent() {
@@ -224,7 +214,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                 }
 
                 DebugLogger.shared.debug("Main window not ready during launch reveal retry", source: "AppDelegate")
-                if delay >= 0.6 {
+                if delay >= 0.6, MainWindowReveal.preferred(in: NSApp.windows) == nil {
                     self.requestMainWindowReopenIfNeeded(activate: revealWindow)
                 }
             }
@@ -235,7 +225,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     /// Used for login-item launches when "Show window when launched at login" is off.
     @discardableResult
     private func bootMainWindowHiddenIfPresent() -> Bool {
-        guard let mainWindow = NSApp.windows.first(where: self.isMainWindow) else { return false }
+        guard let mainWindow = MainWindowReveal.preferred(in: NSApp.windows) else { return false }
 
         let originalAlpha = mainWindow.alphaValue
         mainWindow.alphaValue = 0
@@ -285,40 +275,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     }
 
     private func bringMainWindowToFront() {
-        NSApp.unhide(nil)
-        NSApp.activate(ignoringOtherApps: true)
-
-        if !self.bringMainWindowToFrontIfPresent() {
+        guard let mainWindow = MainWindowReveal.preferred(in: NSApp.windows) else {
             DebugLogger.shared.debug("Main window not ready", source: "AppDelegate")
+            return
         }
-    }
-
-    @discardableResult
-    private func bringMainWindowToFrontIfPresent() -> Bool {
-        if let mainWindow = NSApp.windows.first(where: self.isMainWindow) {
-            if mainWindow.alphaValue <= 0.01 {
-                mainWindow.alphaValue = 1
-            }
-            mainWindow.orderFrontRegardless()
-            mainWindow.makeKeyAndOrderFront(nil)
+        if MainWindowReveal.bringToFront(mainWindow) {
             DebugLogger.shared.debug("Brought main window to front", source: "AppDelegate")
-            return true
         }
-
-        return false
-    }
-
-    private func isMainWindow(_ window: NSWindow) -> Bool {
-        guard window.level == .normal else { return false }
-        guard window.styleMask.contains(.titled) else { return false }
-        return window.title == FluidProduct.displayName
-            || window.title.contains(FluidProduct.displayName)
-            || window.title == "connectingCaptions"
-            || window.title.contains("connectingCaptions")
-            || window.title == "Fluid Translate"
-            || window.title.contains("Fluid Translate")
-            || window.title == "FluidVoice"
-            || window.title.contains("FluidVoice")
     }
 
     // MARK: - Periodic Update Checks

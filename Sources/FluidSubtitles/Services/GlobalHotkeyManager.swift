@@ -9,6 +9,7 @@ nonisolated enum HotkeyHoldModeType: Hashable {
     case promptMode
     case promptAssignment
     case translateInsert
+    case captionListen
 }
 
 private nonisolated enum ActivePrimaryShortcutPress: Equatable {
@@ -255,6 +256,8 @@ final class GlobalHotkeyManager: NSObject {
     private var pasteLastTranscriptionCallback: (() -> Void)?
     private var translateInsertCallback: (() async -> Void)?
     private var captionListenCallback: (() -> Void)?
+    private var didRequestAccessibilityPrompt = false
+    private var accessibilityWaitScheduled = false
     private var hotkeyMode: HotkeyActivationMode = SettingsStore.shared.hotkeyMode
     private let automaticTapThresholdSeconds: TimeInterval = 0.4
 
@@ -573,30 +576,60 @@ final class GlobalHotkeyManager: NSObject {
         self.captionListenCallback = callback
     }
 
-    private func setupGlobalHotkeyWithRetry() {
-        for attempt in 1...self.maxRetryAttempts {
-            DebugLogger.shared.debug("Setup attempt \(attempt)/\(self.maxRetryAttempts)", source: "GlobalHotkeyManager")
-
-            if self.setupGlobalHotkey() {
-                self.isInitialized = true
-                DebugLogger.shared.info("Successfully initialized on attempt \(attempt)", source: "GlobalHotkeyManager")
-                self.startHealthCheckTimer()
-                return
-            }
-
-            if attempt < self.maxRetryAttempts {
-                DebugLogger.shared.warning("Attempt \(attempt) failed, retrying in \(self.retryDelay) seconds...", source: "GlobalHotkeyManager")
-                Task { [weak self] in
-                    try? await Task.sleep(nanoseconds: UInt64((self?.retryDelay ?? 0.5) * 1_000_000_000))
-                    await MainActor.run { [weak self] in
-                        self?.setupGlobalHotkeyWithRetry()
-                    }
-                }
-                return
-            }
+    private func setupGlobalHotkeyWithRetry(attempt: Int = 1) {
+        if self.setupGlobalHotkey() {
+            self.accessibilityWaitScheduled = false
+            self.isInitialized = true
+            DebugLogger.shared.info("Successfully initialized on attempt \(attempt)", source: "GlobalHotkeyManager")
+            self.startHealthCheckTimer()
+            return
         }
 
-        DebugLogger.shared.error("Failed to initialize after \(self.maxRetryAttempts) attempts", source: "GlobalHotkeyManager")
+        if !AXIsProcessTrusted() {
+            if DictationHotkeyCaptureStart.shouldRequestSystemPrompt(
+                alreadyRequested: self.didRequestAccessibilityPrompt,
+                trusted: false
+            ) {
+                self.didRequestAccessibilityPrompt = true
+                DictationHotkeyCaptureStart.requestSystemPrompt()
+                DebugLogger.shared.warning(
+                    "Listen and type is waiting for Accessibility. The shortcut cannot start until macOS allows this app.",
+                    source: "GlobalHotkeyManager"
+                )
+            }
+            guard !self.accessibilityWaitScheduled else { return }
+            self.accessibilityWaitScheduled = true
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    self.accessibilityWaitScheduled = false
+                    self.setupGlobalHotkeyWithRetry(attempt: 1)
+                }
+            }
+            return
+        }
+
+        guard attempt < self.maxRetryAttempts else {
+            DebugLogger.shared.error(
+                "Failed to initialize after \(self.maxRetryAttempts) attempts",
+                source: "GlobalHotkeyManager"
+            )
+            return
+        }
+
+        DebugLogger.shared.warning(
+            "Attempt \(attempt) failed, retrying in \(self.retryDelay) seconds...",
+            source: "GlobalHotkeyManager"
+        )
+        Task { [weak self] in
+            let delay = self?.retryDelay ?? 0.5
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            let nextAttempt = attempt + 1
+            await MainActor.run { [weak self] in
+                self?.setupGlobalHotkeyWithRetry(attempt: nextAttempt)
+            }
+        }
     }
 
     @discardableResult
@@ -605,7 +638,6 @@ final class GlobalHotkeyManager: NSObject {
         self.cleanupEventTap()
 
         if !AXIsProcessTrusted() {
-            DebugLogger.shared.debug("Accessibility permissions not granted", source: "GlobalHotkeyManager")
             return false
         }
 
@@ -1493,6 +1525,9 @@ final class GlobalHotkeyManager: NSObject {
             return provider()
         case .translateInsert:
             return self.isTranslateInsertSessionActive()
+        case .captionListen:
+            return LiveTranslationController.shared.listenKind == .captions
+                && LiveTranslationController.shared.isSessionActive
         }
     }
 
@@ -1501,6 +1536,18 @@ final class GlobalHotkeyManager: NSObject {
         label: String,
         requireTargetMode: Bool = true
     ) {
+        let theaterOwnsCapture = LiveTranslationController.shared.isSessionActive
+        guard DictationHotkeyCaptureStart.releaseStopsCapture(
+            holdMode: type,
+            theaterSessionActive: theaterOwnsCapture
+        ) else {
+            DebugLogger.shared.info(
+                "\(label) release left Theater Listen running",
+                source: "GlobalHotkeyManager"
+            )
+            return
+        }
+
         if self.asrService.isRunning {
             self.cancelPendingReleaseStop(for: type)
             self.stopRecordingIfNeeded()
@@ -1555,6 +1602,8 @@ final class GlobalHotkeyManager: NSObject {
             return "Prompt shortcut"
         case .translateInsert:
             return "Translate insert"
+        case .captionListen:
+            return "Theater Listen"
         }
     }
 
@@ -2050,7 +2099,7 @@ final class GlobalHotkeyManager: NSObject {
         else { return false }
         let decision = ModifierOnlyShortcutFlagsDecision.evaluate(
             shortcut: shortcut,
-            holdModeType: .translateInsert,
+            holdModeType: .captionListen,
             isEnabled: true,
             keyCode: keyCode,
             modifiers: modifiers,
@@ -2135,21 +2184,24 @@ final class GlobalHotkeyManager: NSObject {
                 "GlobalHotkeyManager: dictate callback path, isRunning=\(self.asrService.isRunning), isReady=\(self.asrService.isAsrReady), model=\(model.displayName)",
                 source: "GlobalHotkeyManager"
             )
-            if let callback = self.dictationModeCallback {
-                DebugLogger.shared.debug("GlobalHotkeyManager: invoking dictationModeCallback", source: "GlobalHotkeyManager")
-                await callback()
-            } else if let startCallback = self.startRecordingCallback {
-                DebugLogger.shared.debug(
-                    "GlobalHotkeyManager: dictationModeCallback missing; invoking fallback callback",
+            let hasCallback = self.dictationModeCallback != nil || self.startRecordingCallback != nil
+            switch DictationHotkeyCaptureStart.resolve(hasCallback: hasCallback) {
+            case .invokeCallback:
+                if let callback = self.dictationModeCallback {
+                    DebugLogger.shared.debug("GlobalHotkeyManager: invoking dictationModeCallback", source: "GlobalHotkeyManager")
+                    await callback()
+                } else if let startCallback = self.startRecordingCallback {
+                    DebugLogger.shared.debug(
+                        "GlobalHotkeyManager: dictationModeCallback missing; invoking fallback callback",
+                        source: "GlobalHotkeyManager"
+                    )
+                    await startCallback()
+                }
+            case .leaveMicrophoneIdle:
+                DebugLogger.shared.info(
+                    "GlobalHotkeyManager: dictation shortcut left the microphone idle",
                     source: "GlobalHotkeyManager"
                 )
-                await startCallback()
-            } else {
-                DebugLogger.shared.warning(
-                    "GlobalHotkeyManager: dictation callbacks missing; invoking ASRService.start directly",
-                    source: "GlobalHotkeyManager"
-                )
-                await self.asrService.start()
             }
         }
     }
@@ -2204,11 +2256,14 @@ final class GlobalHotkeyManager: NSObject {
             if self.asrService.isRunningOrStarting {
                 await self.stopRecordingInternal()
             } else {
-                // Use callback if available, otherwise fallback to direct start
-                if let callback = self.startRecordingCallback {
-                    await callback()
-                } else {
-                    await self.asrService.start()
+                switch DictationHotkeyCaptureStart.resolve(hasCallback: self.startRecordingCallback != nil) {
+                case .invokeCallback:
+                    await self.startRecordingCallback?()
+                case .leaveMicrophoneIdle:
+                    DebugLogger.shared.info(
+                        "GlobalHotkeyManager: dictation toggle left the microphone idle",
+                        source: "GlobalHotkeyManager"
+                    )
                 }
             }
         }
@@ -2222,11 +2277,14 @@ final class GlobalHotkeyManager: NSObject {
             guard self.canTriggerRecordingAction("start") else { return }
 
             if !self.asrService.isRunning {
-                // Use callback if available, otherwise fallback to direct start
-                if let callback = self.startRecordingCallback {
-                    await callback()
-                } else {
-                    await self.asrService.start()
+                switch DictationHotkeyCaptureStart.resolve(hasCallback: self.startRecordingCallback != nil) {
+                case .invokeCallback:
+                    await self.startRecordingCallback?()
+                case .leaveMicrophoneIdle:
+                    DebugLogger.shared.info(
+                        "GlobalHotkeyManager: dictation hold left the microphone idle",
+                        source: "GlobalHotkeyManager"
+                    )
                 }
             }
         }

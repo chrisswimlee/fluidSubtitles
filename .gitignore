@@ -105,6 +105,7 @@ iOSInjectionProject/
 *.key
 *.pem
 *.p12
+*.ed25519
 secrets.json
 config/secrets.yml
 

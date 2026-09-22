@@ -337,6 +337,12 @@ final class SimpleUpdater {
         guard !self.isUpdateInProgress else {
             throw SimpleUpdateError.updateAlreadyInProgress
         }
+        guard UpdateSignaturePolicy.canInstallPublicUpdates(
+            currentTeam: Self.currentSigningTeamID(),
+            allowed: FluidProduct.allowedUpdateTeamIDs
+        ) else {
+            throw SimpleUpdateError.updatesNotConfigured
+        }
 
         let releases = try await self.fetchReleases(owner: owner, repo: repo)
 
@@ -375,6 +381,12 @@ final class SimpleUpdater {
         repo: String,
         includePrerelease: Bool = false
     ) async throws {
+        guard UpdateSignaturePolicy.canInstallPublicUpdates(
+            currentTeam: Self.currentSigningTeamID(),
+            allowed: FluidProduct.allowedUpdateTeamIDs
+        ) else {
+            throw SimpleUpdateError.updatesNotConfigured
+        }
         guard self.updateOperationGate.begin() else {
             throw SimpleUpdateError.updateAlreadyInProgress
         }
@@ -462,7 +474,7 @@ final class SimpleUpdater {
         ) else {
             throw SimpleUpdateError.checksumMissing
         }
-        let actualDigest = UpdateSignaturePolicy.hexSHA256(of: try Data(contentsOf: downloadURL))
+        let actualDigest = try UpdateSignaturePolicy.hexSHA256(ofFile: downloadURL)
         guard actualDigest == expectedDigest else {
             throw SimpleUpdateError.checksumMismatch
         }

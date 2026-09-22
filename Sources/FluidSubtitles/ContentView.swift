@@ -27,12 +27,6 @@ import SwiftUI
 struct ContentView: View {
     static let aiProcessingStatusDelayNanoseconds: UInt64 = 500_000_000
 
-    enum ActiveRecordingMode: String {
-        case none
-        case dictate
-        case promptMode
-    }
-
     enum DictationOutputRoute: String {
         case normal
         case onboardingSandbox
@@ -73,7 +67,6 @@ struct ContentView: View {
     @State var isPromptModeShortcutEnabled: Bool = SettingsStore.shared.promptModeShortcutEnabled
     @State var promptModeOverrideText: String? // System prompt text to use when in prompt mode
     @State var activeDictationShortcutSlot: SettingsStore.DictationShortcutSlot? = nil
-    @State var activeRecordingMode: ActiveRecordingMode = .none
     @State var pendingAIReprocessText: String? = nil
     @State var activeShortcutRecordingTarget: ShortcutRecordingTarget? = nil
     @State var currentRecordingModifierKeyCodes: Set<UInt16> = []
@@ -168,21 +161,7 @@ struct ContentView: View {
     @State var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
-        let layout = AnyView(
-            Group {
-                if self.settings.shouldShowOnboarding {
-                    self.onboardingOnlyView
-                } else {
-                    NavigationSplitView(columnVisibility: self.$columnVisibility) {
-                        self.sidebarContent
-                            .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 300)
-                    } detail: {
-                        self.detailView
-                    }
-                    .navigationSplitViewStyle(.balanced)
-                }
-            }
-        )
+        let layout = AnyView(self.rootChrome)
 
         let tracked = layout.withMouseTracking(self.mouseTracker)
         let env = tracked.environmentObject(self.mouseTracker)
@@ -194,7 +173,6 @@ struct ContentView: View {
         let observed = self.applyShortcutStateChanges(to: sized)
 
         return observed
-            .background(TranslationSessionHost())
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 self.refreshAccessibilityPermissionState()
             }
@@ -209,9 +187,6 @@ struct ContentView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: .settingsBackupDidRestore)) { _ in
                 self.reloadSettingsStateAfterBackupRestore()
-            }
-            .onReceive(self.asr.$partialTranscription) { text in
-                self.handleSpokenSendPartialTranscription(text)
             }
             .toolbar {
                 if !self.settings.shouldShowOnboarding {
@@ -360,19 +335,8 @@ struct ContentView: View {
         SettingsStore.shared.promptModeShortcutEnabled = isEnabled
         self.hotkeyManager?.updatePromptModeShortcutEnabled(isEnabled)
 
-        if !isEnabled {
-            if self.activeShortcutRecordingTarget == .secondaryDictation {
-                self.clearShortcutRecordingMode()
-            }
-
-            if self.activeRecordingMode == .promptMode {
-                if self.asr.isRunning {
-                    Task { await self.asr.stopWithoutTranscription() }
-                }
-                self.cancelPrewarmDictationIfNeeded()
-                self.clearActiveRecordingMode()
-                self.menuBarManager.setOverlayMode(.dictation)
-            }
+        if !isEnabled, self.activeShortcutRecordingTarget == .secondaryDictation {
+            self.clearShortcutRecordingMode()
         }
     }
 
@@ -961,7 +925,7 @@ struct ContentView: View {
                 .accessibilityHidden(self.settingsNavigation.isPresented)
 
             self.settingsSidebarView
-                .background(self.theme.palette.sidebarBackground)
+                .background(SidebarVibrancy())
                 .opacity(self.settingsNavigation.isPresented ? 1 : 0)
                 .offset(x: self.settingsNavigation.isPresented ? 0 : self.sidebarTransitionDistance)
                 .allowsHitTesting(self.settingsNavigation.isPresented)
@@ -1011,9 +975,8 @@ struct ContentView: View {
             },
             openAccessibilitySettings: self.openAccessibilitySettings,
             restartApp: self.restartApp,
-            startRecording: self.startRecording,
             startCaptionListening: self.startCaptionListening,
-            stopAndProcessTranscription: { await self.stopAndProcessTranscription() },
+            stopAndProcessTranscription: { await self.stopTheaterListening() },
             menuBarManager: self.menuBarManager,
             activeShortcutRecordingTarget: self.$activeShortcutRecordingTarget,
             shortcutRecordingMessage: self.$shortcutRecordingMessage,
@@ -1032,117 +995,12 @@ struct ContentView: View {
         )
     }
 
-    // MARK: - Microphone Permission View (Kept inline for RecordingView)
-
-    var microphonePermissionView: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                // Status indicator
-                Circle()
-                    .fill(self.asr.micStatus == .authorized ? self.theme.palette.success : self.theme.palette.warning)
-                    .frame(width: 10, height: 10)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(self.labelFor(status: self.asr.micStatus))
-                        .fontWeight(.medium)
-                        .foregroundStyle(self.asr.micStatus == .authorized ? self.theme.palette.primaryText : self.theme.palette.warning)
-
-                    if self.asr.micStatus != .authorized {
-                        Text("Microphone access is required for voice recording")
-                            .font(self.theme.typography.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Spacer()
-
-                self.microphoneActionButton
-            }
-
-            // Step-by-step instructions when microphone is not authorized
-            if self.asr.micStatus != .authorized {
-                self.microphoneInstructionsView
-            }
-        }
-    }
-
     var windowSizing: FluidWindowSizing {
         let window = self.theme.metrics.window
-        if self.settings.shouldShowOnboarding {
+        if self.settings.shouldShowOnboarding || self.settings.shouldShowSetupWizard {
             return .minimum(width: window.onboardingMinWidth, height: window.onboardingMinHeight)
         }
         return .minimum(width: window.mainMinWidth, height: window.mainMinHeight)
-    }
-
-    var microphoneActionButton: some View {
-        Group {
-            if self.asr.micStatus == .notDetermined {
-                Button {
-                    self.asr.requestMicAccess()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "mic.fill")
-                        Text("Grant Access")
-                            .fontWeight(.medium)
-                    }
-                }
-                .buttonStyle(GlassButtonStyle())
-                .buttonHoverEffect()
-            } else if self.asr.micStatus == .denied {
-                Button {
-                    self.asr.openSystemSettingsForMic()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "gear")
-                        Text("Open Settings")
-                            .fontWeight(.medium)
-                    }
-                }
-                .buttonStyle(GlassButtonStyle())
-                .buttonHoverEffect()
-            }
-        }
-    }
-
-    var microphoneInstructionsView: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: "info.circle.fill")
-                    .foregroundStyle(self.theme.palette.accent)
-                    .font(self.theme.typography.caption)
-                Text("How to enable microphone access:")
-                    .font(self.theme.typography.caption)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.secondary)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                if self.asr.micStatus == .notDetermined {
-                    self.instructionStep(number: "1", text: "Click **Grant Access** above")
-                    self.instructionStep(number: "2", text: "Choose **Allow** in the system dialog")
-                } else if self.asr.micStatus == .denied {
-                    self.instructionStep(number: "1", text: "Click **Open Settings** above")
-                    self.instructionStep(number: "2", text: "Find **\(FluidProduct.displayName)** in the microphone list")
-                    self.instructionStep(number: "3", text: "Toggle **\(FluidProduct.displayName) ON** to allow access")
-                }
-            }
-            .padding(.leading, 4)
-        }
-        .padding(12)
-        .background(self.theme.palette.accent.opacity(0.12))
-        .cornerRadius(8)
-    }
-
-    func instructionStep(number: String, text: String) -> some View {
-        HStack(spacing: 8) {
-            Text(number + ".")
-                .font(self.theme.typography.captionSmall)
-                .foregroundStyle(self.theme.palette.accent)
-                .fontWeight(.semibold)
-                .frame(width: 16)
-            Text(text)
-                .font(self.theme.typography.caption)
-                .foregroundStyle(.primary)
-        }
     }
 
     // MARK: - Preferences View
@@ -1191,7 +1049,7 @@ struct ContentView: View {
                 hotkeyManager: self.hotkeyManager,
                 menuBarManager: self.menuBarManager,
                 startRecording: self.startCaptionListening,
-                stopListening: { await self.stopAndProcessTranscription() },
+                stopListening: { await self.stopTheaterListening() },
                 refreshDevices: self.refreshDevices,
                 openAccessibilitySettings: self.openAccessibilitySettings,
                 restartApp: self.restartApp,
@@ -1199,14 +1057,6 @@ struct ContentView: View {
                 openApplicationsFolder: self.openApplicationsFolder
             )
         }
-    }
-
-    var recordingView: some View {
-        RecordingView(
-            appear: self.$appear,
-            stopAndProcessTranscription: { await self.stopAndProcessTranscription() },
-            startRecording: self.startRecording
-        )
     }
 
     // MARK: - Stats View
@@ -1624,18 +1474,10 @@ struct ContentView: View {
         NotchContentState.shared.onOverlayModeSwitchRequested = { mode in
             self.handleLiveOverlayModeSwitch(mode)
         }
-        NotchContentState.shared.onReprocessLastRequested = {
-            self.reprocessLastDictation()
-        }
-        NotchContentState.shared.onCopyLastRequested = {
-            self.copyLastDictationFromHistory()
-        }
-        NotchContentState.shared.onPasteLastRequested = {
-            self.pasteLastDictationFromHistory()
-        }
-        NotchContentState.shared.onUndoLastAIRequested = {
-            self.undoLastAIProcessingFromHistory()
-        }
+        NotchContentState.shared.onReprocessLastRequested = {}
+        NotchContentState.shared.onCopyLastRequested = {}
+        NotchContentState.shared.onPasteLastRequested = {}
+        NotchContentState.shared.onUndoLastAIRequested = {}
         NotchContentState.shared.onOpenPreferencesRequested = {
             self.menuBarManager.openPreferencesFromUI()
         }
@@ -1657,36 +1499,18 @@ struct ContentView: View {
             promptModeShortcut: self.promptModeHotkeyShortcut,
             promptShortcutAssignments: SettingsStore.shared.dictationPromptShortcutAssignments(),
             promptModeShortcutEnabled: self.isPromptModeShortcutEnabled,
-            startRecordingCallback: {
-                DebugLogger.shared.debug("ContentView: startRecordingCallback invoked by hotkey", source: "ContentView")
-                self.startRecording()
-            },
-            dictationModeCallback: {
-                DebugLogger.shared.info("Dictate mode triggered", source: "ContentView")
-                DebugLogger.shared.debug(
-                    "ContentView: selected model for dictate hotkey=\(SettingsStore.shared.selectedSpeechModel.displayName)",
-                    source: "ContentView"
-                )
-                self.beginDictationRecording(for: .primary, mode: .dictate)
-            },
+            startRecordingCallback: { () async -> Void in },
+            dictationModeCallback: { () async -> Void in },
             stopAndProcessCallback: {
-                let route = self.currentDictationOutputRouteForHotkeyStop()
-                DebugLogger.shared.info("Hotkey stop callback using route: \(route.rawValue)", source: "ContentView")
-                await self.stopAndProcessTranscription(route: route)
+                await self.stopTheaterListening()
             },
-            promptModeCallback: {
-                DebugLogger.shared.info("Prompt mode triggered", source: "ContentView")
-                self.beginDictationRecording(for: .secondary, mode: .promptMode)
-            },
-            promptSelectionCallback: { selection in
-                DebugLogger.shared.info("Prompt selection shortcut triggered", source: "ContentView")
-                self.beginDictationRecording(for: selection, mode: .promptMode)
-            },
+            promptModeCallback: { () async -> Void in },
+            promptSelectionCallback: { (_: SettingsStore.DictationPromptSelection) async -> Void in },
             isDictateRecordingProvider: {
-                self.activeRecordingMode == .dictate
+                false
             },
             isPromptModeRecordingProvider: {
-                self.activeRecordingMode == .promptMode
+                false
             },
             isShortcutCaptureActiveProvider: {
                 self.isRecordingAnyShortcutCapture
@@ -1710,25 +1534,15 @@ struct ContentView: View {
                 return true
             }
 
-            // Reset recording mode flags
-            if self.activeRecordingMode != .none {
-                self.cancelPrewarmDictationIfNeeded()
-                self.clearActiveRecordingMode()
-                handled = true
-            }
-
-            if LiveTranslationController.shared.isSessionActive {
-                LiveTranslationController.shared.cancelSession()
-                handled = true
+            if self.cancelTheaterListenIfNeeded() {
+                return true
             }
 
             return handled
         }
 
         // Re-insert the most recent transcription on demand (no clipboard involved).
-        self.hotkeyManager?.setPasteLastTranscriptionCallback {
-            self.pasteLastDictationFromHistory()
-        }
+        self.hotkeyManager?.setPasteLastTranscriptionCallback {}
         self.hotkeyManager?.setTranslateInsertCallback {
             LiveTranslationController.shared.startInsertListening()
         }
@@ -1746,7 +1560,7 @@ struct ContentView: View {
             self.startInsertTranslationListening()
         }
         LiveTranslationController.shared.onStopListening = {
-            await self.stopAndProcessTranscription()
+            await self.stopTheaterListening()
         }
         LiveTranslationController.shared.onInsertCaption = { text in
             self.insertCaptionIntoFrontmostApp(text)
@@ -1790,13 +1604,16 @@ struct ContentView: View {
             return true
         }
 
+        if self.cancelTheaterListenIfNeeded() {
+            return true
+        }
+
         if self.asr.isRunningOrStarting {
             DebugLogger.shared.debug("Cancel shortcut: cancelling ASR recording", source: "ContentView")
             Task {
                 await self.asr.stopWithoutTranscription()
             }
             self.cancelPrewarmDictationIfNeeded()
-            LiveTranslationController.shared.cancelSession()
             handled = true
         }
 

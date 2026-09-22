@@ -18,7 +18,7 @@ enum TheaterTranslationEngineKind: String, CaseIterable, Identifiable {
     var purpose: String {
         switch self {
         case .apple:
-            return "Turns that text into Korean, English, Thai, or Japanese. On this Mac. Not a chat model."
+            return "Turns that text into a supported language. On this Mac. Not a chat model."
         case .localLLM:
             return "Experimental. A running local model can sharpen the first print. Apple Translation stays the fallback."
         }

@@ -206,7 +206,9 @@ struct SettingsView: View {
                     isRecordingListenShortcut: self.isRecording(.captionListen),
                     shortcutRecordingMessage: (self.isRecording(.translateInsert) || self.isRecording(.captionListen))
                         ? self.shortcutRecordingMessage
-                        : nil
+                        : nil,
+                    accessibilityTrusted: self.accessibilityEnabled,
+                    openAccessibility: self.openAccessibilitySettings
                 )
                     .shownInSettingsSection(.translation, selectedSection: self.selectedSection)
 
@@ -259,120 +261,17 @@ struct SettingsView: View {
                                         Text("Accent Color")
                                             .font(self.theme.typography.bodyStrong)
                                             .foregroundStyle(self.settingsTitleText)
-                                        Text("Pick a preset accent color for the app.")
+                                        Text(TheaterSetupWizard.accentDetail)
                                             .font(self.theme.typography.bodySmall)
                                             .foregroundStyle(self.settingsSecondaryText)
                                     }
 
                                     Spacer()
 
-                                    HStack(spacing: 10) {
-                                        ForEach(SettingsStore.AccentColorOption.allCases) { option in
-                                            let isSelected = self.settings.accentColorOption == option
-                                            Button {
-                                                self.settings.accentColorOption = option
-                                            } label: {
-                                                Circle()
-                                                    .fill(Color(hex: option.hex) ?? .gray)
-                                                    .frame(width: 16, height: 16)
-                                                    .overlay(
-                                                        Circle()
-                                                            .stroke(
-                                                                isSelected ? self.theme.palette.accent : self.theme.palette.cardBorder.opacity(0.5),
-                                                                lineWidth: isSelected ? 2 : 1
-                                                            )
-                                                    )
-                                                    .padding(4)
-                                            }
-                                            .buttonStyle(.plain)
-                                            .accessibilityLabel(option.rawValue)
-                                            .help(option.rawValue)
-                                        }
-                                    }
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 4)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                            .fill(self.theme.palette.contentBackground)
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                                    .stroke(self.theme.palette.cardBorder.opacity(0.4), lineWidth: 1)
-                                            )
-                                    )
+                                    AccentColorSwatches(accessibilityIdentifier: "settings.accentColor")
                                 }
                             }
                             .settingsSearchTarget(.accentColor)
-                            Divider().opacity(0.2)
-
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Transcription Sounds")
-                                        .font(self.theme.typography.bodyStrong)
-                                        .foregroundStyle(self.settingsTitleText)
-                                    Text("Choose the sound cue for recording. Some cues include an end sound.")
-                                        .font(self.theme.typography.bodySmall)
-                                        .foregroundStyle(self.settingsSecondaryText)
-                                }
-
-                                Spacer()
-
-                                Picker("", selection: Binding(
-                                    get: { SettingsStore.shared.transcriptionStartSound },
-                                    set: { newValue in
-                                        SettingsStore.shared.transcriptionStartSound = newValue
-                                        TranscriptionSoundPlayer.shared.playPreview(sound: newValue)
-                                    }
-                                )) {
-                                    ForEach(SettingsStore.TranscriptionStartSound.allCases) { option in
-                                        Text(option.displayName).tag(option)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .frame(width: 170, alignment: .trailing)
-                            }
-                            .settingsSearchTarget(.transcriptionSounds)
-
-                            if SettingsStore.shared.transcriptionStartSound != .none {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Volume")
-                                            .font(self.theme.typography.bodyStrong)
-                                            .foregroundStyle(self.settingsTitleText)
-                                        Text("Adjust the recording sound cue volume.")
-                                            .font(self.theme.typography.bodySmall)
-                                            .foregroundStyle(self.settingsSecondaryText)
-                                    }
-
-                                    Spacer()
-
-                                    Slider(
-                                        value: Binding(
-                                            get: { Double(SettingsStore.shared.transcriptionSoundVolume) },
-                                            set: { SettingsStore.shared.transcriptionSoundVolume = Float($0) }
-                                        ),
-                                        in: 0...1,
-                                        step: 0.05
-                                    ) { editing in
-                                        if !editing {
-                                            TranscriptionSoundPlayer.shared.playPreviewAtVolume(
-                                                SettingsStore.shared.transcriptionSoundVolume
-                                            )
-                                        }
-                                    }
-                                    .frame(width: 150)
-                                }
-
-                                self.settingsToggleRow(
-                                    title: "Independent Volume",
-                                    description: "Sound volume stays constant regardless of system volume. Mute is still respected.",
-                                    footnote: "Temporarily changes system volume during playback, which may briefly affect other audio.",
-                                    isOn: Binding(
-                                        get: { SettingsStore.shared.transcriptionSoundIndependentVolume },
-                                        set: { SettingsStore.shared.transcriptionSoundIndependentVolume = $0 }
-                                    )
-                                )
-                            }
-
                             Divider().opacity(0.2)
 
                             // Automatic Updates
@@ -382,7 +281,7 @@ struct SettingsView: View {
                                         Text("Automatic Updates")
                                             .font(self.theme.typography.bodyStrong)
                                             .foregroundStyle(self.settingsTitleText)
-                                        Text("Check for updates automatically once per hour")
+                                        Text("Off unless you turn it on. Hourly GitHub checks when enabled.")
                                             .font(self.theme.typography.bodySmall)
                                             .foregroundStyle(self.settingsSecondaryText)
                                     }
@@ -437,6 +336,7 @@ struct SettingsView: View {
 
                                 Link("Made by \(FluidProduct.authorName) — \(FluidProduct.authorSiteHost)", destination: FluidProduct.authorURL)
                                     .font(self.theme.typography.bodySmall)
+                                    .textLinkPointer()
                             }
                             .settingsSearchTarget(.automaticUpdates)
 
@@ -564,6 +464,10 @@ struct SettingsView: View {
                 }
                 .shownInSettingsSection(.general, selectedSection: self.selectedSection)
 
+                CommercialLicenseStatusCard(showsKeyField: true)
+                    .settingsSearchTarget(.commercialLicense)
+                    .shownInSettingsSection(.general, selectedSection: self.selectedSection)
+
                 if self.asr.micStatus != .authorized {
                     // Only surface microphone permission when the user needs to act.
                     ThemedCard(style: .standard) {
@@ -626,7 +530,7 @@ struct SettingsView: View {
                         .padding(16)
                     }
                     .settingsSearchTarget(.microphonePermission)
-                    .shownInSettingsSection(.dictation, selectedSection: self.selectedSection)
+                    .shownInSettingsSection(.audio, selectedSection: self.selectedSection)
                 }
 
                 // Global Hotkey Card
@@ -913,6 +817,12 @@ struct SettingsView: View {
                                         )
                                     )
                                     .settingsSearchTarget(.transcriptionHistory)
+
+                                    if SettingsStore.shared.saveTranscriptionHistory {
+                                        self.historyRetentionControls()
+                                            .padding(.top, 2)
+                                            .settingsSearchTarget(.historyRetention)
+                                    }
                                     Divider().opacity(0.2)
 
                                     self.optionToggleRow(
@@ -962,17 +872,6 @@ struct SettingsView: View {
                                     .settingsSearchTarget(.skipSilentRecordings)
                                     Divider().opacity(0.2)
 
-                                    self.optionToggleRow(
-                                        title: "Pause Media During Transcription",
-                                        description: "Automatically pause currently playing audio/video when transcription starts. Resumes only if \(FluidProduct.displayName) paused it.",
-                                        isOn: Binding(
-                                            get: { SettingsStore.shared.pauseMediaDuringTranscription },
-                                            set: { SettingsStore.shared.pauseMediaDuringTranscription = $0 }
-                                        )
-                                    )
-                                    .settingsSearchTarget(.pauseMedia)
-                                    Divider().opacity(0.2)
-
                                     DictionarySuggestionsSettingsRow()
                                         .settingsSearchTarget(.dictionarySuggestions)
                                 }
@@ -980,7 +879,7 @@ struct SettingsView: View {
                     }
                     .padding(16)
                 }
-                .shownInSettingsSection(.dictation, selectedSection: self.selectedSection)
+                .shownInSettingsSection(.general, selectedSection: self.selectedSection)
 
                 ThemedCard(style: .standard) {
                     VStack(alignment: .leading, spacing: 14) {
@@ -1082,7 +981,7 @@ struct SettingsView: View {
                 ThemedCard(style: .standard) {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack {
-                            FluidSectionHeader(title: "Audio Devices", systemImage: "speaker.wave.2.fill")
+                            FluidSectionHeader(title: "Audio Devices", systemImage: "mic")
 
                             Spacer()
 
@@ -1459,18 +1358,6 @@ struct SettingsView: View {
                 ThemedCard(style: .standard) {
                     VStack(alignment: .leading, spacing: 14) {
                         self.settingsToggleRow(
-                            title: "Faster Long Dictation",
-                            description: "For long recordings, reuse completed live windows and process only the remaining tail when you stop.",
-                            footnote: "Parakeet only. Falls back to normal transcription if reuse is unavailable or fails.",
-                            isOn: Binding(
-                                get: { SettingsStore.shared.experimentalParakeetUnifiedFinalEnabled },
-                                set: { SettingsStore.shared.experimentalParakeetUnifiedFinalEnabled = $0 }
-                            )
-                        )
-
-                        Divider().padding(.vertical, 4)
-
-                        self.settingsToggleRow(
                             title: "Show Performance in History",
                             description: "Display transcription time and optional cleanup time.",
                             isOn: Binding(
@@ -1501,7 +1388,7 @@ struct SettingsView: View {
                     }
                     .padding(16)
                 }
-                .settingsSearchTarget(.fasterLongDictation)
+                .settingsSearchTarget(.experimental)
                 .shownInSettingsSection(.experimental, selectedSection: self.selectedSection)
             }
             .fluidPageContent()

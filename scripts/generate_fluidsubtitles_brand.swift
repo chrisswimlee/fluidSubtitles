@@ -55,111 +55,133 @@ func savePNG(_ image: NSImage, to url: URL) {
     try! data.write(to: url)
 }
 
-func drawCaptionIcon(in rect: NSRect, size: CGFloat) {
-    let inset = size * 0.08
-    let canvas = rect.insetBy(dx: inset, dy: inset)
-    let corner = canvas.width * 0.223
+/// Caption gold. Matches AccentColor.
+let captionGold = NSColor(srgbRed: 0.910, green: 0.647, blue: 0.294, alpha: 1)
+let ink = NSColor(srgbRed: 0.043, green: 0.067, blue: 0.102, alpha: 1)
+let spokenWhite = NSColor(srgbRed: 0.96, green: 0.95, blue: 0.92, alpha: 0.78)
 
-    let background = NSBezierPath(roundedRect: canvas, xRadius: corner, yRadius: corner)
-    NSColor(srgbRed: 0.027, green: 0.055, blue: 0.086, alpha: 1).setFill()
-    background.fill()
-
-    let glow = NSGradient(
-        colors: [
-            NSColor(srgbRed: 0.18, green: 0.83, blue: 0.75, alpha: 0.34),
-            NSColor(srgbRed: 0.10, green: 0.46, blue: 1.0, alpha: 0.08),
-            .clear,
-        ]
-    )
-    glow?.draw(in: canvas.insetBy(dx: size * 0.06, dy: size * 0.06), relativeCenterPosition: NSPoint(x: 0, y: 0.12))
-
-    let top = NSRect(
-        x: canvas.minX + canvas.width * 0.12,
-        y: canvas.minY + canvas.height * 0.52,
-        width: canvas.width * 0.58,
-        height: canvas.height * 0.24
-    )
-    let bottom = NSRect(
-        x: canvas.minX + canvas.width * 0.30,
-        y: canvas.minY + canvas.height * 0.22,
-        width: canvas.width * 0.58,
-        height: canvas.height * 0.24
-    )
-
-    NSColor(srgbRed: 0.176, green: 0.831, blue: 0.749, alpha: 1).setFill()
-    NSBezierPath(roundedRect: top, xRadius: top.height * 0.42, yRadius: top.height * 0.42).fill()
-
-    NSColor(srgbRed: 0.93, green: 0.97, blue: 0.98, alpha: 1).setFill()
-    NSBezierPath(roundedRect: bottom, xRadius: bottom.height * 0.42, yRadius: bottom.height * 0.42).fill()
-
-    func dashes(in bubble: NSRect, color: NSColor) {
-        color.setFill()
-        let lineHeight = max(1.2, bubble.height * 0.09)
-        let left = bubble.minX + bubble.width * 0.14
-        let widths: [CGFloat] = [0.58, 0.42, 0.50]
-        for (index, widthFactor) in widths.enumerated() {
-            let y = bubble.maxY - bubble.height * (0.30 + CGFloat(index) * 0.22)
-            NSBezierPath(
-                roundedRect: NSRect(
-                    x: left,
-                    y: y - lineHeight / 2,
-                    width: bubble.width * widthFactor,
-                    height: lineHeight
-                ),
-                xRadius: lineHeight / 2,
-                yRadius: lineHeight / 2
-            ).fill()
-        }
-    }
-
-    if size >= 32 {
-        dashes(in: top, color: NSColor.white.withAlphaComponent(0.72))
-        dashes(in: bottom, color: NSColor(srgbRed: 0.05, green: 0.16, blue: 0.20, alpha: 0.55))
-    }
+/// Show-as title over a shorter spoken line, both left-aligned.
+func drawCaptionBars(in rect: NSRect, title: NSColor, spoken: NSColor) {
+    let barHeight = rect.height * 0.38
+    let gap = rect.height * 0.18
+    let spokenHeight = barHeight * 0.78
+    let stack = barHeight + gap + spokenHeight
+    let originY = rect.minY + (rect.height - stack) / 2
+    title.setFill()
+    NSBezierPath(
+        roundedRect: NSRect(x: rect.minX, y: originY + spokenHeight + gap, width: rect.width, height: barHeight),
+        xRadius: barHeight / 2,
+        yRadius: barHeight / 2
+    ).fill()
+    spoken.setFill()
+    NSBezierPath(
+        roundedRect: NSRect(x: rect.minX, y: originY, width: rect.width * 0.58, height: spokenHeight),
+        xRadius: spokenHeight / 2,
+        yRadius: spokenHeight / 2
+    ).fill()
 }
 
+func drawCaptionIcon(in rect: NSRect, size: CGFloat) {
+    let inset = size * 0.04
+    let canvas = rect.insetBy(dx: inset, dy: inset)
+    let corner = canvas.width * 0.223
+    let plate = NSBezierPath(roundedRect: canvas, xRadius: corner, yRadius: corner)
+    ink.setFill()
+    plate.fill()
+
+    NSGraphicsContext.saveGraphicsState()
+    plate.addClip()
+    NSColor.white.withAlphaComponent(0.05).setFill()
+    NSBezierPath(
+        roundedRect: NSRect(x: canvas.minX, y: canvas.midY, width: canvas.width, height: canvas.height / 2),
+        xRadius: 0,
+        yRadius: 0
+    ).fill()
+    NSGraphicsContext.restoreGraphicsState()
+
+    let mark = canvas.insetBy(dx: canvas.width * 0.16, dy: canvas.height * 0.30)
+    drawCaptionBars(in: mark, title: captionGold, spoken: spokenWhite)
+}
+
+/// Menu bar mark, 22×18pt. The rounded FS, with the caption pills underneath.
 func drawMenuBarIcon(in rect: NSRect) {
+    let height = rect.height
+    let fontSize = height * 0.58
+    let base = NSFont.systemFont(ofSize: fontSize, weight: .bold)
+    let rounded = base.fontDescriptor.withDesign(.rounded) ?? base.fontDescriptor
+    let font = NSFont(descriptor: rounded, size: fontSize) ?? base
+    let letters = NSAttributedString(
+        string: "FS",
+        attributes: [
+            .font: font,
+            .foregroundColor: NSColor.black,
+            .kern: -0.5,
+        ]
+    )
+    let box = letters.size()
+    let bar = height * 0.12
+    let gap = height * 0.05
+    let spoken = bar * 0.78
+    let stack = bar + gap + spoken
+    let bottom = rect.minY + height * 0.02
+    let originX = rect.midX - box.width / 2
+    letters.draw(at: NSPoint(x: originX, y: bottom + stack + height * 0.03))
+
     NSColor.black.setFill()
-    let radius = rect.height * 0.16
-    let top = NSRect(
-        x: rect.width * 0.06,
-        y: rect.height * 0.56,
-        width: rect.width * 0.58,
-        height: rect.height * 0.28
-    )
-    let bottom = NSRect(
-        x: rect.width * 0.36,
-        y: rect.height * 0.16,
-        width: rect.width * 0.58,
-        height: rect.height * 0.28
-    )
-    NSBezierPath(roundedRect: top, xRadius: radius, yRadius: radius).fill()
-    NSBezierPath(roundedRect: bottom, xRadius: radius, yRadius: radius).fill()
+    NSBezierPath(
+        roundedRect: NSRect(x: originX, y: bottom + spoken + gap, width: box.width, height: bar),
+        xRadius: bar / 2,
+        yRadius: bar / 2
+    ).fill()
+    NSBezierPath(
+        roundedRect: NSRect(x: originX, y: bottom, width: box.width * 0.58, height: spoken),
+        xRadius: spoken / 2,
+        yRadius: spoken / 2
+    ).fill()
+}
+
+func wordmarkName(fontSize: CGFloat) -> NSAttributedString {
+    let name = NSMutableAttributedString()
+    name.append(NSAttributedString(
+        string: "fluid",
+        attributes: [
+            .font: NSFont.systemFont(ofSize: fontSize, weight: .medium),
+            .foregroundColor: NSColor.white,
+        ]
+    ))
+    name.append(NSAttributedString(
+        string: "Subtitles",
+        attributes: [
+            .font: NSFont.systemFont(ofSize: fontSize, weight: .semibold),
+            .foregroundColor: captionGold,
+        ]
+    ))
+    return name
 }
 
 func drawWordmark(in rect: NSRect) {
-    let connecting = NSAttributedString(
-        string: "fluid",
-        attributes: [
-            .font: NSFont.systemFont(ofSize: rect.height * 0.42, weight: .medium),
-            .foregroundColor: NSColor.white,
-        ]
+    let available = rect.width * 0.88
+    var fontSize = rect.height * 0.42
+    var name = wordmarkName(fontSize: fontSize)
+    var nameSize = name.size()
+    var markWidth = nameSize.height * 0.92
+    var gap = nameSize.height * 0.22
+    while markWidth + gap + nameSize.width > available, fontSize > 12 {
+        fontSize *= 0.94
+        name = wordmarkName(fontSize: fontSize)
+        nameSize = name.size()
+        markWidth = nameSize.height * 0.92
+        gap = nameSize.height * 0.22
+    }
+    let total = markWidth + gap + nameSize.width
+    let originX = (rect.width - total) / 2
+    let originY = (rect.height - nameSize.height) / 2
+    drawCaptionBars(
+        in: NSRect(x: originX, y: originY, width: markWidth, height: nameSize.height),
+        title: captionGold,
+        spoken: spokenWhite
     )
-    let captions = NSAttributedString(
-        string: "Subtitles",
-        attributes: [
-            .font: NSFont.systemFont(ofSize: rect.height * 0.42, weight: .semibold),
-            .foregroundColor: NSColor(srgbRed: 0.176, green: 0.831, blue: 0.749, alpha: 1),
-        ]
-    )
-    let mark = NSMutableAttributedString()
-    mark.append(connecting)
-    mark.append(captions)
-    let size = mark.size()
-    mark.draw(at: NSPoint(
-        x: (rect.width - size.width) / 2,
-        y: (rect.height - size.height) / 2
-    ))
+    name.draw(at: NSPoint(x: originX + markWidth + gap, y: originY))
 }
 
 let iconDir = repoRoot.appendingPathComponent("Sources/FluidSubtitles/Assets.xcassets/AppIcon.appiconset")
@@ -188,9 +210,8 @@ for spec in sizes {
 
 let menuDir = repoRoot.appendingPathComponent("Sources/FluidSubtitles/Assets.xcassets/MenuBarIcon.imageset")
 for (name, scale) in [("menubar-icon.png", 1), ("menubar-icon@2x.png", 2), ("menubar-icon@3x.png", 3)] {
-    let pixels = 18 * scale
     savePNG(
-        makeImage(width: pixels, height: pixels) { rect in
+        makeImage(width: 22 * scale, height: 18 * scale) { rect in
             drawMenuBarIcon(in: rect)
         },
         to: menuDir.appendingPathComponent(name)
@@ -199,13 +220,13 @@ for (name, scale) in [("menubar-icon.png", 1), ("menubar-icon@2x.png", 2), ("men
 
 let wordDir = repoRoot.appendingPathComponent("Sources/FluidSubtitles/Assets.xcassets/BrandWordmark.imageset")
 savePNG(
-    makeImage(width: 640, height: 120) { rect in
+    makeImage(width: 1024, height: 512) { rect in
         drawWordmark(in: rect)
     },
     to: wordDir.appendingPathComponent("BrandWordmark.png")
 )
 savePNG(
-    makeImage(width: 1280, height: 240) { rect in
+    makeImage(width: 2048, height: 1024) { rect in
         drawWordmark(in: rect)
     },
     to: wordDir.appendingPathComponent("BrandWordmark@2x.png")

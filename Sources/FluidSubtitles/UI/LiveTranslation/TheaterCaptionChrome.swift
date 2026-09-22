@@ -16,7 +16,9 @@ final class PresenterCaptionModel: ObservableObject {
     @Published var committedSources: [String] = []
     @Published var pendingSources: [String] = []
     @Published var inFlightCount: Int = 0
+    @Published var liveRowID: UInt64 = 0
     @Published var source: String = ""
+    @Published var tentativeSpoken: String = ""
     @Published var draft: String = ""
     @Published var pairLabel: String = ""
     @Published var status: String = ""
@@ -33,6 +35,8 @@ final class PresenterCaptionModel: ObservableObject {
     @Published var paceCueCompactLabel: String = ""
     @Published var paceCueKind: String = ""
     @Published var showCloseConfirmation: Bool = false
+    /// True while the export save panel is open. The More button reads Saved.
+    @Published var exportShowsSaved: Bool = false
     /// Session-only. Overlay starts unpinned (text only). Pop-up, minimize, and close clear it.
     @Published var overlayToolsPinned: Bool = false
 }

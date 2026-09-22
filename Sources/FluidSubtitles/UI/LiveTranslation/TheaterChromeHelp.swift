@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 /// Hover tags for Theater chrome: Name — what it does. Shortcut if any.
@@ -16,17 +17,17 @@ enum TheaterChromeHelp {
     )
     static let stop = tag(
         "Stop",
-        does: "Stop Listen. Printed lines stay.",
+        does: "Stop Listen. A real leftover clause appears once; a fragment does not. Printed lines stay.",
         shortcut: "Control-Option-L"
     )
     static let pause = tag(
         "Pause",
-        does: "Freeze capture. Printed lines stay.",
+        does: "Hold capture and drop a leftover fragment. Printed lines stay; an in-flight translation may still land.",
         shortcut: "Control-Option-P"
     )
     static let resume = tag(
         "Resume",
-        does: "Continue Listen. Printed lines stay.",
+        does: "Continue Listen. Printed lines stay. A dropped fragment does not come back.",
         shortcut: "Control-Option-P"
     )
     static let iSpeak = tag(
@@ -43,7 +44,7 @@ enum TheaterChromeHelp {
     )
     static let mode = tag(
         "Theater mode",
-        does: "Voice writes what you say. Translate captions Korean, English, Thai, or Japanese. Switching stops Listen."
+        does: "Voice writes what you say. Translate captions into a supported language. Switching stops Listen."
     )
     static let retry = tag(
         "Retry",
@@ -85,17 +86,17 @@ enum TheaterChromeHelp {
     )
     static let captionFont = tag(
         "Caption font",
-        does: "Typeface for spoken and translated lines."
+        does: "Typeface for spoken and Show-as."
     )
     static let smaller = tag(
-        "Smaller spoken line",
-        does: "Shrink the spoken undertone. Translation stays larger.",
-        shortcut: "Control-Option--"
+        "Smaller captions",
+        does: "Shrink spoken and Show-as.",
+        shortcut: "Control-Option-Minus"
     )
     static let larger = tag(
-        "Larger spoken line",
-        does: "Grow the spoken undertone. Translation stays larger.",
-        shortcut: "Control-Option-="
+        "Larger captions",
+        does: "Grow spoken and Show-as.",
+        shortcut: "Control-Option-Equals"
     )
     static let copyAll = tag(
         "Copy all",
@@ -103,7 +104,7 @@ enum TheaterChromeHelp {
     )
     static let insert = tag(
         "Type into app",
-        does: "Type the current caption into the frontmost app. Needs Accessibility. Korean, Japanese, or Thai may paste."
+        does: "Type this Listen into the frontmost app. Copy takes the whole board. Needs Accessibility. Korean, Japanese, or Thai may paste."
     )
     static let undo = tag(
         "Undo last caption",
@@ -115,8 +116,8 @@ enum TheaterChromeHelp {
         shortcut: "Control-Option-K"
     )
     static let board = tag(
-        "Board",
-        does: "Overlay for text on slides. Pop-up for a solid box. Also spoken line, plate, position, and screen share."
+        "Settings",
+        does: "Spoken line, Overlay or Pop-up, plate, position, and screen share."
     )
     static let more = tag(
         "More",
@@ -144,12 +145,8 @@ enum TheaterChromeHelp {
         does: "Stronger board fill and a halo on caption text."
     )
     static let spokenLine = tag(
-        "Show the spoken line",
-        does: "Show what you said under the translation so both rooms can follow."
-    )
-    static let printIn = tag(
-        "Caption print-in",
-        does: "How the live caption appears: Flow, Word, Fade, or Instant."
+        "Spoken line",
+        does: "Off hides the original language. Any other choice prints it under each delivered sentence."
     )
     static let editCaptions = tag(
         "Edit captions",
@@ -192,6 +189,10 @@ enum TheaterChromeHelp {
         does: "Show Overlay Listen and board tools.",
         shortcut: "Control-Option-T"
     )
+    static let fillScreen = tag(
+        "Fill screen",
+        does: "Cover this display so captions have the whole board."
+    )
     static let lowerThird = tag(
         "Lower third",
         does: "Place the board on the bottom third of this display."
@@ -211,6 +212,7 @@ enum TheaterChromeHelp {
 
     static func position(_ preset: TheaterPositionPreset) -> String {
         switch preset {
+        case .fillScreen: return Self.fillScreen
         case .lowerThird: return Self.lowerThird
         case .topBand: return Self.topBand
         case .sideColumn: return Self.sideColumn
@@ -218,10 +220,206 @@ enum TheaterChromeHelp {
         }
     }
 
+    static func captionFont(current: String) -> String {
+        tag("Caption font", does: "Typeface for spoken and Show-as. Now \(current).")
+    }
+
+}
+
+struct TheaterHoverHelpValue: Equatable {
+    var text: String
+    var anchor: CGRect
+}
+
+@MainActor
+final class TheaterHoverHelpBroker: ObservableObject {
+    @Published private(set) var value: TheaterHoverHelpValue?
+
+    func show(_ value: TheaterHoverHelpValue) {
+        guard self.value != value else { return }
+        self.value = value
+    }
+
+    func hide(text: String) {
+        guard self.value?.text == text else { return }
+        self.value = nil
+    }
+
+    func clear() {
+        guard self.value != nil else { return }
+        self.value = nil
+    }
+}
+
+private struct TheaterHoverHelpBrokerKey: EnvironmentKey {
+    static let defaultValue: TheaterHoverHelpBroker? = nil
+}
+
+extension EnvironmentValues {
+    var theaterHoverHelp: TheaterHoverHelpBroker? {
+        get { self[TheaterHoverHelpBrokerKey.self] }
+        set { self[TheaterHoverHelpBrokerKey.self] = newValue }
+    }
+}
+
+enum TheaterHoverHelp {
+    static let space = "theater.hoverHelp"
+    static let maxBubbleWidth: CGFloat = 280
+    static let margin: CGFloat = 12
+    static let gap: CGFloat = 8
+    static let revealDelayNanoseconds: UInt64 = 220_000_000
+
+    static func bubbleWidth(containerWidth: CGFloat) -> CGFloat {
+        max(0, min(Self.maxBubbleWidth, containerWidth - Self.margin * 2))
+    }
+
+    static func bubbleOrigin(
+        anchor: CGRect,
+        container: CGSize,
+        bubbleSize: CGSize
+    ) -> CGPoint {
+        let maxX = max(Self.margin, container.width - bubbleSize.width - Self.margin)
+        let x = min(max(anchor.minX, Self.margin), maxX)
+        let below = anchor.maxY + Self.gap
+        let above = anchor.minY - Self.gap - bubbleSize.height
+        let minY = Self.margin
+        let maxY = max(minY, container.height - bubbleSize.height - Self.margin)
+        if below <= maxY {
+            return CGPoint(x: x, y: below)
+        }
+        if above >= minY {
+            return CGPoint(x: x, y: above)
+        }
+        return CGPoint(x: x, y: min(max(below, minY), maxY))
+    }
+}
+
+struct TheaterHoverHelpBubble: View {
+    var text: String
+    var anchor: CGRect
+    var container: CGSize
+    @State private var bubbleSize = CGSize(width: 240, height: 44)
+
+    var body: some View {
+        let width = TheaterHoverHelp.bubbleWidth(containerWidth: self.container.width)
+        let fitted = CGSize(
+            width: min(self.bubbleSize.width, width),
+            height: self.bubbleSize.height
+        )
+        let origin = TheaterHoverHelp.bubbleOrigin(
+            anchor: self.anchor,
+            container: self.container,
+            bubbleSize: fitted
+        )
+        Text(self.text)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(Color.white.opacity(0.94))
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .frame(maxWidth: width, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.black.opacity(0.88))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                    }
+            }
+            .shadow(color: .black.opacity(0.35), radius: 8, y: 2)
+            .background {
+                GeometryReader { bubble in
+                    Color.clear
+                        .onAppear { self.adoptBubbleSize(bubble.size) }
+                        .onChange(of: bubble.size) { _, size in
+                            self.adoptBubbleSize(size)
+                        }
+                }
+            }
+            .offset(x: origin.x, y: origin.y)
+            .onChange(of: self.text) { _, _ in
+                self.bubbleSize = CGSize(width: 240, height: 44)
+            }
+            .accessibilityIdentifier("theater.window.hoverHelp")
+    }
+
+    private func adoptBubbleSize(_ size: CGSize) {
+        guard size != .zero, size != self.bubbleSize else { return }
+        self.bubbleSize = size
+    }
+}
+
+private struct TheaterHoverTagModifier: ViewModifier {
+    let text: String
+    @Environment(\.theaterHoverHelp) private var broker
+    @State private var hovering = false
+    @State private var revealed = false
+    @State private var revealTask: Task<Void, Never>?
+    @State private var anchor = CGRect.zero
+
+    func body(content: Content) -> some View {
+        content
+            .accessibilityHint(self.text)
+            .background {
+                GeometryReader { proxy in
+                    let frame = proxy.frame(in: .named(TheaterHoverHelp.space))
+                    Color.clear
+                        .onAppear { self.adoptAnchor(frame) }
+                        .onChange(of: frame.origin) { _, _ in self.adoptAnchor(frame) }
+                        .onChange(of: frame.size) { _, _ in self.adoptAnchor(frame) }
+                }
+            }
+            .onHover { hovering in
+                self.hovering = hovering
+                self.revealTask?.cancel()
+                if hovering {
+                    self.revealTask = Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: TheaterHoverHelp.revealDelayNanoseconds)
+                        guard !Task.isCancelled, self.hovering else { return }
+                        self.revealed = true
+                        self.publish()
+                    }
+                } else {
+                    self.revealed = false
+                    self.broker?.hide(text: self.text)
+                }
+            }
+            .onChange(of: self.text) { _, _ in
+                guard self.revealed else { return }
+                self.publish()
+            }
+            .onDisappear {
+                self.revealTask?.cancel()
+                if self.revealed {
+                    self.broker?.hide(text: self.text)
+                }
+                self.revealed = false
+            }
+    }
+
+    private func adoptAnchor(_ frame: CGRect) {
+        let next = frame.integral
+        guard next != self.anchor else { return }
+        self.anchor = next
+        guard self.revealed else { return }
+        self.publish()
+    }
+
+    private func publish() {
+        guard !self.text.isEmpty else { return }
+        self.broker?.show(TheaterHoverHelpValue(text: self.text, anchor: self.anchor))
+    }
 }
 
 extension View {
-    func theaterTag(_ text: String) -> some View {
-        self.help(text).accessibilityHint(text)
+    /// Theater paints this on hover. Home and menus still use `.help`.
+    @ViewBuilder
+    func theaterTag(_ text: String, paints: Bool = true) -> some View {
+        if paints {
+            self.modifier(TheaterHoverTagModifier(text: text))
+        } else {
+            self.help(text)
+        }
     }
 }

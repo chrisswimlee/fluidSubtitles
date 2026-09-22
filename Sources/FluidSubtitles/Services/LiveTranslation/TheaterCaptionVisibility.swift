@@ -62,9 +62,13 @@ enum TheaterCaptionVisibility {
     static func appliedAlphas(
         spoken: NSColor,
         translated: NSColor,
-        isCurrent: Bool
+        isCurrent: Bool,
+        isDraft: Bool = false
     ) -> (spoken: NSColor, translated: NSColor) {
         if isCurrent {
+            if isDraft {
+                return (spoken, translated.withAlphaComponent(max(0.16, translated.alphaComponent * 0.4)))
+            }
             return (spoken, translated)
         }
         return (spoken.withAlphaComponent(0.92), translated.withAlphaComponent(1))

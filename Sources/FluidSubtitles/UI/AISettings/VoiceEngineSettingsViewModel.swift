@@ -44,14 +44,11 @@ final class VoiceEngineSettingsViewModel: ObservableObject {
         self.asr.isCancellingModelDownload
     }
 
-    @Published var removeFillerWordsEnabled: Bool
-
     init(settings: SettingsStore, appServices: AppServices) {
         self.settings = settings
         self.appServices = appServices
         self.previewSpeechModel = settings.selectedSpeechModel
         self.selectedSpeechProvider = settings.selectedSpeechModel.provider
-        self.removeFillerWordsEnabled = settings.removeFillerWordsEnabled
         appServices.objectWillChange
             .sink { [weak self] _ in
                 Task { @MainActor in
@@ -69,7 +66,6 @@ final class VoiceEngineSettingsViewModel: ObservableObject {
         }
         self.previewSpeechModel = self.settings.selectedSpeechModel
         self.selectedSpeechProvider = self.settings.selectedSpeechModel.provider
-        self.removeFillerWordsEnabled = self.settings.removeFillerWordsEnabled
 
         Task {
             await self.asr.checkIfModelsExistAsync()
@@ -215,25 +211,25 @@ final class VoiceEngineSettingsViewModel: ObservableObject {
         let model = self.settings.selectedSpeechModel
         switch model {
         case .appleSpeech:
-            return "Apple Speech uses built-in macOS recognition. No download. Korean, English, Thai, and Japanese on Intel and Apple Silicon."
+            return "Apple Speech uses built-in macOS recognition. No download. It hears every supported language on Intel and Apple Silicon."
         case .appleSpeechAnalyzer:
-            return "Apple Speech Analyzer is on-device recognition for Korean, English, Thai, and Japanese. Requires macOS 26+."
+            return "Apple Speech Analyzer is on-device recognition for the languages this Mac includes. Requires macOS 26+. Other languages use Apple Speech or Whisper."
         case .parakeetTDT:
-            return "Parakeet TDT v3 is the fast English engine on Apple Silicon. Theater switches to Apple Speech or Whisper for Korean, Japanese, or Thai."
+            return "Parakeet TDT v3 is the fast English engine on Apple Silicon. Other languages use Apple Speech or Whisper."
         case .parakeetTDTv2:
             return "Parakeet TDT v2 is English-only on Apple Silicon."
         case .parakeetRealtime:
-            return "Parakeet Flash streams English with live partial text. Korean, Japanese, and Thai Listen need another Voice Engine."
+            return "Parakeet Flash streams English with live partial text. Other languages need another Voice Engine."
         case .qwen3Asr:
             return "Qwen3 ASR is a local model for Korean, English, Thai, or Japanese. Higher memory. Requires macOS 15+."
         case .cohereTranscribeSixBit:
-            return "Cohere Transcribe is a local CoreML engine for English and Korean. Pick the language before Listen."
+            return "Cohere Transcribe is a local CoreML engine for Cohere's languages. Pick the language before Listen."
         case .nemotronOffline:
-            return "Nemotron 3.5 is slower and more accurate for Korean, English, Thai, or Japanese. Thai is experimental. Best on Apple Silicon with 8GB+ RAM."
+            return "Nemotron 3.5 is slower and more accurate for most supported languages. Thai is experimental. Malay and Indonesian need Apple Speech or Whisper."
         case .nemotronStreaming, .nemotronStreaming320:
-            return "Nemotron Speech 3.5 streams Korean, English, Thai, or Japanese. Thai is experimental."
+            return "Nemotron Speech 3.5 streams most supported languages. Thai is experimental. Malay and Indonesian need Apple Speech or Whisper."
         default:
-            return "Whisper works on any Mac for Korean, English, Thai, or Japanese."
+            return "Whisper works on any Mac for every supported language."
         }
     }
 

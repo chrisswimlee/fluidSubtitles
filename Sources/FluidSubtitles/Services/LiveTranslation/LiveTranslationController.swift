@@ -10,6 +10,8 @@ final class LiveTranslationController: ObservableObject {
     @Published private(set) var isSessionActive = false
     @Published private(set) var isPaused = false
     @Published private(set) var listenKind: TranslationListenKind?
+    /// Bumps when Copy writes the pasteboard, so chrome can say Copied.
+    @Published private(set) var copyFlashToken = 0
     @Published private(set) var packAvailability: TranslationPackAvailability = .unknown
     let subscriber = LiveTranslationSubscriber()
     let appleEngine = AppleTranslationEngine.shared
@@ -26,6 +28,11 @@ final class LiveTranslationController: ObservableObject {
     private var pendingThermalDowngrade = false
     private var didStartFreshThisProcess = false
     private var needsSpokenEngineReload = false
+    private var isStartingListen = false
+    private var isFinishingSession = false
+    private var presenterRefreshPending = false
+    private(set) var alignSpokenEngineCallCountForTesting = 0
+    private var sessionTrace: LiveTranslationSessionTrace?
 
     var shouldHandleTranslationStop: Bool {
         self.isSessionActive || self.abandonCaptionSession
@@ -34,9 +41,13 @@ final class LiveTranslationController: ObservableObject {
     private init() {
         self.subscriber.objectWillChange
             .sink { [weak self] _ in
-                Task { @MainActor in
+                guard let self else { return }
+                if self.presenterRefreshPending { return }
+                self.presenterRefreshPending = true
+                Task { @MainActor [weak self] in
                     guard let self else { return }
-                    self.refreshPresenter()
+                    self.presenterRefreshPending = false
+                    self.performRefreshPresenter()
                     if self.isSessionActive, self.listenKind != .captions {
                         self.objectWillChange.send()
                     }
@@ -44,6 +55,7 @@ final class LiveTranslationController: ObservableObject {
             }
             .store(in: &self.cancellables)
         NotificationCenter.default.publisher(for: ProcessInfo.thermalStateDidChangeNotification)
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.subscriber.refreshThermal()
                 self?.noteThermalStateChanged()
@@ -56,9 +68,13 @@ final class LiveTranslationController: ObservableObject {
         guard self.isSessionActive else { return self.subscriber.sourceDraft }
         let target = self.subscriber.liveCaptionText
         let source = self.subscriber.liveSpokenText
-        if SettingsStore.shared.translationShowSource, !source.isEmpty, target != source {
+        let mode = SettingsStore.shared.theaterSpokenLineMode
+        if mode.printsLiveSpoken, !source.isEmpty, target != source {
             if target.isEmpty { return source }
             return "\(source)\n\(target)"
+        }
+        if !SpokenLanguageResolver.isSameLanguagePair(), mode != .whileTalking {
+            return target
         }
         return target.isEmpty ? source : target
     }
@@ -68,12 +84,28 @@ final class LiveTranslationController: ObservableObject {
             // They found Listen in Overlay; the coach line has done its job.
             SettingsStore.shared.theaterOverlayCoachSeen = true
         }
-        self.alignSpokenEngineWithTheater()
+        self.isStartingListen = false
+        self.isFinishingSession = false
+        if self.sessionTrace != nil {
+            self.endSessionTrace(outcome: "replaced")
+        }
         self.sessionToken += 1
         self.abandonCaptionSession = false
         self.isSessionActive = true
         self.isPaused = false
         self.listenKind = kind
+        let trace = LiveTranslationSessionTrace(
+            token: self.sessionToken,
+            kind: kind.rawValue,
+            startedUptime: ProcessInfo.processInfo.systemUptime
+        )
+        self.sessionTrace = trace
+        self.trace(trace.beginLine(
+            mode: SettingsStore.shared.theaterSessionMode.rawValue,
+            pair: self.pairTrace(),
+            model: SettingsStore.shared.selectedSpeechModel.rawValue,
+            thermal: LiveTranslationThermalReadout.label(ProcessInfo.processInfo.thermalState)
+        ))
         PresenterCaptionController.shared.commitEdits()
         if kind == .captions {
             self.startFreshTheaterBoard()
@@ -81,6 +113,7 @@ final class LiveTranslationController: ObservableObject {
         self.subscriber.startSessionRecord()
         self.subscriber.beginListening()
         self.warmAppleTranslation()
+        TheaterHaptics.alignment()
         // A minimized (hidden) panel must come back for a new talk.
         if kind == .captions,
            !SettingsStore.shared.theaterWindowEnabled || SettingsStore.shared.theaterMinimized
@@ -93,27 +126,46 @@ final class LiveTranslationController: ObservableObject {
     func markFirstBuffer() {
         guard self.isSessionActive else { return }
         self.subscriber.noteFirstBuffer()
+        self.updateTrace { trace in
+            guard !trace.loggedFirstBuffer else { return }
+            trace.loggedFirstBuffer = true
+            self.trace(
+                LiveTranslationTrace.event("session firstBuffer", token: trace.token),
+                level: .debug
+            )
+        }
     }
 
     func markSpeechStart(hostTime: UInt64) {
         guard self.isSessionActive else { return }
         self.subscriber.noteSpeechStart(hostTime: hostTime)
+        self.updateTrace { trace in
+            guard !trace.loggedSpeechStart else { return }
+            trace.loggedSpeechStart = true
+            self.trace(
+                LiveTranslationTrace.event("session speech", token: trace.token),
+                level: .debug
+            )
+        }
     }
 
     func markSilenceHold() {
         guard self.isSessionActive else { return }
         self.subscriber.noteSilenceHold()
+        self.updateTrace { $0.silenceHolds += 1 }
         self.applyPendingThermalDowngradeIfNeeded()
     }
 
     func handleEndOfUtterance() {
         guard self.isSessionActive else { return }
         self.subscriber.handleEndOfUtterance()
+        self.updateTrace { $0.utteranceEnds += 1 }
         self.refreshPresenter()
     }
 
     func handlePartial(_ text: String) {
         guard self.isSessionActive else { return }
+        self.updateTrace { $0.partials += 1 }
         self.subscriber.handlePartial(text)
         self.refreshPresenter()
         if self.listenKind == .insert {
@@ -124,56 +176,103 @@ final class LiveTranslationController: ObservableObject {
     func finishSession(finalSource: String) async -> String {
         let token = self.stopToken
         guard token == self.sessionToken else {
+            self.trace(
+                LiveTranslationTrace.event(
+                    "session drop",
+                    token: self.sessionToken,
+                    "reason=staleStop stopToken=\(token)"
+                ),
+                level: .warning
+            )
             if !self.isSessionActive {
                 self.abandonCaptionSession = false
                 self.listenKind = nil
             }
+            self.isFinishingSession = false
             return ""
         }
         if self.abandonCaptionSession {
+            self.endSessionTrace(outcome: "abandoned")
             self.abandonCaptionSession = false
             self.isSessionActive = false
             self.listenKind = nil
             self.clearThermalEngineOverride()
+            await self.subscriber.awaitAcceptedCommits()
+            self.subscriber.dropUnacceptedSpeech()
             self.subscriber.endListening()
             self.persistBoard()
+            self.isFinishingSession = false
             return ""
         }
+        // Captions: accept real leftover clauses, drop a fragment.
+        // Insert: type the whole listen, including a trailing fragment.
         let kind = self.listenKind
-        let translated = await self.subscriber.translateFinal(finalSource)
+        let translated = await self.subscriber.translateFinal(
+            finalSource,
+            drainRemainder: kind == .insert
+        )
         guard token == self.sessionToken, !self.abandonCaptionSession else {
             if self.abandonCaptionSession {
+                self.endSessionTrace(outcome: "abandonedDuringTranslate")
                 self.abandonCaptionSession = false
                 self.isSessionActive = false
                 self.listenKind = nil
                 self.clearThermalEngineOverride()
+                await self.subscriber.awaitAcceptedCommits()
+                self.subscriber.dropUnacceptedSpeech()
                 self.subscriber.endListening()
                 self.persistBoard()
+            } else {
+                self.trace(
+                    LiveTranslationTrace.event(
+                        "session drop",
+                        token: self.sessionToken,
+                        "reason=staleDuringTranslate stopToken=\(token)"
+                    ),
+                    level: .warning
+                )
             }
+            self.isFinishingSession = false
             return ""
         }
-        self.isSessionActive = false
-        self.isPaused = false
-        self.listenKind = nil
-        self.clearThermalEngineOverride()
-        let text = kind == .insert
-            ? self.subscriber.consumePendingInsertDocument()
-            : translated
-        self.refreshPresenter()
-        return text
-    }
-
-    func cancelSession() {
-        self.abandonCaptionSession = false
         self.isSessionActive = false
         self.isPaused = false
         self.listenKind = nil
         self.clearThermalEngineOverride()
         self.subscriber.endListening()
+        self.isFinishingSession = false
+        let text = kind == .insert
+            ? self.subscriber.consumePendingInsertDocument()
+            : translated
+        self.endSessionTrace(outcome: "finished chars=\(text.count)")
+        self.refreshPresenter()
+        return text
+    }
+
+    func cancelSession() {
+        let stoppingListen = self.isSessionActive && !self.isFinishingSession
+        self.endSessionTrace(outcome: "cancelled")
+        self.abandonCaptionSession = false
+        self.isStartingListen = false
+        self.isFinishingSession = false
+        self.isSessionActive = false
+        self.isPaused = false
+        self.listenKind = nil
+        self.clearThermalEngineOverride()
+        TheaterSpeechSession.shared.clear(asr: AppServices.shared.asr)
+        self.subscriber.endListening()
+        if stoppingListen {
+            TheaterHaptics.alignment()
+        }
         self.refreshPresenter()
     }
 
     func theaterWasClosed() {
+        self.trace(LiveTranslationTrace.event(
+            "theater closed",
+            token: self.sessionToken,
+            "kind=\(self.listenKind?.rawValue ?? "none") listening=\(self.isSessionActive)"
+        ))
         self.persistBoard()
         if self.listenKind == .insert {
             PresenterCaptionController.shared.clearDisplay()
@@ -185,6 +284,8 @@ final class LiveTranslationController: ObservableObject {
             self.isSessionActive = false
             self.isPaused = false
             self.stopListening()
+            PresenterCaptionController.shared.clearDisplay()
+            return
         }
         self.subscriber.endListening()
         PresenterCaptionController.shared.clearDisplay()
@@ -222,9 +323,6 @@ final class LiveTranslationController: ObservableObject {
             }
         }
         settings.theaterSessionMode = mode
-        if self.isSessionActive, self.listenKind == .captions {
-            self.stopListening()
-        }
         self.finishLanguageChange()
     }
 
@@ -250,23 +348,54 @@ final class LiveTranslationController: ObservableObject {
     }
 
     private func finishLanguageChange() {
+        self.trace(LiveTranslationTrace.event(
+            "pair now",
+            token: self.sessionTrace?.token,
+            "pair=\(self.pairTrace()) stopListen=\(self.isSessionActive)"
+        ))
+        let shouldWait = self.isSessionActive || AppServices.shared.asr.isRunningOrStarting
         if self.isSessionActive {
-            self.stopListening()
+            Task {
+                await self.stopListeningAndAwaitFinish()
+                self.applyLanguagePairChange(shouldWait: true)
+            }
+            return
         }
-        self.alignSpokenEngineWithTheater()
+        self.applyLanguagePairChange(shouldWait: shouldWait)
+    }
+
+    private func applyLanguagePairChange(shouldWait: Bool) {
+        self.subscriber.noteLanguagePairChanged()
         let source = SpokenLanguageResolver.sourceLanguage()
         let target = SpokenLanguageResolver.targetLanguage()
         self.warmAppleTranslation(source: source, target: target)
-        self.subscriber.noteLanguagePairChanged()
-        if let mismatch = SpokenLanguageResolver.voiceEngineMismatchMessage() {
-            self.subscriber.reportFailure(mismatch)
+        Task { @MainActor in
+            if shouldWait {
+                await self.awaitASRIdle()
+            }
+            self.alignSpokenEngineWithTheater()
+            if let mismatch = SpokenLanguageResolver.voiceEngineMismatchMessage() {
+                self.subscriber.reportFailure(mismatch)
+            }
+            self.refreshPresenter()
         }
-        self.refreshPresenter()
+    }
+
+    /// Language change stops Listen asynchronously. Wait so the next Listen
+    /// is not a no-op while ASR is still shutting down.
+    func awaitASRIdle(timeoutSeconds: TimeInterval = 3) async {
+        let asr = AppServices.shared.asr
+        let deadline = ProcessInfo.processInfo.systemUptime + timeoutSeconds
+        while asr.isRunningOrStarting, ProcessInfo.processInfo.systemUptime < deadline {
+            try? await Task.sleep(nanoseconds: 40_000_000)
+            if Task.isCancelled { return }
+        }
     }
 
     /// I speak owns the Voice Engine listening language. Leftover locales crash
     /// Speech Analyzer / Apple Translation when Translate starts on a new pair.
     func alignSpokenEngineWithTheater() {
+        self.alignSpokenEngineCallCountForTesting += 1
         let changed = SpokenLanguageResolver.syncSpokenEngineToTheater()
         VoiceEngineLanguageCatalog.ensureCompatibleEngine(
             forLanguageID: SpokenLanguageResolver.sourceLanguage().id
@@ -283,6 +412,7 @@ final class LiveTranslationController: ObservableObject {
         guard !asr.isRunningOrStarting else { return }
         asr.resetTranscriptionProvider()
         self.needsSpokenEngineReload = false
+        self.trace("voice engine reload pair=\(self.pairTrace())")
     }
 
     /// Starts Apple Translation before the first clause: pair change and Listen both hit this.
@@ -318,9 +448,13 @@ final class LiveTranslationController: ObservableObject {
         guard source.id != target.id else { return }
         guard !self.didAwaitInitialTranslationWarmup else { return }
         self.didAwaitInitialTranslationWarmup = true
+        let started = ProcessInfo.processInfo.systemUptime
+        self.trace("translation warm start pair=\(source.id)>\(target.id)")
         TranslationSessionHostController.install()
         self.appleEngine.prepare(source: source, target: target)
         await self.appleEngine.warm(source: source, target: target, timeoutSeconds: 10)
+        let elapsedMs = Int(((ProcessInfo.processInfo.systemUptime - started) * 1000).rounded())
+        self.trace("translation warm done pair=\(source.id)>\(target.id) elapsedMs=\(elapsedMs)")
     }
 
     func applyEditedDocument(_ text: String) {
@@ -334,16 +468,30 @@ final class LiveTranslationController: ObservableObject {
 
     func startCaptionListening() {
         PresenterCaptionController.shared.commitEdits()
-        Task {
-            let ready = await self.ensureReadyToListen()
-            guard ready else { return }
-            self.onStartCaptionListening?()
+        if self.isSessionActive, self.listenKind == .captions {
+            self.trace(LiveTranslationTrace.event("listen skip", token: self.sessionToken, "reason=alreadyActive kind=captions"), level: .debug)
+            return
         }
+        guard !self.isStartingListen else {
+            self.trace("listen skip reason=starting kind=captions", level: .debug)
+            return
+        }
+        self.isStartingListen = true
+        guard self.onStartCaptionListening != nil else {
+            self.isStartingListen = false
+            self.trace("listen failed reason=noStartHandler kind=captions", level: .warning)
+            return
+        }
+        self.onStartCaptionListening?()
     }
 
+    /// Hold capture and drop an unaccepted fragment. In-flight accepted
+    /// translation may still land. Resume must not resurrect the drop.
     func pauseListening() {
         guard self.isSessionActive, self.listenKind == .captions, !self.isPaused else { return }
         self.isPaused = true
+        self.trace(LiveTranslationTrace.event("session pause", token: self.sessionToken))
+        self.subscriber.holdUnacceptedForPause()
         AppServices.shared.asr.setCapturePaused(true)
         self.refreshPresenter()
     }
@@ -351,36 +499,41 @@ final class LiveTranslationController: ObservableObject {
     func resumeListening() {
         guard self.isSessionActive, self.isPaused else { return }
         self.isPaused = false
+        self.trace(LiveTranslationTrace.event("session resume", token: self.sessionToken))
+        self.subscriber.releasePauseHold()
         AppServices.shared.asr.setCapturePaused(false)
         self.refreshPresenter()
     }
 
-    func handleWatchCaptureStopped(_ message: String) {
-        guard self.isSessionActive, self.listenKind == .captions else { return }
-        self.subscriber.reportFailure(WatchCaptureStop.userFacingStatus(message))
-        self.subscriber.endListening()
-        self.abandonCaptionSession = true
-        self.stopToken = self.sessionToken
-        self.isSessionActive = false
-        self.isPaused = false
-        self.stopListening()
-        self.refreshPresenter()
-    }
-
     func startInsertListening() {
-        Task {
-            let ready = await self.ensureReadyToListen()
-            guard ready else { return }
-            self.onStartInsertListening?()
+        if self.isSessionActive, self.listenKind == .insert {
+            self.trace(LiveTranslationTrace.event("listen skip", token: self.sessionToken, "reason=alreadyActive kind=insert"), level: .debug)
+            return
         }
+        guard !self.isStartingListen else {
+            self.trace("listen skip reason=starting kind=insert", level: .debug)
+            return
+        }
+        self.isStartingListen = true
+        guard self.onStartInsertListening != nil else {
+            self.isStartingListen = false
+            self.trace("listen failed reason=noStartHandler kind=insert", level: .warning)
+            return
+        }
+        self.onStartInsertListening?()
     }
 
     func toggleCaptionListening() {
+        if self.isFinishingSession {
+            self.trace(LiveTranslationTrace.event("listen skip", token: self.sessionToken, "reason=finishing"), level: .debug)
+            return
+        }
         if self.isSessionActive, self.listenKind == .captions {
             self.stopListening()
             return
         }
         guard TheaterAvailability.isSupported else {
+            self.trace("listen failed reason=unsupported", level: .warning)
             self.subscriber.reportFailure(TheaterAvailability.unsupportedCopy)
             self.refreshPresenter()
             return
@@ -391,14 +544,15 @@ final class LiveTranslationController: ObservableObject {
 
     func ensureReadyToListen() async -> Bool {
         guard TheaterAvailability.isSupported else {
+            self.trace("listen blocked reason=unsupported", level: .warning)
             self.subscriber.reportFailure(TheaterAvailability.unsupportedCopy)
             self.refreshPresenter()
             return false
         }
         let source = SpokenLanguageResolver.sourceLanguage()
         let target = SpokenLanguageResolver.targetLanguage()
-        self.alignSpokenEngineWithTheater()
         if !SpokenLanguageResolver.voiceEngineSupportsSource() {
+            self.trace("listen blocked reason=voiceEngine pair=\(self.pairTrace())", level: .warning)
             self.subscriber.reportFailure(
                 SpokenLanguageResolver.voiceEngineMismatchMessage()
                     ?? "Switch Voice Engine to hear \(source.displayName)."
@@ -408,6 +562,7 @@ final class LiveTranslationController: ObservableObject {
         }
         let model = SettingsStore.shared.selectedSpeechModel
         if !model.isInstalled {
+            self.trace("listen blocked reason=modelMissing model=\(model.rawValue)", level: .warning)
             self.subscriber.reportFailure(
                 "Download \(model.displayName) before Listen. Apple Speech works without a download."
             )
@@ -417,31 +572,44 @@ final class LiveTranslationController: ObservableObject {
         self.applyThermalDowngradeIfNeeded(immediate: true)
         let granted = await MicrophoneAccess.authorize(updating: AppServices.shared.asr)
         if !granted {
+            self.trace("listen blocked reason=microphone", level: .warning)
             self.subscriber.reportFailure(MicrophoneAccess.deniedCopy)
             self.refreshPresenter()
             return false
         }
         if SettingsStore.shared.theaterSessionMode == .transcription || source.id == target.id {
-            self.packAvailability = .installed
+            self.notePack(.installed)
+            self.trace("listen ready pair=\(self.pairTrace()) pack=installed")
             return true
         }
         await self.warmTranslationPair(source: source, target: target)
-        let resolved = await self.resolvePairPacks(source: source, target: target)
-        self.packAvailability = resolved.availability
-        switch resolved.availability {
-        case .installed:
+        var resolved = await self.resolvePairPacks(source: source, target: target)
+        if resolved.availability == .unknown {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            resolved = await self.resolvePairPacks(source: source, target: target)
+        }
+        self.notePack(resolved.availability)
+        switch TheaterPackListenGate.decision(
+            availability: resolved.availability,
+            mailboxReady: self.appleEngine.isMailboxReady
+        ) {
+        case .allow:
+            self.trace("listen ready pair=\(self.pairTrace()) pack=\(LiveTranslationTrace.packLabel(resolved.availability))")
             await self.appleEngine.warm(source: source, target: target)
             return true
-        case .supported:
+        case .needDownload:
+            self.trace("listen blocked gate=needDownload pair=\(self.pairTrace())", level: .warning)
             self.subscriber.reportFailure("Download the language pack before Listen.")
             self.refreshPresenter()
             await self.presentPackDownload(resolved)
             return false
         case .unsupported:
+            self.trace("listen blocked gate=unsupported pair=\(self.pairTrace())", level: .warning)
             self.subscriber.reportFailure("This pair is not supported by Apple Translation.")
             self.refreshPresenter()
             return false
-        case .unknown:
+        case .notReady:
+            self.trace("listen blocked gate=notReady pair=\(self.pairTrace())", level: .warning)
             self.subscriber.reportFailure("Apple Translation is not ready yet.")
             self.refreshPresenter()
             return false
@@ -449,6 +617,7 @@ final class LiveTranslationController: ObservableObject {
     }
 
     func reportListenFailure(_ message: String) {
+        self.trace("listen failed \(message)", level: .warning)
         self.subscriber.reportFailure(message)
         self.refreshPresenter()
     }
@@ -489,9 +658,11 @@ final class LiveTranslationController: ObservableObject {
         ) else { return }
         if immediate == false, self.isSessionActive {
             self.pendingThermalDowngrade = true
+            self.trace("thermal defer model=\(SettingsStore.shared.selectedSpeechModel.rawValue)")
             return
         }
         let fallback = LiveTranslationThermalEngine.fallbackModel()
+        self.trace("thermal swap to=\(fallback.rawValue) from=\(SettingsStore.shared.selectedSpeechModel.rawValue)")
         asr.applyThermalSpeechOverride(fallback)
         self.pendingThermalDowngrade = false
         self.subscriber.reportStatus(LiveTranslationThermalEngine.statusCopy, kind: .info)
@@ -499,8 +670,12 @@ final class LiveTranslationController: ObservableObject {
     }
 
     func clearThermalEngineOverride() {
+        let hadOverride = AppServices.shared.asr.hasThermalSpeechOverride
         self.pendingThermalDowngrade = false
         AppServices.shared.asr.clearThermalSpeechOverride()
+        if hadOverride {
+            self.trace("thermal restore")
+        }
     }
 
     func persistBoard() {
@@ -510,10 +685,39 @@ final class LiveTranslationController: ObservableObject {
         self.subscriber.persistLastLatency()
     }
 
-    func stopListening() {
+    /// Stamp this Listen so `finishSession` can accept it. Shortcut release
+    /// stops through `stopTheaterListening`.
+    func markListeningStop() {
+        let stoppingListen = (self.isSessionActive || self.listenKind != nil) && !self.isFinishingSession
         self.stopToken = self.sessionToken
+        self.isFinishingSession = true
+        if stoppingListen {
+            TheaterHaptics.alignment()
+        }
+    }
+
+    func stopListening() {
+        guard !self.isFinishingSession else {
+            self.trace(LiveTranslationTrace.event("session stop ignored", token: self.sessionToken, "reason=alreadyFinishing"), level: .debug)
+            return
+        }
+        self.trace(LiveTranslationTrace.event("session stop", token: self.sessionToken))
+        self.markListeningStop()
         Task { await self.onStopListening?() }
     }
+
+    func stopListeningAndAwaitFinish() async {
+        guard !self.isFinishingSession else { return }
+        self.markListeningStop()
+        await self.onStopListening?()
+    }
+
+    func listenStartFailed() {
+        self.isStartingListen = false
+        self.trace(LiveTranslationTrace.event("listen failed", token: self.sessionToken, "reason=startFailed"), level: .warning)
+    }
+
+    var isFinishingSessionForTesting: Bool { self.isFinishingSession }
 
     /// Opens the same Accessibility guide onboarding uses.
     var onAccessibilityNeeded: (() -> Void)?
@@ -522,6 +726,7 @@ final class LiveTranslationController: ObservableObject {
         // Check first: consuming marks lines typed, and a failed insert would
         // otherwise lose them and disable the button.
         guard AXIsProcessTrusted() else {
+            self.trace("insert blocked reason=accessibility", level: .warning)
             self.onAccessibilityNeeded?()
             return
         }
@@ -532,14 +737,21 @@ final class LiveTranslationController: ObservableObject {
         } else {
             text = self.subscriber.consumePendingInsertDocument()
         }
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty else {
+            self.trace("insert skipped reason=empty", level: .debug)
+            return
+        }
+        self.trace("insert chars=\(text.count)")
         self.onInsertCaption?(text)
     }
 
     func copyCaptionText() {
         let text = PresenterCaptionController.shared.documentTextForDelivery()
         guard !text.isEmpty else { return }
+        self.trace("copy chars=\(text.count)")
         ClipboardService.copyToClipboard(text)
+        TheaterHaptics.alignment()
+        self.copyFlashToken += 1
     }
 
     var hasClearableBoard: Bool {
@@ -560,16 +772,19 @@ final class LiveTranslationController: ObservableObject {
 
     func undoLastCaption() {
         guard self.hasUndoableCaption else { return }
+        self.trace("board undo lines=\(self.subscriber.committedLines.count)")
         self.subscriber.removeLastCommittedLine()
         self.persistBoard()
         self.refreshPresenter()
+        TheaterHaptics.alignment()
         self.objectWillChange.send()
     }
 
     func clearBoard() {
+        self.trace(LiveTranslationTrace.event("board clear", token: self.sessionTrace?.token, "listening=\(self.isSessionActive)"))
         self.startFreshTheaterBoard()
         if self.isSessionActive {
-            self.subscriber.beginListening()
+            self.subscriber.beginListening(preserveSuppressed: true)
         }
         self.objectWillChange.send()
     }
@@ -591,11 +806,11 @@ final class LiveTranslationController: ObservableObject {
         let source = source ?? SpokenLanguageResolver.sourceLanguage()
         let target = target ?? SpokenLanguageResolver.targetLanguage()
         if source.id == target.id {
-            self.packAvailability = .installed
+            self.notePack(.installed)
             return
         }
         let resolved = await self.resolvePairPacks(source: source, target: target)
-        self.packAvailability = resolved.availability
+        self.notePack(resolved.availability)
     }
 
     /// Warms the I speak → Show as pack, then attaches the download sheet.
@@ -609,7 +824,8 @@ final class LiveTranslationController: ObservableObject {
         guard source.id != target.id else { return }
         await self.warmTranslationPair(source: source, target: target)
         let resolved = await self.resolvePairPacks(source: source, target: target)
-        self.packAvailability = resolved.availability
+        self.notePack(resolved.availability)
+        self.trace("pack download pair=\(source.id)>\(target.id) availability=\(LiveTranslationTrace.packLabel(resolved.availability))")
         await self.presentPackDownload(resolved)
     }
 
@@ -621,7 +837,7 @@ final class LiveTranslationController: ObservableObject {
         let target = target ?? SpokenLanguageResolver.targetLanguage()
         await self.warmTranslationPair(source: source, target: target)
         let resolved = await self.resolvePairPacks(source: source, target: target)
-        self.packAvailability = resolved.availability
+        self.notePack(resolved.availability)
         return await self.appleEngine.checkAvailability(
             source: resolved.downloadSource,
             target: resolved.downloadTarget
@@ -705,6 +921,18 @@ final class LiveTranslationController: ObservableObject {
 
     private func refreshPresenter() {
         guard SettingsStore.shared.theaterWindowEnabled else { return }
+        guard !self.presenterRefreshPending else { return }
+        self.presenterRefreshPending = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.presenterRefreshPending = false
+            self.performRefreshPresenter()
+        }
+    }
+
+    private func performRefreshPresenter() {
+        guard SettingsStore.shared.theaterWindowEnabled else { return }
+        guard self.listenKind != .insert else { return }
         var status = self.subscriber.statusText
         var statusKind = self.subscriber.statusKind
         if self.isPaused {
@@ -714,19 +942,16 @@ final class LiveTranslationController: ObservableObject {
             status = window
             statusKind = .info
         }
-        let liveSpoken = self.subscriber.liveSpokenText
-        // Prefetch / cached Show-as only. liveCaptionText is empty when the
-        // draft is the last committed title, so a restless MT guess cannot
-        // retype a line already on the board.
         PresenterCaptionController.shared.update(
-            source: liveSpoken,
-            draft: self.subscriber.liveCaptionText,
+            source: "",
+            draft: "",
             committed: self.subscriber.committedLines,
             committedIDs: self.subscriber.committedLineIDs,
             nextCaptionID: self.subscriber.nextCaptionID,
             committedSources: self.subscriber.committedSourceLines,
-            pendingSources: self.subscriber.pendingSpokenLines,
+            pendingSources: [],
             inFlightCount: self.subscriber.inFlightCaptionCount,
+            liveRowID: 0,
             pairLabel: SpokenLanguageResolver.pairLabel(),
             status: status,
             statusKind: statusKind,
@@ -741,10 +966,69 @@ final class LiveTranslationController: ObservableObject {
                     && !SpokenLanguageResolver.isSameLanguagePair(),
                 isListening: self.isSessionActive,
                 isPaused: self.isPaused,
-                liveSpoken: self.subscriber.liveSpokenText,
+                liveSpoken: "",
                 lastTranslation: self.subscriber.committedLines.last ?? "",
                 pendingWaitMilliseconds: self.subscriber.oldestInFlightWaitMilliseconds
             )
         )
     }
+
+    private func trace(_ message: String, level: DebugLogger.LogLevel = .info) {
+        DebugLogger.shared.log(message, level: level, source: LiveTranslationTrace.source)
+    }
+
+    private func pairTrace() -> String {
+        "\(SpokenLanguageResolver.sourceLanguage().id)>\(SpokenLanguageResolver.targetLanguage().id)"
+    }
+
+    private func notePack(_ next: TranslationPackAvailability) {
+        guard next != self.packAvailability else { return }
+        let previous = LiveTranslationTrace.packLabel(self.packAvailability)
+        self.packAvailability = next
+        self.trace("pack \(previous)>\(LiveTranslationTrace.packLabel(next)) pair=\(self.pairTrace())")
+    }
+
+    private func updateTrace(_ body: (inout LiveTranslationSessionTrace) -> Void) {
+        guard var trace = self.sessionTrace else { return }
+        body(&trace)
+        self.sessionTrace = trace
+    }
+
+    private func endSessionTrace(outcome: String) {
+        let lines = self.subscriber.committedLines.count
+        if let trace = self.sessionTrace {
+            self.trace(trace.endLine(
+                outcome: outcome,
+                now: ProcessInfo.processInfo.systemUptime,
+                lines: lines
+            ))
+        } else {
+            self.trace("session \(outcome) token=\(self.sessionToken) lines=\(lines)")
+        }
+        self.sessionTrace = nil
+    }
+}
+
+/// The live row is unfinished by definition. Apple Speech still ends every
+/// partial with a period or "…" and then takes it back on the next tick
+/// ("talk." → "talk about it."), which rewinds one character on screen each
+/// time. The mark arrives with the committed line instead.
+enum TheaterLiveRow {
+    static func openText(_ text: String) -> String {
+        var open = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        while let last = open.last, ".…?!。！？".contains(last) {
+            open.removeLast()
+        }
+        return open.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+enum TheaterSpokenEngineReload {
+    /// Language change stops Listen asynchronously. Wait until ASR is idle
+    /// or the next Listen returns immediately.
+    static func shouldWaitForIdle(sessionWasActive: Bool, asrBusy: Bool) -> Bool {
+        sessionWasActive || asrBusy
+    }
+
+    static func canReload(asrBusy: Bool) -> Bool { !asrBusy }
 }

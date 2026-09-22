@@ -30,28 +30,31 @@ final class TheaterMenuBarController: NSObject {
     static func appendOverlayControls(to menu: NSMenu, target: TheaterMenuBarController) {
         menu.addItem(.separator())
 
-        func add(_ item: NSMenuItem) {
+        func add(_ item: NSMenuItem, symbol: String? = nil) {
             item.target = target
+            if let symbol {
+                item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+            }
             menu.addItem(item)
         }
 
-        let pause = NSMenuItem(
+        let pause = TheaterPresenterHotkey.menuItem(
             title: "Pause",
             action: #selector(togglePause),
-            keyEquivalent: ""
+            shortcut: .togglePause
         )
         pause.tag = ItemTag.pause.rawValue
         pause.toolTip = TheaterChromeHelp.pause
-        add(pause)
+        add(pause, symbol: "pause.fill")
 
-        let tools = NSMenuItem(
+        let tools = TheaterPresenterHotkey.menuItem(
             title: "Show Overlay Tools",
             action: #selector(toggleOverlayTools),
-            keyEquivalent: ""
+            shortcut: .toggleTools
         )
         tools.tag = ItemTag.overlayTools.rawValue
         tools.toolTip = TheaterChromeHelp.overlayTools
-        add(tools)
+        add(tools, symbol: "slider.horizontal.3")
 
         menu.addItem(.separator())
 
@@ -63,7 +66,7 @@ final class TheaterMenuBarController: NSObject {
         overlay.tag = ItemTag.overlayStyle.rawValue
         overlay.representedObject = TheaterPresentationStyle.transparent.rawValue
         overlay.toolTip = TheaterChromeHelp.overlay
-        add(overlay)
+        add(overlay, symbol: "rectangle.dashed")
 
         let popup = NSMenuItem(
             title: TheaterPresentationStyle.popup.displayName,
@@ -73,7 +76,7 @@ final class TheaterMenuBarController: NSObject {
         popup.tag = ItemTag.popupStyle.rawValue
         popup.representedObject = TheaterPresentationStyle.popup.rawValue
         popup.toolTip = TheaterChromeHelp.popup
-        add(popup)
+        add(popup, symbol: "rectangle.on.rectangle")
 
         let plate = NSMenuItem(
             title: "Caption Plate",
@@ -82,7 +85,7 @@ final class TheaterMenuBarController: NSObject {
         )
         plate.tag = ItemTag.captionPlate.rawValue
         plate.toolTip = TheaterChromeHelp.captionPlate
-        add(plate)
+        add(plate, symbol: "rectangle.fill")
 
         let share = NSMenuItem(
             title: "Hide from Screen Share",
@@ -91,27 +94,27 @@ final class TheaterMenuBarController: NSObject {
         )
         share.tag = ItemTag.hideShare.rawValue
         share.toolTip = TheaterChromeHelp.hideFromScreenShare
-        add(share)
+        add(share, symbol: "eye.slash")
 
         menu.addItem(.separator())
 
-        let larger = NSMenuItem(
-            title: "Larger Text",
+        let larger = TheaterPresenterHotkey.menuItem(
+            title: "Larger Captions",
             action: #selector(makeTextLarger),
-            keyEquivalent: ""
+            shortcut: .fontLarger
         )
         larger.tag = ItemTag.largerText.rawValue
         larger.toolTip = TheaterChromeHelp.larger
-        add(larger)
+        add(larger, symbol: "plus")
 
-        let smaller = NSMenuItem(
-            title: "Smaller Text",
+        let smaller = TheaterPresenterHotkey.menuItem(
+            title: "Smaller Captions",
             action: #selector(makeTextSmaller),
-            keyEquivalent: ""
+            shortcut: .fontSmaller
         )
         smaller.tag = ItemTag.smallerText.rawValue
         smaller.toolTip = TheaterChromeHelp.smaller
-        add(smaller)
+        add(smaller, symbol: "minus")
 
         let size = NSMenuItem(title: "Size", action: nil, keyEquivalent: "")
         size.tag = ItemTag.sizeLabel.rawValue
@@ -132,6 +135,7 @@ final class TheaterMenuBarController: NSObject {
         }
         let fontItem = NSMenuItem(title: "Caption Font", action: nil, keyEquivalent: "")
         fontItem.submenu = fontMenu
+        fontItem.image = NSImage(systemSymbolName: "textformat", accessibilityDescription: nil)
         fontItem.toolTip = TheaterChromeHelp.captionFont
         menu.addItem(fontItem)
 
@@ -154,31 +158,23 @@ final class TheaterMenuBarController: NSObject {
 
         menu.addItem(.separator())
 
-        let spoken = NSMenuItem(
-            title: "Show the Spoken Line",
-            action: #selector(toggleSpokenLine),
-            keyEquivalent: ""
-        )
-        spoken.tag = ItemTag.spokenLine.rawValue
-        spoken.toolTip = TheaterChromeHelp.spokenLine
-        add(spoken)
-
-        let printMenu = NSMenu(title: "Caption Print-in")
-        for style in TheaterCaptionPrintStyle.allCases {
+        let spokenMenu = NSMenu(title: "Spoken Line")
+        for mode in TheaterSpokenLineMode.allCases {
             let item = NSMenuItem(
-                title: style.displayName,
-                action: #selector(choosePrintStyle(_:)),
+                title: mode.displayName,
+                action: #selector(chooseSpokenLineMode(_:)),
                 keyEquivalent: ""
             )
-            item.representedObject = style.rawValue
-            item.toolTip = style.help
+            item.representedObject = mode.rawValue
+            item.toolTip = mode.help
             item.target = target
-            printMenu.addItem(item)
+            spokenMenu.addItem(item)
         }
-        let printItem = NSMenuItem(title: "Caption Print-in", action: nil, keyEquivalent: "")
-        printItem.submenu = printMenu
-        printItem.toolTip = TheaterChromeHelp.printIn
-        menu.addItem(printItem)
+        let spoken = NSMenuItem(title: "Spoken Line", action: nil, keyEquivalent: "")
+        spoken.tag = ItemTag.spokenLine.rawValue
+        spoken.submenu = spokenMenu
+        spoken.toolTip = TheaterChromeHelp.spokenLine
+        add(spoken, symbol: "captions.bubble")
 
         let contrast = NSMenuItem(
             title: "High Contrast",
@@ -187,7 +183,7 @@ final class TheaterMenuBarController: NSObject {
         )
         contrast.tag = ItemTag.highContrast.rawValue
         contrast.toolTip = TheaterChromeHelp.highContrast
-        add(contrast)
+        add(contrast, symbol: "circle.lefthalf.filled")
 
         let positionMenu = NSMenu(title: "Position")
         for preset in TheaterPositionPreset.allCases {
@@ -207,14 +203,14 @@ final class TheaterMenuBarController: NSObject {
 
         menu.addItem(.separator())
 
-        let minimize = NSMenuItem(
+        let minimize = TheaterPresenterHotkey.menuItem(
             title: "Minimize Theater",
             action: #selector(toggleMinimized),
-            keyEquivalent: ""
+            shortcut: .toggleVisible
         )
         minimize.tag = ItemTag.minimize.rawValue
         minimize.toolTip = TheaterChromeHelp.minimize
-        add(minimize)
+        add(minimize, symbol: "arrow.down.right.and.arrow.up.left")
 
         let copy = NSMenuItem(
             title: "Copy All",
@@ -223,7 +219,7 @@ final class TheaterMenuBarController: NSObject {
         )
         copy.tag = ItemTag.copy.rawValue
         copy.toolTip = TheaterChromeHelp.copyAll
-        add(copy)
+        add(copy, symbol: "doc.on.doc")
 
         // Overlay users can type captions without pinning the tools.
         let insert = NSMenuItem(
@@ -233,7 +229,7 @@ final class TheaterMenuBarController: NSObject {
         )
         insert.tag = ItemTag.insert.rawValue
         insert.toolTip = TheaterChromeHelp.insert
-        add(insert)
+        add(insert, symbol: "text.cursor")
 
         let undo = NSMenuItem(
             title: "Undo Last Caption",
@@ -242,16 +238,16 @@ final class TheaterMenuBarController: NSObject {
         )
         undo.tag = ItemTag.undo.rawValue
         undo.toolTip = TheaterChromeHelp.undo
-        add(undo)
+        add(undo, symbol: "arrow.uturn.backward")
 
-        let clear = NSMenuItem(
+        let clear = TheaterPresenterHotkey.menuItem(
             title: "Clear Captions",
             action: #selector(clearCaptions),
-            keyEquivalent: ""
+            shortcut: .clear
         )
         clear.tag = ItemTag.clear.rawValue
         clear.toolTip = TheaterChromeHelp.clear
-        add(clear)
+        add(clear, symbol: "trash")
     }
 
     func install(into menu: NSMenu) {
@@ -305,8 +301,8 @@ final class TheaterMenuBarController: NSObject {
 
         let sameLanguage = SpokenLanguageResolver.isSameLanguagePair()
         let spoken = item(ItemTag.spokenLine, in: menu)
-        spoken?.state = settings.translationShowSource ? .on : .off
         spoken?.isEnabled = !sameLanguage
+        spoken?.submenu?.items.forEach { $0.isEnabled = !sameLanguage }
 
         item(ItemTag.highContrast, in: menu)?.state = settings.theaterHighContrast ? .on : .off
 
@@ -339,14 +335,25 @@ final class TheaterMenuBarController: NSObject {
         )
         applySubmenuState(
             in: menu,
-            title: "Caption Print-in",
-            selected: settings.theaterCaptionPrintStyle.rawValue
+            title: "Spoken Line",
+            selected: settings.theaterSpokenLineMode.rawValue
         )
         applySubmenuState(
             in: menu,
             title: "Position",
             selected: settings.theaterPositionPreset?.rawValue
         )
+        if let parent = menu.items.first(where: { $0.title == "Position" }),
+           let submenu = parent.submenu
+        {
+            let presentation = settings.theaterPresentation
+            for item in submenu.items {
+                guard let raw = item.representedObject as? String,
+                      let preset = TheaterPositionPreset(rawValue: raw)
+                else { continue }
+                item.isHidden = !preset.isAvailable(for: presentation)
+            }
+        }
     }
 
     static func item(_ tag: ItemTag, in menu: NSMenu) -> NSMenuItem? {
@@ -411,14 +418,9 @@ final class TheaterMenuBarController: NSObject {
         self.refresh()
     }
 
-    @objc private func toggleSpokenLine() {
-        SettingsStore.shared.translationShowSource.toggle()
-        self.refresh()
-    }
-
-    @objc private func choosePrintStyle(_ sender: NSMenuItem) {
+    @objc private func chooseSpokenLineMode(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String else { return }
-        SettingsStore.shared.theaterCaptionPrintStyle = TheaterCaptionPrintStyle.resolved(raw)
+        SettingsStore.shared.theaterSpokenLineMode = TheaterSpokenLineMode.resolved(raw)
         self.refresh()
     }
 

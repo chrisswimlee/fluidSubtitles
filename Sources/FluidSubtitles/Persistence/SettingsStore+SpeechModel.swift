@@ -80,13 +80,15 @@ extension SettingsStore {
             case .parakeetTDTv2: return "English Only (Higher Accuracy)"
             case .parakeetRealtime: return "English Only (Live Streaming)"
             case .qwen3Asr: return "Korean, English, Thai, Japanese"
-            case .cohereTranscribeSixBit: return "English, Korean, Japanese"
+            case .cohereTranscribeSixBit: return "Cohere languages"
             case .nemotronOffline, .nemotronStreaming, .nemotronStreaming320:
-                return "Korean, English, Thai, Japanese"
-            case .appleSpeech, .appleSpeechAnalyzer:
-                return "Korean, English, Thai, Japanese"
+                return "Most supported languages"
+            case .appleSpeech:
+                return "Supported languages"
+            case .appleSpeechAnalyzer:
+                return "Speech Analyzer languages"
             case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLargeTurbo, .whisperLarge:
-                return "Korean, English, Thai, Japanese"
+                return "Supported languages"
             }
         }
 
@@ -283,25 +285,25 @@ extension SettingsStore {
         var cardDescription: String {
             switch self {
             case .parakeetTDT:
-                return "Fast English transcription. Korean, Japanese, and Thai Listen need Apple Speech, Cohere, or Whisper."
+                return "Fast English transcription. Other languages need Apple Speech or Whisper."
             case .parakeetTDTv2:
                 return "English-only. Fastest Parakeet for English Theater and dictation."
             case .parakeetRealtime:
-                return "English-only streaming dictation with live partial text. Korean, Japanese, and Thai Listen need another Voice Engine."
+                return "English-only streaming dictation with live partial text. Other languages need another Voice Engine."
             case .qwen3Asr:
                 return "Local FluidAudio model for Korean, English, Thai, or Japanese. Heavier memory footprint."
             case .cohereTranscribeSixBit:
-                return "High-accuracy English and Korean. Pick the language before Listen."
+                return "High-accuracy transcription for Cohere's languages. Pick the language before Listen."
             case .nemotronOffline:
-                return "Slower, more accurate Nemotron for Korean, English, Thai, or Japanese. Thai is experimental."
+                return "Slower, more accurate Nemotron for most supported languages. Thai is experimental. Malay and Indonesian need Apple Speech or Whisper."
             case .nemotronStreaming:
-                return "Streaming Nemotron for Korean, English, Thai, or Japanese. Thai is experimental."
+                return "Streaming Nemotron for most supported languages. Thai is experimental. Malay and Indonesian need Apple Speech or Whisper."
             case .nemotronStreaming320:
-                return "Streaming Nemotron for Korean, English, Thai, or Japanese. Thai is experimental."
+                return "Streaming Nemotron for most supported languages. Thai is experimental. Malay and Indonesian need Apple Speech or Whisper."
             case .appleSpeech:
-                return "Built-in macOS speech. No download. Works for Korean, English, Thai, and Japanese."
+                return "Built-in macOS speech. No download. Hears every supported language on this Mac."
             case .appleSpeechAnalyzer:
-                return "On-device Speech Analyzer for Korean, English, Thai, and Japanese. Requires a newer macOS."
+                return "On-device Speech Analyzer for the languages this Mac includes. Requires a newer macOS. Other languages use Apple Speech or Whisper."
             case .whisperTiny:
                 return "Minimal resource usage. Best for older Macs or battery life."
             case .whisperBase:
@@ -501,6 +503,11 @@ extension SettingsStore {
                 return 0.32
             case .cohereTranscribeSixBit:
                 return 1.0
+            case .appleSpeechAnalyzer:
+                // Re-decodes the whole ring per tick (0.1–0.4 s). The next
+                // tick is scheduled after the decode, so 0.35 s keeps Theater
+                // near two updates a second instead of one.
+                return 0.35
             default:
                 return 0.6
             }
@@ -768,13 +775,15 @@ extension SettingsStore.SpeechModel {
         case .parakeetTDT, .parakeetTDTv2, .parakeetRealtime:
             return "EN"
         case .cohereTranscribeSixBit:
-            return "EN, KO, JA"
+            return "AR, DE, EN, ES, FR, IT, JA, KO, NL, PL, PT, VI, ZH"
         case .nemotronOffline, .nemotronStreaming, .nemotronStreaming320:
-            return "EN, KO, JA, TH"
-        case .appleSpeech, .appleSpeechAnalyzer:
-            return "EN, KO, JA, TH"
+            return "AR, DA, DE, EN, ES, FI, FR, HE, HI, IT, JA, KO, NL, NO, PL, PT, RU, SV, TH, TR, UK, VI, ZH"
+        case .appleSpeech:
+            return TranslationLanguageCatalog.languageCodeList
+        case .appleSpeechAnalyzer:
+            return "DE, EN, ES, FR, HI, IT, JA, KO, PT, TH, ZH"
         case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLargeTurbo, .whisperLarge:
-            return "EN, KO, JA, TH"
+            return TranslationLanguageCatalog.languageCodeList
         case .qwen3Asr:
             return "EN, KO, JA, TH"
         }

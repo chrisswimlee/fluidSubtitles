@@ -388,10 +388,16 @@ enum VoiceEngineLanguageCatalog {
         self.appleSpeechAnalyzerLocaleMap[self.languagePrefix(languageID)]
     }
 
+    /// Speech Analyzer locale when this Mac has one. Otherwise the Apple Speech
+    /// locale for that language, so a new I speak is not pinned to English.
     static func preferredAppleSpeechAnalyzerLocale(forLanguageID languageID: String) -> String {
-        self.appleSpeechAnalyzerLocaleIdentifier(for: languageID)
-            ?? self.appleSpeechAnalyzerLocaleMap["en"]
-            ?? "en-US"
+        if let mapped = self.appleSpeechAnalyzerLocaleIdentifier(for: languageID) {
+            return mapped
+        }
+        if let legacy = self.appleSpeechLegacyLocaleIdentifier(for: self.languagePrefix(languageID)) {
+            return legacy
+        }
+        return self.appleSpeechAnalyzerLocaleMap["en"] ?? "en-US"
     }
 
     /// SpeechAnalyzer compares BCP-47 IDs exactly. `en` is not `en-US`.
@@ -538,11 +544,19 @@ enum VoiceEngineLanguageCatalog {
         .whisperTiny,
     ]
 
+    /// Locales SpeechTranscriber lists on macOS 27, plus Thai.
     private static let appleSpeechAnalyzerLocaleMap: [String: String] = [
+        "de": "de-DE",
         "en": "en-US",
-        "ko": "ko-KR",
+        "es": "es-ES",
+        "fr": "fr-FR",
+        "hi": "hi-IN",
+        "it": "it-IT",
         "ja": "ja-JP",
+        "ko": "ko-KR",
+        "pt": "pt-BR",
         "th": "th-TH",
+        "zh": "zh-CN",
     ]
 
     private static let appleSpeechLegacyLocalePreferences: [String: [String]] = [

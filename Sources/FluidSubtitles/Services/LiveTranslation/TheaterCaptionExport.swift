@@ -134,7 +134,8 @@ nonisolated enum TheaterCaptionExport {
             let start = max(0, dates[index].timeIntervalSince(origin))
             let end: TimeInterval
             if index + 1 < dates.count {
-                end = max(start, dates[index + 1].timeIntervalSince(origin))
+                let next = dates[index + 1].timeIntervalSince(origin)
+                end = next > start ? next : start + 0.5
             } else if dates.count == 1 {
                 end = start + fallbackDuration
             } else {

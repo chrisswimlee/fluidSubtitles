@@ -12,7 +12,7 @@ Settings search finds Theater, Voice, and Translate. The latency HUD tokens are 
 
 **Labels:** `good first issue`, `documentation`
 
-**Problem:** The README still uses stills. A stranger should see Korean type on top and the English undertone without reading the architecture note.
+**Problem:** The README still uses stills. A stranger should see a finished Korean sentence appear with the English undertone without reading the architecture note.
 
 **Where to edit:** `docs/screenshots/` and `README.md`. Record Listen, one sentence, Korean title, English undertone, then hide the spoken line. Do not invent HUD numbers. Do not add Watch copy.
 

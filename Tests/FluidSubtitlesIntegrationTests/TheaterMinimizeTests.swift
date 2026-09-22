@@ -84,6 +84,11 @@ final class TheaterOverlayPolicyTests: XCTestCase {
                 minimized: false
             )
         )
+        XCTAssertFalse(TheaterOverlayPolicy.showsWindowShadow(presentation: .transparent))
+        XCTAssertTrue(TheaterOverlayPolicy.showsWindowShadow(presentation: .popup))
+        XCTAssertFalse(
+            TheaterOverlayPolicy.hidesTitlebarButtons(presentation: .popup, toolsPinned: false)
+        )
     }
 
     func testPinnedOverlayShowsToolsAndStopsClickThrough() {
@@ -228,6 +233,59 @@ final class TheaterOverlayPolicyTests: XCTestCase {
                 presentation: .popup
             )
         )
+        let custom = CGRect(x: 100, y: 80, width: 1600, height: 900)
+        XCTAssertEqual(
+            TheaterWindowPlacement.resolvedFrame(
+                stored: custom,
+                visible: self.visible,
+                presentation: .popup
+            ),
+            self.visible
+        )
+        XCTAssertEqual(
+            TheaterWindowPlacement.resolvedFrame(
+                stored: custom,
+                visible: self.visible,
+                presentation: .popup,
+                keepUserSize: true
+            ),
+            custom
+        )
+    }
+
+    func testOverlayCaptionBarBecomesAFullScreenPopup() {
+        let bar = TheaterPositionPreset.captionBar.frame(in: self.visible)
+        XCTAssertTrue(TheaterWindowPlacement.isOverlayCaptionBar(bar, visible: self.visible))
+        XCTAssertFalse(
+            TheaterWindowPlacement.isOverlayCaptionBar(
+                CGRect(x: 80, y: 80, width: 1100, height: 440),
+                visible: self.visible
+            )
+        )
+        XCTAssertEqual(
+            TheaterWindowPlacement.resolvedFrame(
+                stored: bar,
+                visible: self.visible,
+                presentation: .popup
+            ),
+            self.visible
+        )
+        let lower = TheaterPositionPreset.lowerThird.frame(in: self.visible)
+        XCTAssertTrue(TheaterWindowPlacement.isLowerThirdLeftover(lower, visible: self.visible))
+        XCTAssertEqual(
+            TheaterWindowPlacement.resolvedFrame(
+                stored: lower,
+                visible: self.visible,
+                presentation: .popup
+            ),
+            self.visible
+        )
+        XCTAssertEqual(TheaterPositionPreset.captionBar.resolved(for: .popup), .fillScreen)
+        XCTAssertEqual(TheaterPositionPreset.fillScreen.resolved(for: .transparent), .captionBar)
+        XCTAssertEqual(TheaterPositionPreset.fillScreen.frame(in: self.visible), self.visible)
+        XCTAssertTrue(TheaterPositionPreset.fillScreen.isAvailable(for: .popup))
+        XCTAssertFalse(TheaterPositionPreset.fillScreen.isAvailable(for: .transparent))
+        XCTAssertFalse(TheaterPositionPreset.captionBar.isAvailable(for: .popup))
     }
 
     func testCaptionBarStaysInsideTheSafeMargin() {
@@ -254,11 +312,19 @@ final class TheaterOverlayPolicyTests: XCTestCase {
         XCTAssertTrue(TheaterChromeHelp.listen.contains("Control-Option-L"))
         XCTAssertTrue(TheaterChromeHelp.overlay.hasPrefix("Overlay —"))
         XCTAssertTrue(TheaterChromeHelp.overlay.contains("Control-Option-T"))
-        XCTAssertTrue(TheaterChromeHelp.board.hasPrefix("Board —"))
+        XCTAssertTrue(TheaterChromeHelp.board.hasPrefix("Settings —"))
+        XCTAssertTrue(TheaterChromeHelp.smaller.hasPrefix("Smaller captions —"))
+        XCTAssertTrue(TheaterChromeHelp.larger.hasPrefix("Larger captions —"))
+        XCTAssertFalse(TheaterChromeHelp.smaller.contains("spoken line"))
+        XCTAssertFalse(TheaterChromeHelp.larger.contains("spoken line"))
         XCTAssertTrue(TheaterChromeHelp.captionPlate.hasPrefix("Caption plate —"))
         XCTAssertEqual(
             TheaterChromeHelp.position(.captionBar),
             TheaterChromeHelp.captionBar
+        )
+        XCTAssertEqual(
+            TheaterChromeHelp.position(.fillScreen),
+            TheaterChromeHelp.fillScreen
         )
     }
 }
@@ -269,8 +335,8 @@ final class TheaterMenuBarTests: XCTestCase {
         let menu = NSMenu()
         TheaterMenuBarController.appendOverlayControls(to: menu, target: TheaterMenuBarController.shared)
         let titles = menu.items.map(\.title)
-        XCTAssertTrue(titles.contains("Larger Text"))
-        XCTAssertTrue(titles.contains("Smaller Text"))
+        XCTAssertTrue(titles.contains("Larger Captions"))
+        XCTAssertTrue(titles.contains("Smaller Captions"))
         XCTAssertTrue(titles.contains("Caption Font"))
         XCTAssertTrue(titles.contains("Theme"))
         XCTAssertTrue(titles.contains(TheaterPresentationStyle.transparent.displayName))
@@ -405,6 +471,25 @@ final class TheaterMenuBarTests: XCTestCase {
         }
     }
 
+    func testMenuShortcutsMatchPresenterChords() {
+        let menu = self.overlayMenu()
+        let pairs: [(TheaterMenuBarController.ItemTag, TheaterPresenterHotkey.Action)] = [
+            (.pause, .togglePause),
+            (.overlayTools, .toggleTools),
+            (.largerText, .fontLarger),
+            (.smallerText, .fontSmaller),
+            (.minimize, .toggleVisible),
+            (.clear, .clear),
+        ]
+        for pair in pairs {
+            let item = TheaterMenuBarController.item(pair.0, in: menu)
+            XCTAssertEqual(item?.keyEquivalent, TheaterPresenterHotkey.keyEquivalent(for: pair.1), pair.1.rawValue)
+            XCTAssertEqual(item?.keyEquivalentModifierMask, TheaterPresenterHotkey.modifiers, pair.1.rawValue)
+        }
+        XCTAssertEqual(TheaterMenuBarController.item(.copy, in: menu)?.keyEquivalent, "")
+        XCTAssertEqual(TheaterMenuBarController.item(.undo, in: menu)?.keyEquivalent, "")
+    }
+
     private func overlayMenu() -> NSMenu {
         let menu = NSMenu()
         TheaterMenuBarController.appendOverlayControls(to: menu, target: TheaterMenuBarController.shared)
@@ -419,8 +504,8 @@ final class TheaterChromeHelpTests: XCTestCase {
             (TheaterChromeHelp.pause, "P", kVK_ANSI_P, .togglePause),
             (TheaterChromeHelp.minimize, "H", kVK_ANSI_H, .toggleVisible),
             (TheaterChromeHelp.clear, "K", kVK_ANSI_K, .clear),
-            (TheaterChromeHelp.larger, "=", kVK_ANSI_Equal, .fontLarger),
-            (TheaterChromeHelp.smaller, "-", kVK_ANSI_Minus, .fontSmaller),
+            (TheaterChromeHelp.larger, "Equals", kVK_ANSI_Equal, .fontLarger),
+            (TheaterChromeHelp.smaller, "Minus", kVK_ANSI_Minus, .fontSmaller),
             (TheaterChromeHelp.overlayTools, "T", kVK_ANSI_T, .toggleTools),
         ]
         for pair in pairs {
@@ -439,5 +524,70 @@ final class TheaterChromeHelpTests: XCTestCase {
             TheaterChromeHelp.tag("Pause", does: "Freeze.", shortcut: "Control-Option-P"),
             "Pause — Freeze. Control-Option-P."
         )
+        XCTAssertEqual(
+            TheaterChromeHelp.captionFont(current: "System"),
+            "Caption font — Typeface for spoken and Show-as. Now System."
+        )
+    }
+
+    func testHoverHelpSitsBelowTheControl() {
+        let origin = TheaterHoverHelp.bubbleOrigin(
+            anchor: CGRect(x: 40, y: 20, width: 40, height: 40),
+            container: CGSize(width: 800, height: 400),
+            bubbleSize: CGSize(width: 200, height: 40)
+        )
+        XCTAssertEqual(origin.x, 40)
+        XCTAssertEqual(origin.y, 68)
+    }
+
+    func testHoverHelpStaysOnTheBoardAtTheRightEdge() {
+        let origin = TheaterHoverHelp.bubbleOrigin(
+            anchor: CGRect(x: 760, y: 20, width: 40, height: 40),
+            container: CGSize(width: 800, height: 400),
+            bubbleSize: CGSize(width: 200, height: 40)
+        )
+        XCTAssertEqual(origin.x, 588)
+        XCTAssertEqual(origin.y, 68)
+    }
+
+    func testHoverHelpFlipsAboveWhenTheBoardIsShort() {
+        let origin = TheaterHoverHelp.bubbleOrigin(
+            anchor: CGRect(x: 40, y: 80, width: 40, height: 40),
+            container: CGSize(width: 800, height: 140),
+            bubbleSize: CGSize(width: 200, height: 50)
+        )
+        XCTAssertEqual(origin.x, 40)
+        XCTAssertEqual(origin.y, 22)
+    }
+
+    func testHoverHelpWidthFitsANarrowBoard() {
+        XCTAssertEqual(TheaterHoverHelp.bubbleWidth(containerWidth: 200), 176)
+        XCTAssertEqual(TheaterHoverHelp.bubbleWidth(containerWidth: 800), 280)
+        XCTAssertEqual(TheaterHoverHelp.bubbleWidth(containerWidth: 20), 0)
+    }
+
+    @MainActor
+    func testHoverHelpHideOnlyClearsTheMatchingLabel() {
+        let broker = TheaterHoverHelpBroker()
+        let copy = TheaterHoverHelpValue(text: TheaterChromeHelp.copyAll, anchor: .zero)
+        broker.show(copy)
+        broker.hide(text: TheaterChromeHelp.clear)
+        XCTAssertEqual(broker.value, copy)
+        broker.hide(text: TheaterChromeHelp.copyAll)
+        XCTAssertNil(broker.value)
+        broker.show(copy)
+        broker.clear()
+        XCTAssertNil(broker.value)
+    }
+}
+
+final class TheaterCaptionScaleTests: XCTestCase {
+    func testCaptionSizesGrowWithTheBoard() {
+        let narrow = TheaterCaptionScale.sizes(setting: 42, stageWidth: 1100)
+        let wide = TheaterCaptionScale.sizes(setting: 42, stageWidth: 1920)
+        XCTAssertEqual(narrow.spoken, TheaterCaptionScale.spokenSize(setting: 42))
+        XCTAssertEqual(narrow.translated, TheaterCaptionScale.translatedSize(setting: 42))
+        XCTAssertGreaterThan(wide.translated, narrow.translated)
+        XCTAssertGreaterThan(wide.spoken, narrow.spoken)
     }
 }

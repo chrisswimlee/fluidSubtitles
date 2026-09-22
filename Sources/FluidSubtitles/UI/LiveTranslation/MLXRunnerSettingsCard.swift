@@ -35,7 +35,7 @@ struct MLXRunnerSettingsCard: View {
                         Task { await self.runner.setupRuntime() }
                     }
                     .disabled(self.runner.isBusy)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.theaterText)
                     .controlSize(.small)
                 }
 
@@ -70,7 +70,7 @@ struct MLXRunnerSettingsCard: View {
                         }
                         .disabled(self.runner.isBusy)
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.theaterText)
                     .controlSize(.small)
                 }
 
@@ -103,7 +103,7 @@ struct MLXRunnerSettingsCard: View {
                         .disabled(self.runner.isBusy || !self.runner.isInstalled(self.settings.mlxRunnerModelID))
                     }
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.theaterText)
                 .controlSize(.small)
             }
             }

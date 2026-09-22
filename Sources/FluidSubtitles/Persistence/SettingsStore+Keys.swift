@@ -44,6 +44,7 @@ extension SettingsStore {
         static let launchAtStartup = "LaunchAtStartup"
         static let showInDock = "ShowInDock"
         static let accentColorOption = "AccentColorOption"
+        static let captionAccentMigration = "CaptionAccentMigration"
         static let themePreference = "ThemePreference"
         static let enableTranscriptionSounds = "EnableTranscriptionSounds"
         static let transcriptionStartSound = "TranscriptionStartSound"
@@ -115,6 +116,7 @@ extension SettingsStore {
         static let saveTranscriptionHistory = "SaveTranscriptionHistory"
         static let saveAudioWithTranscriptionHistory = "SaveAudioWithTranscriptionHistory"
         static let audioHistoryBudgetGB = "AudioHistoryBudgetGB"
+        static let historyRetention = "HistoryRetention"
         static let notifyAIProcessingFailures = "NotifyAIProcessingFailures"
 
         // Filler Words

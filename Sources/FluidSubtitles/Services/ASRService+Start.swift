@@ -18,19 +18,11 @@ extension ASRService {
     ) async -> AudioCaptureStartOutcome {
         DebugLogger.shared.info("🎤 START() called - beginning recording session", source: "ASRService")
 
-        let watchCaptions = !forDictionaryTraining && self.isWatchCaptionCapture
-        if watchCaptions {
-            guard ScreenRecordingAccess.isGranted else {
-                DebugLogger.shared.error("❌ START() blocked - Screen Recording not authorized", source: "ASRService")
-                return .failed
-            }
-        } else {
-            self.micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
-            self.micPermissionGranted = self.micStatus == .authorized
-            guard self.micStatus == .authorized else {
-                DebugLogger.shared.error("❌ START() blocked - mic not authorized", source: "ASRService")
-                return .failed
-            }
+        self.micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        self.micPermissionGranted = self.micStatus == .authorized
+        guard self.micStatus == .authorized else {
+            DebugLogger.shared.error("❌ START() blocked - mic not authorized", source: "ASRService")
+            return .failed
         }
         guard !self.recordingBufferHandoffGate.isRecovering else {
             self.presentStreamingRecoveryError()
@@ -136,14 +128,6 @@ extension ASRService {
         DebugLogger.shared.debug("✅ Buffers cleared", source: "ASRService")
 
         self.isDictionaryTrainingCaptureActive = false
-        if watchCaptions {
-            return await self.startWatchAudioCapture(
-                captureSessionID: captureSessionID,
-                readinessAttemptID: readinessAttemptID,
-                startGeneration: startGeneration,
-                onCaptureStarted: onCaptureStarted
-            )
-        }
 
         do {
             let maximumStartAttempts =
@@ -344,7 +328,10 @@ extension ASRService {
             // Pause only after capture is live so media control cannot delay the
             // first PCM packet. A quick stop while this await is in flight is
             // handled explicitly below.
-            if SettingsStore.shared.pauseMediaDuringTranscription {
+            if TheaterListenCapture.shouldPauseMedia(
+                policyPausesMedia: self.speechCapturePolicy?.pausesMedia,
+                settingEnabled: SettingsStore.shared.pauseMediaDuringTranscription
+            ) {
                 let didPause = await MediaPlaybackService.shared.pauseIfPlaying()
                 guard self.isRunning, self.isStoppingFinalTranscription == false else {
                     if didPause {
@@ -682,9 +669,8 @@ extension ASRService {
             let result = try await self.transcriptionExecutor.run { [provider] in
                 try await provider.transcribeStreaming(retained)
             }
-            let newText = ASRService.applySpokenPunctuationFormatting(
-                ASRService.applyCustomDictionary(ASRService.removeFillerWords(result.text))
-            ).trimmingCharacters(in: .whitespacesAndNewlines)
+            let newText = self.cleanedLiveTranscript(result.text)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !newText.isEmpty else { return fallback }
 
             if provider.streamingPreviewMode == .trailingWindow {

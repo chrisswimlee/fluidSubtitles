@@ -469,7 +469,8 @@ final class TranscriptionHistoryStore: ObservableObject {
             do {
                 let loaded = try await self.writer.loadPublishedState(
                     pageLimit: Self.publishedPageLimit,
-                    query: trimmed.isEmpty ? nil : trimmed
+                    query: trimmed.isEmpty ? nil : trimmed,
+                    retention: SettingsStore.shared.historyRetentionPolicy
                 )
                 guard !Task.isCancelled, self.activeSearchQuery == trimmed else { return }
                 self.entries = self.mergePending(into: loaded.page)
@@ -671,7 +672,10 @@ final class TranscriptionHistoryStore: ObservableObject {
         self.isLoading = true
         self.loadTask = Task { @MainActor in
             do {
-                let loaded = try await self.writer.loadPublishedState(pageLimit: Self.publishedPageLimit)
+                let loaded = try await self.writer.loadPublishedState(
+                    pageLimit: Self.publishedPageLimit,
+                    retention: SettingsStore.shared.historyRetentionPolicy
+                )
                 self.entries = self.mergePending(into: self.pendingReplacement ? [] : loaded.page)
                 self.summaryRecords = self.mergePendingSummaries(into: self.pendingReplacement ? [] : loaded.summaries)
                 self.trimPublishedPageIfNeeded()
@@ -722,7 +726,12 @@ final class TranscriptionHistoryStore: ObservableObject {
                 self.unsavedUpserts[entry.id] = entry
             }
         }
-        self.writer.write(upserts: upserts, deletes: deletes, replacing: replacing) { error in
+        self.writer.write(
+            upserts: upserts,
+            deletes: deletes,
+            replacing: replacing,
+            retention: SettingsStore.shared.historyRetentionPolicy
+        ) { error in
             Task { @MainActor in
                 if let error {
                     self.persistenceError = "History could not be saved. Keep \(FluidProduct.displayName) open and retry. \(error.localizedDescription)"

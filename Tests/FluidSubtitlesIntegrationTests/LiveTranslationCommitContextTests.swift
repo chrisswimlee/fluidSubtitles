@@ -50,6 +50,48 @@ final class LiveTranslationCommitContextTests: XCTestCase {
             targetID: "en"
         )
         XCTAssertEqual(result, "Next sentence.")
+        XCTAssertEqual(
+            LiveTranslationCommitContext.peeledNewTranslation(
+                "오늘 모델을 학습했습니다. 그걸 적용했습니다.",
+                priorTranslations: ["오늘 모델을 학습했습니다."],
+                targetID: "ko"
+            ),
+            "그걸 적용했습니다."
+        )
+    }
+
+    func testSanePeeledCaptionRejectsAPriorClauseStillInTheLeftover() {
+        XCTAssertFalse(
+            LiveTranslationCommitContext.isSanePeeledCaption(
+                "then applied it. It worked well.",
+                isolatedSource: "It worked well.",
+                targetID: "en"
+            )
+        )
+        XCTAssertTrue(
+            LiveTranslationCommitContext.isSanePeeledCaption(
+                "It worked well.",
+                isolatedSource: "It worked well.",
+                targetID: "en"
+            )
+        )
+    }
+
+    func testPreferConfirmationRejectsANearMatchWhenLiveLeftoverIsEmpty() {
+        XCTAssertFalse(
+            LiveTranslationCommitContext.shouldPreferConfirmation(
+                "A model trained well on the data.",
+                over: "",
+                already: ["The model trained well on the data."]
+            )
+        )
+        XCTAssertTrue(
+            LiveTranslationCommitContext.shouldPreferConfirmation(
+                "Then we applied it.",
+                over: "",
+                already: ["The model trained well on the data."]
+            )
+        )
     }
 
     func testPeeledNewTranslationReturnsNilWhenPriorTranslationsEmpty() {

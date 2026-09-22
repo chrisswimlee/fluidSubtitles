@@ -45,7 +45,7 @@ struct FeedbackView: View {
                                     .font(.system(size: 18, weight: .semibold))
                                     .foregroundStyle(self.theme.palette.primaryText)
 
-                                Text("A short note is enough. Include steps if something broke.")
+                                Text("A short note is enough. It stays on this Mac until you paste it into GitHub.")
                                     .font(.system(size: 14))
                                     .foregroundStyle(self.theme.palette.secondaryText)
                             }
@@ -103,11 +103,13 @@ struct FeedbackView: View {
                     }
                 }
 
+                CommercialLicenseStatusCard()
+
                 // Feedback Form
                 ThemedCard(style: .standard, hoverEffect: false) {
                     VStack(alignment: .leading, spacing: 16) {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Email")
+                            Text("Email (optional)")
                                 .font(.headline)
                                 .fontWeight(.semibold)
 
@@ -162,7 +164,7 @@ struct FeedbackView: View {
                                         } else {
                                             Image(systemName: "paperplane.fill")
                                         }
-                                        Text(self.isSendingFeedback ? "Sending..." : "Send Feedback")
+                                        Text(self.isSendingFeedback ? "Opening GitHub..." : "Open GitHub Issue")
                                             .fontWeight(.semibold)
                                     }
                                     .padding(.horizontal, 20)
@@ -170,7 +172,6 @@ struct FeedbackView: View {
                                 }
                                 .fluidButton(.glass, size: .medium)
                                 .disabled(self.feedbackText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-                                    self.feedbackEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
                                     self.isSendingFeedback)
                                 .buttonHoverEffect()
                             }
@@ -184,12 +185,12 @@ struct FeedbackView: View {
         .onAppear {
             self.appear = true
         }
-        .alert("Feedback Sent", isPresented: self.$showFeedbackConfirmation) {
+        .alert("Draft Ready", isPresented: self.$showFeedbackConfirmation) {
             Button("OK") {}
         } message: {
-            Text("Thank you for helping us improve \(FluidProduct.displayName).")
+            Text("The note is on your clipboard and in Application Support. GitHub is open so you can paste it. Nothing was uploaded.")
         }
-        .alert("Feedback Failed", isPresented: self.$showFeedbackError) {
+        .alert("Could Not Open GitHub", isPresented: self.$showFeedbackError) {
             Button("Try Again") {
                 Task {
                     await self.sendFeedback()
@@ -204,39 +205,31 @@ struct FeedbackView: View {
     // MARK: - Feedback Functions
 
     private func sendFeedback() async {
-        guard !self.feedbackEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !self.feedbackText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        else {
+        guard !self.feedbackText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return
         }
 
-        await MainActor.run {
-            self.isSendingFeedback = true
-        }
+        self.isSendingFeedback = true
+        defer { self.isSendingFeedback = false }
 
-        let feedbackData = self.createFeedbackData()
-        let success = await submitFeedback(data: feedbackData)
-
-        await MainActor.run {
-            self.isSendingFeedback = false
-            if success {
-                // Show confirmation and clear form
-                self.showFeedbackConfirmation = true
-                self.feedbackText = ""
-                self.feedbackEmail = ""
-                self.includeDebugLogs = false
-            } else {
-                // Show error to user - inputs are preserved for retry
-                self.feedbackErrorMessage = FluidProduct.feedbackURL == nil
-                    ? "Remote feedback is not configured for \(FluidProduct.displayName) yet."
-                    : "We couldn't send your feedback. Please check your internet connection and try again."
-                self.showFeedbackError = true
-            }
+        do {
+            _ = try LocalFeedbackDraft.share(title: "\(FluidProduct.displayName) feedback", body: self.feedbackBody())
+            self.showFeedbackConfirmation = true
+            self.feedbackText = ""
+            self.feedbackEmail = ""
+            self.includeDebugLogs = false
+        } catch {
+            self.feedbackErrorMessage = error.localizedDescription
+            self.showFeedbackError = true
         }
     }
 
-    private func createFeedbackData() -> [String: Any] {
+    private func feedbackBody() -> String {
         var feedbackContent = self.feedbackText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let email = self.feedbackEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !email.isEmpty {
+            feedbackContent += "\n\nContact: \(email)"
+        }
 
         if self.includeDebugLogs {
             feedbackContent += "\n\n--- Debug Information ---\n"
@@ -245,13 +238,12 @@ struct FeedbackView: View {
             feedbackContent += "macOS Version: \(ProcessInfo.processInfo.operatingSystemVersionString)\n"
             feedbackContent += "Date: \(Date().formatted())\n\n"
 
-            // Add recent log entries
             let logFileURL = FileLogger.shared.currentLogFileURL()
             if FileManager.default.fileExists(atPath: logFileURL.path) {
                 do {
                     let logContent = try String(contentsOf: logFileURL, encoding: .utf8)
                     let lines = logContent.components(separatedBy: .newlines)
-                    let recentLines = Array(lines.suffix(30)) // Last 30 lines
+                    let recentLines = Array(lines.suffix(30))
                     feedbackContent += "Recent Log Entries:\n"
                     feedbackContent += recentLines.joined(separator: "\n")
                 } catch {
@@ -260,46 +252,7 @@ struct FeedbackView: View {
             }
         }
 
-        return [
-            "email_id": self.feedbackEmail.trimmingCharacters(in: .whitespacesAndNewlines),
-            "feedback": feedbackContent,
-        ]
-    }
-
-    private func submitFeedback(data: [String: Any]) async -> Bool {
-        guard let url = FluidProduct.feedbackURL else {
-            DebugLogger.shared.error("Remote feedback is not configured for \(FluidProduct.displayName)", source: "FeedbackView")
-            return false
-        }
-
-        do {
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONSerialization.data(withJSONObject: data)
-
-            let (_, response) = try await URLSession.shared.data(for: request)
-
-            if let httpResponse = response as? HTTPURLResponse {
-                let success = (200...299).contains(httpResponse.statusCode)
-                if success {
-                    DebugLogger.shared.info("Feedback submitted successfully", source: "FeedbackView")
-                } else {
-                    DebugLogger.shared.error(
-                        "Feedback submission failed with status: \(httpResponse.statusCode)",
-                        source: "FeedbackView"
-                    )
-                }
-                return success
-            }
-            return false
-        } catch {
-            DebugLogger.shared.error(
-                "Network error submitting feedback: \(error.localizedDescription)",
-                source: "FeedbackView"
-            )
-            return false
-        }
+        return feedbackContent
     }
 }
 

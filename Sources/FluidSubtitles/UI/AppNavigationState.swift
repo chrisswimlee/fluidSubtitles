@@ -64,14 +64,20 @@ enum SettingsSection: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
+    /// Settings this product advertises. Dictation leftovers stay in the
+    /// enum for search and backups but are not a sidebar destination.
+    static var productSections: [SettingsSection] {
+        Self.allCases.filter { $0 != .dictation && $0 != .aiProviders }
+    }
+
     var systemImage: String {
         switch self {
-        case .translation: return "rectangle.on.rectangle"
+        case .translation: return "captions.bubble"
         case .general: return "gearshape"
         case .dictation: return "keyboard"
         case .aiProviders: return "cpu"
         case .notifications: return "bell"
-        case .audio: return "speaker.wave.2"
+        case .audio: return "mic"
         case .dataAndDiagnostics: return "wrench.and.screwdriver"
         case .experimental: return "flask"
         }

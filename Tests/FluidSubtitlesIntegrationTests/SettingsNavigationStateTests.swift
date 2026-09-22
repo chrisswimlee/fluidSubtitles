@@ -83,6 +83,16 @@ final class SettingsNavigationStateTests: XCTestCase {
         XCTAssertNil(searchField.currentEditor())
     }
 
+    func testSettingsSearchFindsCommercialLicense() {
+        XCTAssertEqual(
+            SettingsSearchIndex.results(for: "commercial license").first?.target,
+            .commercialLicense
+        )
+        XCTAssertEqual(SettingsSearchIndex.results(for: "commercial license").first?.section, .general)
+        XCTAssertTrue(SettingsSearchIndex.results(for: "SLA").contains { $0.target == .commercialLicense })
+        XCTAssertTrue(SettingsSearchIndex.results(for: "enterprise").contains { $0.target == .commercialLicense })
+    }
+
     func testSettingsSearchFindsTheater() {
         XCTAssertEqual(SettingsSearchIndex.results(for: "theater").first?.section, .translation)
         XCTAssertTrue(SettingsSearchIndex.results(for: "captions only").contains { $0.target == .theaterAppearance })
@@ -91,10 +101,12 @@ final class SettingsNavigationStateTests: XCTestCase {
         XCTAssertTrue(SettingsSearchIndex.results(for: "Translate").contains { $0.target == .liveTranslation })
         XCTAssertTrue(SettingsSearchIndex.results(for: "Translation Engine").contains { $0.target == .liveTranslation })
         XCTAssertTrue(SettingsSearchIndex.results(for: "speech to text").contains { $0.target == .liveTranslation })
-        XCTAssertTrue(SettingsSearchIndex.results(for: "FluidVoice").contains { $0.target == .theaterAppearance })
+        XCTAssertFalse(SettingsSearchIndex.results(for: "FluidVoice").contains { $0.target == .theaterAppearance })
         XCTAssertTrue(SettingsSearchIndex.results(for: "high contrast").contains { $0.target == .theaterAppearance })
         XCTAssertTrue(SettingsSearchIndex.results(for: "talk notes").contains { $0.target == .theaterAppearance })
         XCTAssertTrue(SettingsSearchIndex.results(for: "pace cue").contains { $0.target == .theaterAppearance })
+        XCTAssertTrue(SettingsSearchIndex.results(for: "setup wizard").contains { $0.target == .setupWizard })
+        XCTAssertTrue(SettingsSearchIndex.results(for: "original language").contains { $0.target == .setupWizard })
         XCTAssertTrue(SettingsSearchIndex.results(for: "Caption Cleanup").isEmpty)
     }
 
@@ -104,8 +116,13 @@ final class SettingsNavigationStateTests: XCTestCase {
             ["Theater", "General", "Dictation", "AI Providers", "Notifications", "Audio", "Data & Diagnostics", "Experimental"]
         )
         XCTAssertTrue(SettingsSection.allCases.allSatisfy { !$0.systemImage.isEmpty })
-        XCTAssertEqual(SettingsSection.translation.systemImage, "rectangle.on.rectangle")
+        XCTAssertEqual(SettingsSection.translation.systemImage, "captions.bubble")
         XCTAssertEqual(SettingsSection.aiProviders.systemImage, "cpu")
+        XCTAssertFalse(SettingsSection.productSections.contains(.dictation))
+        XCTAssertEqual(
+            SettingsSection.productSections.map(\.title),
+            ["Theater", "General", "Notifications", "Audio", "Data & Diagnostics", "Experimental"]
+        )
     }
 
     func testSettingsStoreSharedInitDoesNotReenterShared() {

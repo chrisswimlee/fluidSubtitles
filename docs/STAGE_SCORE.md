@@ -36,6 +36,10 @@ Do this once on a real Mac before you treat Theater as proven. Do not invent WER
 
 ## Samples
 
-`docs/samples/LastListenLatency.json` is a real lectern clock from the maintainer Mac: e2e 1969 ms, ASR 383 ms, MT 142 ms, thermal nominal. Hosted CI only stores it. A bilingual WER/CER score is still missing because there is no reference JSONL for that talk. Do not invent one.
+`docs/samples/LastListenLatency.json` is a real lectern clock from the maintainer Mac: e2e 1969 ms, ASR 383 ms, MT 142 ms, thermal nominal. Hosted CI only stores it. A bilingual WER/CER score is still missing because there is no reference JSONL for that talk. Do not invent one. Re-score a talk on this Mac after a Listen-host change. The audience now sees a clause when it commits, so e2e is the wait they feel. Do not invent a new number for this change.
 
 Korean and Japanese leftover commits on EOU, silence, or Stop. The 1.0 s / 6.0 s settle helpers are unused; do not invent a new land clock. A long connective can print as a caption; that is a clause rule, not a new clock.
+
+Thai has no word dictionary, so wrap can split inside a word. That is a known look, not a scored clock.
+
+There is no live-row retype counter. A painted line is immutable. Do not invent a replacement score. Hosted CI cannot caption a live tab.

@@ -52,6 +52,22 @@ enum LiveTranslationCommitContext {
         return leftover
     }
 
+    static func isSanePeeledCaption(
+        _ peeled: String,
+        isolatedSource: String,
+        targetID: String
+    ) -> Bool {
+        let cleaned = peeled.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return false }
+        let sourceID = SpokenLanguageResolver.listenLanguageID(for: isolatedSource)
+        let peeledCount = TranslationClauseSegmenter.clauseUnitCount(cleaned, languageID: targetID)
+        let sourceCount = max(
+            1,
+            TranslationClauseSegmenter.clauseUnitCount(isolatedSource, languageID: sourceID)
+        )
+        return peeledCount <= sourceCount
+    }
+
     static func leftoverContainsPriorCaption(_ leftover: String, priors: [String]) -> Bool {
         let haystack = leftover.folding(
             options: [.caseInsensitive, .diacriticInsensitive],
@@ -109,8 +125,8 @@ enum LiveTranslationCommitContext {
         let next = confirmed.trimmingCharacters(in: .whitespacesAndNewlines)
         let current = heard.trimmingCharacters(in: .whitespacesAndNewlines)
         if next.isEmpty { return false }
-        if current.isEmpty { return true }
         if already.isEmpty {
+            if current.isEmpty { return true }
             return LiveTranslationConfirm.prefersFirstConfirmation(confirmed: next, heard: current)
         }
 
@@ -126,9 +142,37 @@ enum LiveTranslationCommitContext {
             languageID: languageID
         )
         if nextLeftover.isEmpty { return false }
-        if currentLeftover.isEmpty { return true }
+        if currentLeftover.isEmpty {
+            if already.contains(where: {
+                TranslationClauseSegmenter.isSameClause($0, nextLeftover)
+                    || TranslationClauseSegmenter.isInPlaceGrowth(previous: $0, incoming: nextLeftover)
+                    || TranslationClauseSegmenter.shouldReviseCommitted(
+                        previous: $0,
+                        incoming: nextLeftover,
+                        languageID: languageID
+                    )
+                    || Self.isNearReprint($0, incoming: nextLeftover)
+            }) {
+                return false
+            }
+            return true
+        }
         guard Self.isLeftoverRevision(nextLeftover, of: currentLeftover) else { return false }
         return nextLeftover.count >= max(8, (currentLeftover.count * 2) / 3)
+    }
+
+    static func isNearReprint(_ previous: String, incoming: String) -> Bool {
+        let prev = previous
+            .split(whereSeparator: \.isWhitespace)
+            .map { $0.lowercased().trimmingCharacters(in: .punctuationCharacters) }
+            .filter { !$0.isEmpty }
+        let next = incoming
+            .split(whereSeparator: \.isWhitespace)
+            .map { $0.lowercased().trimmingCharacters(in: .punctuationCharacters) }
+            .filter { !$0.isEmpty }
+        guard prev.count >= 4, next.count >= 4, abs(prev.count - next.count) <= 2 else { return false }
+        let shared = prev.filter { next.contains($0) }.count
+        return shared * 3 >= prev.count * 2
     }
 
     static func isLeftoverRevision(_ incoming: String, of previous: String) -> Bool {

@@ -5,7 +5,7 @@ nonisolated enum FluidProduct {
     static let displayName = "fluidSubtitles"
     static let shortName = "Subtitles"
     static let bundleIdentifier = "com.fluidsubtitles.app"
-    static let tagline = "Captions that grow while you talk. Korean, English, Thai, and Japanese."
+    static let tagline = "Each sentence appears when it is ready."
     static let manifesto = "Language is no longer a barrier."
 
     static let supportFolderName = "fluidSubtitles"
@@ -34,16 +34,42 @@ nonisolated enum FluidProduct {
     static let authorName = "Chris Swim Lee"
     static let authorSiteHost = "chrisswimlee.com"
     static let authorURL = URL(string: "https://chrisswimlee.com")!
+    static let commercialLicenseEmail = "suyoung.lee99@gmail.com"
+    static let commercialLicenseURL = URL(string: "https://chrisswimlee.com/fluidSubtitles/license/")!
+    static let licenseKeychainService = "com.fluidsubtitles.commercial-license"
+    static let licenseKeychainAccount = "fluidSubtitlesCommercialLicense"
+    static let workNoticeTitle = "For work"
+    static let workNotice =
+        "Personal, student, and evaluation use is free. If IT or legal need a named license or an SLA, request a commercial license."
+
+    static var commercialLicenseMailURL: URL {
+        var components = URLComponents()
+        components.scheme = "mailto"
+        components.path = self.commercialLicenseEmail
+        components.queryItems = [
+            URLQueryItem(name: "subject", value: "fluidSubtitles commercial license"),
+            URLQueryItem(name: "body", value: """
+                Organization:
+
+                Seat count:
+
+                Do you need a written SLA?
+
+                Anything else IT or legal needs:
+                """),
+        ]
+        return components.url ?? URL(string: "mailto:\(self.commercialLicenseEmail)")!
+    }
 
     static let upstreamName = "FluidVoice"
     static let upstreamAuthor = "altic-dev"
     static let upstreamURL = URL(string: "https://github.com/altic-dev/FluidVoice")!
 
     static let creditLine =
-        "fluidSubtitles is by Chris Swim Lee (chrisswimlee.com), a branch of FluidVoice by altic-dev. Speech recognition and the core app are theirs; live translation and Theater are what we added. Licensed under GPLv3."
+        "fluidSubtitles is by Chris Swim Lee (chrisswimlee.com). Speech recognition comes from FluidVoice by altic-dev. Theater captions and insert are ours. Licensed under GPLv3."
 
     static let creditShort =
-        "By Chris Swim Lee. A branch of FluidVoice by altic-dev. GPLv3."
+        "By Chris Swim Lee. Speech recognition from FluidVoice by altic-dev. GPLv3."
 
     static var updateRepository: (owner: String, repo: String)? {
         guard let owner = self.githubOwner, let repo = self.githubRepo,
@@ -65,7 +91,6 @@ nonisolated enum FluidProduct {
     }
 
     /// Developer ID team IDs allowed to install updates, in addition to the running app’s team.
-    /// Keep this empty until a published Developer ID identity is known. Empty and ad-hoc
-    /// teams are rejected, so in-app updates stay off until the first notarized GitHub Release.
-    static let allowedUpdateTeamIDs: Set<String> = []
+    /// Suyoung Lee / Chris Swim Lee, Developer ID Application (C6BH3WS28B).
+    static let allowedUpdateTeamIDs: Set<String> = ["C6BH3WS28B"]
 }

@@ -83,6 +83,10 @@ enum LiveTranslationMT {
                 contextual,
                 priorTranslations: prior.translations,
                 targetID: target.id
+            ), LiveTranslationCommitContext.isSanePeeledCaption(
+                peeled,
+                isolatedSource: text,
+                targetID: target.id
             ) {
                 return peeled
             }
@@ -214,7 +218,9 @@ enum LiveTranslationMT {
         do {
             return try await engine.translate(text, source: source, target: target, kind: kind)
         } catch {
-            if let engineError = error as? TranslationEngineError, engineError.isSuperseded {
+            if let engineError = error as? TranslationEngineError,
+               engineError.isSuperseded || engineError.isTimeout
+            {
                 throw error
             }
             DebugLogger.shared.debug(

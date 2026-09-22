@@ -30,6 +30,7 @@ struct FluidApp: App {
             }
         }
         .defaultSize(width: 1000, height: 700)
+        .defaultLaunchBehavior(.presented)
         .commands {
             CommandGroup(replacing: .appSettings) {
                 Button("Settings...") {
@@ -37,6 +38,7 @@ struct FluidApp: App {
                 }
                 .keyboardShortcut(",", modifiers: .command)
             }
+            TheaterAppCommands()
         }
     }
 }

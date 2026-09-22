@@ -5,46 +5,60 @@
 //  Sidebar and detail routing for Theater and settings.
 //
 
+import AppKit
 import AVFoundation
 import SwiftUI
 
 extension ContentView {
     var appSidebarView: some View {
-        List(selection: self.$selectedSidebarItem) {
-            Section {
-                self.sidebarNavigationLink(.liveTranslation, title: "Theater", systemImage: "rectangle.on.rectangle")
-            } header: {
-                self.sidebarSectionHeader("Captions")
-            }
+        VStack(spacing: 0) {
+            TheaterSidebarIdentity()
+            self.sidebarLinks
+                .frame(maxHeight: .infinity)
+            self.settingsEntryButton
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(SidebarVibrancy())
+        .animation(nil, value: self.selectedSidebarItem)
+    }
 
-            Section {
-                self.sidebarNavigationLink(.voiceEngine, title: "Voice Engine", systemImage: "waveform")
-                self.sidebarNavigationLink(.translationEngine, title: "Translation Engine", systemImage: "globe")
-                self.sidebarNavigationLink(.customDictionary, title: "Custom Dictionary", systemImage: "text.book.closed.fill")
-            } header: {
+    var sidebarLinks: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 2) {
+                self.sidebarSectionHeader("Board")
+                self.sidebarNavigationLink(.liveTranslation, title: "Theater", systemImage: "captions.bubble")
+
                 self.sidebarSectionHeader("Setup")
-            }
+                Button {
+                    self.settings.startSetupWizard()
+                } label: {
+                    Text(TheaterSetupWizard.title)
+                        .font(self.theme.typography.sidebarItem)
+                        .foregroundStyle(self.theme.palette.secondaryText)
+                        .padding(.vertical, self.theme.metrics.spacing.xs / 2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .sidebarOptionHover(isSelected: false, reduceMotion: self.accessibilityReduceMotion)
+                .help(TheaterSetupWizard.welcomeDetail)
+                .accessibilityLabel(TheaterSetupWizard.title)
+                .accessibilityIdentifier("sidebar.setupWizard")
+                self.sidebarNavigationLink(.voiceEngine, title: "Voice Engine", systemImage: "waveform")
+                self.sidebarNavigationLink(.translationEngine, title: "Translation Engine", systemImage: "translate")
+                self.sidebarNavigationLink(.customDictionary, title: "Custom Dictionary", systemImage: "text.book.closed.fill")
 
-            Section {
+                self.sidebarSectionHeader("Activity")
                 self.sidebarNavigationLink(.history, title: "History", systemImage: "clock.arrow.circlepath")
                 self.sidebarNavigationLink(.stats, title: "Stats", systemImage: "chart.bar.fill")
-            } header: {
-                self.sidebarSectionHeader("Activity")
-            }
 
-            Section {
-                self.sidebarNavigationLink(.welcome, title: "Getting Started", systemImage: "house.fill")
-                self.sidebarNavigationLink(.changelog, title: "Changelog", systemImage: "doc.text.magnifyingglass")
-                self.sidebarNavigationLink(.feedback, title: "Feedback", systemImage: "envelope.fill")
-            } header: {
                 self.sidebarSectionHeader("Help")
+                self.sidebarNavigationLink(.welcome, title: "Getting Started", systemImage: "book.closed")
+                self.sidebarNavigationLink(.changelog, title: "Changelog", systemImage: "list.bullet.rectangle")
+                self.sidebarNavigationLink(.feedback, title: "Feedback", systemImage: "envelope.fill")
             }
-        }
-        .listStyle(.sidebar)
-        .accentColor(self.theme.palette.accent)
-        .animation(nil, value: self.selectedSidebarItem)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            self.settingsEntryButton
+            .padding(.horizontal, self.theme.metrics.spacing.md)
+            .padding(.bottom, self.theme.metrics.spacing.md)
         }
     }
 
@@ -53,17 +67,8 @@ extension ContentView {
             Button {
                 self.closeSettings()
             } label: {
-                HStack(spacing: self.theme.metrics.spacing.sm) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 11, weight: .semibold))
-                        .frame(width: 18, height: 28)
-
-                    Text("Back to app")
-                        .font(self.theme.typography.sidebarItem)
-
-                    Spacer(minLength: 0)
-                }
-                .foregroundStyle(.secondary)
+                Text("Back")
+                    .font(self.theme.typography.sidebarItem)
                 .padding(.horizontal, self.theme.metrics.spacing.md)
                 .padding(.top, self.theme.metrics.spacing.sm)
                 .padding(.bottom, self.theme.metrics.spacing.xs)
@@ -87,42 +92,33 @@ extension ContentView {
                 .padding(.top, self.theme.metrics.spacing.xs)
                 .padding(.bottom, self.theme.metrics.spacing.sm)
 
-            List(selection: Binding(
-                get: { self.settingsNavigation.selectedSection },
-                set: { newValue in
-                    guard let newValue else { return }
-                    if self.settingsNavigation.isLeaving(.dictation, for: newValue)
-                        || self.settingsNavigation.isLeaving(.translation, for: newValue)
-                        || self.settingsNavigation.isLeaving(.aiProviders, for: newValue)
-                    {
-                        self.clearShortcutRecordingMode()
-                    }
-                    self.settingsNavigation.selectedSection = newValue
-                    self.settingsSearchScrollRequest += 1
-                }
-            )) {
-                ForEach(self.filteredSettingsSections) { section in
-                    let isSelected = self.settingsNavigation.selectedSection == section
-                    NavigationLink(value: section) {
-                        HStack(spacing: self.theme.metrics.spacing.sm) {
-                            Image(systemName: section.systemImage)
-                                .symbolRenderingMode(.hierarchical)
-                                .foregroundStyle(isSelected ? Color.white.opacity(0.9) : Color.secondary)
-                                .frame(width: 18)
-
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(self.filteredSettingsSections) { section in
+                        let isSelected = self.settingsNavigation.selectedSection == section
+                        let rowColor = isSelected
+                            ? Color(nsColor: .alternateSelectedControlTextColor)
+                            : self.theme.palette.secondaryText
+                        Button {
+                            self.selectSettingsSection(section)
+                        } label: {
                             Text(section.title)
-                                .foregroundStyle(isSelected ? Color.white : Color.primary)
+                                .font(self.theme.typography.sidebarItem)
+                                .fontWeight(isSelected ? .medium : .regular)
+                                .foregroundStyle(rowColor)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
                         }
-                        .font(self.theme.typography.sidebarItem)
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(section.title)
+                        .sidebarOptionHover(
+                            isSelected: isSelected,
+                            reduceMotion: self.accessibilityReduceMotion
+                        )
                     }
-                    .sidebarOptionHover(
-                        isSelected: isSelected,
-                        reduceMotion: self.accessibilityReduceMotion
-                    )
                 }
+                .padding(.horizontal, self.theme.metrics.spacing.md)
             }
-            .listStyle(.sidebar)
-            .accentColor(self.theme.palette.accent)
             .animation(nil, value: self.settingsNavigation.selectedSection)
         }
     }
@@ -136,9 +132,10 @@ extension ContentView {
     }
 
     var filteredSettingsSections: [SettingsSection] {
-        guard self.isSettingsSearchActive else { return SettingsSection.allCases }
+        let sections = SettingsSection.productSections
+        guard self.isSettingsSearchActive else { return sections }
         let matchingSections = Set(self.settingsSearchResults.map(\.section))
-        return SettingsSection.allCases.filter(matchingSections.contains)
+        return sections.filter(matchingSections.contains)
     }
 
     func updateSettingsSearchQuery(_ query: String) {
@@ -155,6 +152,7 @@ extension ContentView {
 
     func availableSettingsSearchResults(for query: String) -> [SettingsSearchResult] {
         SettingsSearchIndex.results(for: query)
+            .filter { SettingsSection.productSections.contains($0.section) }
             .filter { self.isSettingsSearchTargetAvailable($0.target) }
     }
 
@@ -164,6 +162,8 @@ extension ContentView {
             return self.asr.micStatus != .authorized
         case .accessibilityPermission:
             return !self.accessibilityEnabled
+        case .historyRetention:
+            return SettingsStore.shared.saveTranscriptionHistory
         case .audioStorage:
             return SettingsStore.shared.saveTranscriptionHistory &&
                 SettingsStore.shared.saveAudioWithTranscriptionHistory
@@ -178,21 +178,8 @@ extension ContentView {
         Button {
             self.openSettings(.translation)
         } label: {
-            HStack(spacing: self.theme.metrics.spacing.sm) {
-                Image(systemName: "gearshape")
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 18)
-
-                Text("Settings")
-
-                Spacer(minLength: self.theme.metrics.spacing.sm)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .font(self.theme.typography.sidebarItem)
+            Text("Settings")
+                .font(self.theme.typography.sidebarItem)
             .padding(.horizontal, self.theme.metrics.spacing.md)
             .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
             .contentShape(Rectangle())
@@ -226,24 +213,43 @@ extension ContentView {
             .padding(.bottom, self.theme.metrics.spacing.xs)
     }
 
+    func selectSettingsSection(_ section: SettingsSection) {
+        if self.settingsNavigation.isLeaving(.dictation, for: section)
+            || self.settingsNavigation.isLeaving(.translation, for: section)
+            || self.settingsNavigation.isLeaving(.aiProviders, for: section)
+        {
+            self.clearShortcutRecordingMode()
+        }
+        self.settingsNavigation.selectedSection = section
+        self.settingsSearchScrollRequest += 1
+    }
+
     func sidebarNavigationLink(_ item: SidebarItem, title: String, systemImage: String) -> some View {
         let isSelected = self.selectedSidebarItem == item
-        return NavigationLink(value: item) {
+        let rowColor = isSelected
+            ? Color(nsColor: .alternateSelectedControlTextColor)
+            : self.theme.palette.secondaryText
+        return Button {
+            self.selectedSidebarItem = item
+        } label: {
             HStack(spacing: self.theme.metrics.spacing.sm) {
-                Image(nsImage: SidebarSymbolCache.image(named: systemImage))
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .foregroundStyle(isSelected ? Color.white.opacity(0.9) : Color.secondary)
-                    .frame(width: 16, height: 16)
-                    .accessibilityHidden(true)
-
+                SettingsIconTile(
+                    systemName: systemImage,
+                    size: 16,
+                    emphasized: isSelected,
+                    tint: isSelected ? rowColor : nil
+                )
                 Text(title)
-                    .foregroundStyle(isSelected ? Color.white : Color.primary)
+                    .font(self.theme.typography.sidebarItem)
+                    .fontWeight(isSelected ? .medium : .regular)
+                    .foregroundStyle(rowColor)
             }
-            .font(self.theme.typography.sidebarItem)
             .padding(.vertical, self.theme.metrics.spacing.xs / 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
         .sidebarOptionHover(
             isSelected: isSelected,
             reduceMotion: self.accessibilityReduceMotion
@@ -277,7 +283,7 @@ extension ContentView {
 
     var detailView: some View {
         ZStack {
-            Color(nsColor: .windowBackgroundColor)
+            self.theme.palette.windowBackground
                 .ignoresSafeArea()
 
             // Preserve the app destination so Back never waits on expensive detail initialization.

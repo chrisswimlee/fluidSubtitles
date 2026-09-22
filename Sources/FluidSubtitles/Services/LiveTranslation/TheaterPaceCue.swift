@@ -42,11 +42,9 @@ enum TheaterPaceCue {
             )
         }
 
+        _ = liveSpoken
         let printedTitle = lastTranslation.trimmingCharacters(in: .whitespacesAndNewlines)
-        let leftover = liveSpoken.trimmingCharacters(in: .whitespacesAndNewlines)
-        if printedTitle.isEmpty, leftover.isEmpty, pendingWaitMilliseconds == nil {
-            return nil
-        }
+        if printedTitle.isEmpty { return nil }
 
         return Snapshot(
             kind: .caughtUp,

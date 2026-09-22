@@ -358,7 +358,7 @@ enum ASRStopOutcome: Equatable {
 }
 
 // swiftlint:disable file_length type_body_length function_body_length cyclomatic_complexity
-// Tracked grandfather: speech engine. New product surfaces do not belong here.
+// Upstream: FluidVoice (altic-dev), GPLv3. Speech engine. Do not rewrite it to look original.
 /// A comprehensive speech recognition service that handles real-time audio transcription.
 ///
 /// This service manages the entire ASR (Automatic Speech Recognition) pipeline including:

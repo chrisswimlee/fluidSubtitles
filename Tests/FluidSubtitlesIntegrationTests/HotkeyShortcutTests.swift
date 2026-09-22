@@ -98,8 +98,13 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     func testMicrophoneChangeAlertsSupportProductionAndDebugAppsOnly() {
-        XCTAssertTrue(MicrophoneChangeOverlayController.supportsAlerts(bundleIdentifier: "com.FluidApp.app"))
-        XCTAssertTrue(MicrophoneChangeOverlayController.supportsAlerts(bundleIdentifier: "com.FluidApp.app.debug"))
+        XCTAssertTrue(MicrophoneChangeOverlayController.supportsAlerts(bundleIdentifier: FluidProduct.bundleIdentifier))
+        XCTAssertTrue(
+            MicrophoneChangeOverlayController.supportsAlerts(
+                bundleIdentifier: "\(FluidProduct.bundleIdentifier).debug"
+            )
+        )
+        XCTAssertFalse(MicrophoneChangeOverlayController.supportsAlerts(bundleIdentifier: "com.FluidApp.app"))
         XCTAssertFalse(MicrophoneChangeOverlayController.supportsAlerts(bundleIdentifier: "com.example.tests"))
         XCTAssertFalse(MicrophoneChangeOverlayController.supportsAlerts(bundleIdentifier: nil))
     }
@@ -768,8 +773,8 @@ final class HotkeyShortcutTests: XCTestCase {
         }
     }
 
-    func testPrimaryDictationShortcutsPersistMultipleAndUpdateLegacyFirst() throws {
-        try self.withRestoredDefaults(keys: [self.legacyHotkeyShortcutKey, self.primaryDictationShortcutsKey]) {
+    func testPrimaryDictationShortcutsPersistMultipleAndUpdateLegacyFirst() {
+        self.withRestoredDefaults(keys: [self.legacyHotkeyShortcutKey, self.primaryDictationShortcutsKey]) {
             let mouseShortcut = HotkeyShortcut(mouseButton: 3, modifierFlags: NSEvent.ModifierFlags())
             let keyboardShortcut = HotkeyShortcut(keyCode: 12, modifierFlags: [.option])
 
@@ -784,8 +789,8 @@ final class HotkeyShortcutTests: XCTestCase {
         }
     }
 
-    func testPasteLastTranscriptionShortcutDefaultsToUnboundAndDisabled() throws {
-        try self.withRestoredDefaults(keys: [
+    func testPasteLastTranscriptionShortcutDefaultsToUnboundAndDisabled() {
+        self.withRestoredDefaults(keys: [
             self.pasteLastTranscriptionShortcutKey,
             self.pasteLastTranscriptionEnabledKey,
         ]) {
@@ -797,8 +802,8 @@ final class HotkeyShortcutTests: XCTestCase {
         }
     }
 
-    func testPasteLastTranscriptionShortcutPersistsAndClears() throws {
-        try self.withRestoredDefaults(keys: [
+    func testPasteLastTranscriptionShortcutPersistsAndClears() {
+        self.withRestoredDefaults(keys: [
             self.pasteLastTranscriptionShortcutKey,
             self.pasteLastTranscriptionEnabledKey,
         ]) {
@@ -815,8 +820,8 @@ final class HotkeyShortcutTests: XCTestCase {
         }
     }
 
-    func testPasteLastTranscriptionShortcutSupportsMouseButton() throws {
-        try self.withRestoredDefaults(keys: [self.pasteLastTranscriptionShortcutKey]) {
+    func testPasteLastTranscriptionShortcutSupportsMouseButton() {
+        self.withRestoredDefaults(keys: [self.pasteLastTranscriptionShortcutKey]) {
             let mouseShortcut = HotkeyShortcut(mouseButton: 3, modifierFlags: [.option])
             SettingsStore.shared.pasteLastTranscriptionHotkeyShortcut = mouseShortcut
 
@@ -827,8 +832,8 @@ final class HotkeyShortcutTests: XCTestCase {
         }
     }
 
-    func testLegacySystemModeRemainsReadableForPriorityMigration() throws {
-        try self.withRestoredDefaults(keys: [self.microphoneSelectionModeKey]) {
+    func testLegacySystemModeRemainsReadableForPriorityMigration() {
+        self.withRestoredDefaults(keys: [self.microphoneSelectionModeKey]) {
             SettingsStore.shared.defaults.set(
                 SettingsStore.MicrophoneSelectionMode.system.rawValue,
                 forKey: self.microphoneSelectionModeKey
@@ -1706,7 +1711,7 @@ final class HotkeyShortcutTests: XCTestCase {
                 .init(uid: microphone.uid, name: microphone.name),
             ]
 
-            XCTAssertTrue(SettingsStore.shared.showMicrophoneChangeAlerts)
+            XCTAssertFalse(SettingsStore.shared.showMicrophoneChangeAlerts)
 
             MicrophoneChangeOverlayController.shared.disableFutureAlerts()
 

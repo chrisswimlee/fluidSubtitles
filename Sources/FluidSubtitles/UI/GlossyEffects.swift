@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 // MARK: - Hoverable Glossy Card Component
@@ -37,7 +38,6 @@ struct HoverableGlossyCard<Content: View>: View {
                         y: self.isHovered ? cardShadow.y + 1 : cardShadow.y
                     )
             }
-            .scaleEffect(self.isHovered && !self.excludeInteractiveElements ? 1.02 : 1.0)
             .onHover { hovering in
                 self.isHovered = hovering
             }
@@ -51,6 +51,17 @@ extension View {
     func buttonHoverEffect() -> some View {
         modifier(ButtonHoverModifier())
     }
+
+    /// Pointing hand for text links. Buttons keep the arrow.
+    func textLinkPointer() -> some View {
+        self.onHover { inside in
+            if inside {
+                NSCursor.pointingHand.set()
+            } else {
+                NSCursor.arrow.set()
+            }
+        }
+    }
 }
 
 struct ButtonHoverModifier: ViewModifier {
@@ -59,7 +70,6 @@ struct ButtonHoverModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .scaleEffect(self.isHovered ? FluidInteractionVisuals.hoverScale : 1.0)
             .shadow(
                 color: self.theme.palette.accent.opacity(self.isHovered ? 0.35 : 0.0),
                 radius: self.isHovered ? 8 : 0,

@@ -1,12 +1,13 @@
 # Contributing to fluidSubtitles
 
-This repo is Theater captions and dictation insert among **Korean, English, Thai, and Japanese**. Speech recognition and the macOS app shell come from [FluidVoice](https://github.com/altic-dev/FluidVoice). Please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Report security issues only through [SECURITY.md](SECURITY.md).
+This repo is Theater captions and dictation insert among **Korean, English, Thai, and Japanese**. Speech recognition engines come from [FluidVoice](https://github.com/altic-dev/FluidVoice). Theater Listen, captions, History, and the app identity are owned here. See [CREDITS.md](CREDITS.md). Please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Report security issues only through [SECURITY.md](SECURITY.md). Commercial and procurement questions go to [docs/COMMERCIAL.md](docs/COMMERCIAL.md) or [chrisswimlee.com/fluidSubtitles/license](https://chrisswimlee.com/fluidSubtitles/license/), not GitHub Issues.
 
 ## Who this repo is for
 
 | Change | File it here | File it upstream |
 | --- | --- | --- |
 | Theater window, Voice / Translate, captions, Apple Translation, latency HUD | Yes | No |
+| Theater Listen start/stop, partial bus, History, fluidSubtitles identity | Yes | No |
 | Dictation insert of **this Listen** into another app | Yes | Only if the typing engine itself is wrong |
 | Voice Engine picker limited to KO/EN/TH/JA | Yes | No |
 | ASR decode, microphone graph, Parakeet / Whisper / Nemotron internals | Ask first | Usually [FluidVoice](https://github.com/altic-dev/FluidVoice) |
@@ -43,7 +44,7 @@ Launch `DerivedData/Build/Products/Debug/fluidSubtitles Debug.app`. Keep using t
 
 3. Open **Theater**. First run selects **Apple Speech Analyzer** on macOS 26, or **Apple Speech** on macOS 15. Use **Parakeet Flash** only for faster English lectern (Show other models). Do not start with Nemotron Thai.
 
-4. Allow the microphone. Pick **Voice** for FluidVoice transcription or **Translate** for captions. Press **Listen** and speak one sentence. Download an Apple Translation pack only for Translate with two languages. Theater Listen does not ask for Screen Recording.
+4. Allow the microphone. Pick **Voice** for Theater transcription or **Translate** for captions. Press **Listen** and speak one sentence. Download an Apple Translation pack only for Translate with two languages. Theater Listen does not ask for Screen Recording.
 
 5. Format, lint, and test. `./scripts/format-and-lint.sh` is required before you open a PR (SwiftFormat, SwiftLint strict, and the PR-policy unit tests when those tools are installed):
 
@@ -80,12 +81,13 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before changing Theater or the
 | Area | Path | Role |
 | --- | --- | --- |
 | Live translation | `Sources/FluidSubtitles/Services/LiveTranslation/` | Clause split, Apple Translation, Theater archive, latency HUD, optional MLX |
-| Theater UI | `Sources/FluidSubtitles/UI/LiveTranslation/` | Home, Theater window, presenter chrome |
-| Speech engine | `ASRService.swift` plus `ASRService+*.swift` | Microphone audio → transcript. Keep this as the engine, not the product. |
-| Dictation insert | `TypingService`, `GlobalHotkeyManager` | Types the current listen into the frontmost app |
-| Overlay | `BottomOverlayView`, `NotchOverlayManager` | Dictation preview only |
+| Theater UI | `Sources/FluidSubtitles/UI/LiveTranslation/` | Home, Theater window, presenter chrome, Setup Wizard |
+| Speech engine | `ASRService.swift` plus `ASRService+*.swift` | Microphone audio → transcript. Reads `SpeechCapturePolicy`. Keep this as the engine, not the product. |
+| Theater Listen | `ContentView+TheaterListen.swift`, `TheaterSpeechSession.swift` | Caption and insert start/stop. Do not start Theater as dictation. |
+| Dictation insert | `TypingService`, `GlobalHotkeyManager` | Listen and type uses the app captured at start. Type into app uses the frontmost field. |
+| Overlay | `BottomOverlayView`, `NotchOverlayManager` | Insert chip only |
 | Settings | `SettingsStore.swift` plus `SettingsStore+*.swift` | Persist models, shortcuts, Theater options |
-| App shell | `ContentView.swift` plus `ContentView+*.swift` | Window, dictation start, insert, onboarding |
+| App shell | `ContentView.swift` plus `ContentView+*.swift` | Window, Theater Listen, onboarding |
 
 New settings belong in a `SettingsStore+*.swift` file. New ContentView routing belongs in a `ContentView+*.swift` file. New Theater work stays under `LiveTranslation/`.
 
@@ -98,6 +100,8 @@ Start a [GitHub Discussion](https://github.com/chrisswimlee/fluidSubtitles/discu
 - Explore a design direction.
 - Report behavior that you are not sure is a fluidSubtitles bug.
 - Ask whether a change would be accepted before writing code.
+
+Do not open an issue to buy or quote a commercial license. Send IT and legal to [the license page](https://chrisswimlee.com/fluidSubtitles/license/).
 
 Feature ideas should begin in the Ideas category. Maintainers may turn an accepted discussion into a tracked issue.
 
@@ -142,4 +146,4 @@ These are not CI checks. Run [`scripts/enable-github-gates.sh`](scripts/enable-g
 - Require the `Build and Test` check and the `PR Policy` check on `main`.
 - Create a GitHub Environment named `release` with required reviewers. The release workflow fails closed unless Developer ID and notarization secrets are present.
 - Fill one [stage score](docs/STAGE_SCORE.md) on a real Mac. Do not invent numbers. Watch is not a product gate.
-- After the first Developer ID zip, add that team ID to `FluidProduct.allowedUpdateTeamIDs` (empty today, so in-app updates reject everyone) and publish a `v*` GitHub Release with `SHA256SUMS`. See [docs/SIGNING.md](docs/SIGNING.md).
+- After the first Developer ID zip, publish a `v*` GitHub Release with `SHA256SUMS`. `FluidProduct.allowedUpdateTeamIDs` already includes `C6BH3WS28B`. See [docs/SIGNING.md](docs/SIGNING.md).

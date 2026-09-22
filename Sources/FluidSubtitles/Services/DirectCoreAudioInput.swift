@@ -5,7 +5,7 @@ import CoreAudioCaptureSupport
 import Foundation
 
 // swiftlint:disable file_length type_body_length function_body_length cyclomatic_complexity
-// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
+// Upstream: FluidVoice (altic-dev), GPLv3. Microphone graph. Do not rewrite it to look original.
 
 nonisolated enum DirectCoreAudioDeviceSelection: Equatable {
     case systemDefault

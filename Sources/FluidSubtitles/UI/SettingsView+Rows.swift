@@ -88,6 +88,32 @@ extension SettingsView {
         }
     }
 
+    func historyRetentionControls() -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Keep History")
+                    .font(self.theme.typography.bodyStrong)
+                    .foregroundStyle(self.settingsTitleText)
+                Text(SettingsStore.shared.historyRetention.detail)
+                    .font(self.theme.typography.bodySmall)
+                    .foregroundStyle(self.settingsSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Picker("", selection: Binding(
+                get: { SettingsStore.shared.historyRetention },
+                set: { SettingsStore.shared.historyRetention = $0 }
+            )) {
+                ForEach(HistoryRetention.allCases) { retention in
+                    Text(retention.displayName).tag(retention)
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(width: 120, alignment: .trailing)
+        }
+    }
+
     func audioHistoryControls() -> some View {
         VStack(spacing: 12) {
             HStack(alignment: .center, spacing: 12) {

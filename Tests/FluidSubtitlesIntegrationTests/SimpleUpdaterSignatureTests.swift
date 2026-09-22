@@ -20,6 +20,39 @@ final class SimpleUpdaterSignatureTests: XCTestCase {
         XCTAssertTrue(UpdateSignaturePolicy.isUsableTeamID("ABCD123456"))
     }
 
+    func testPublicUpdatesStayOffForEmptyAllowlistAndAdHocTeams() {
+        XCTAssertFalse(
+            UpdateSignaturePolicy.canInstallPublicUpdates(currentTeam: nil, allowed: [])
+        )
+        XCTAssertFalse(
+            UpdateSignaturePolicy.canInstallPublicUpdates(currentTeam: "adhoc", allowed: [])
+        )
+        XCTAssertTrue(
+            UpdateSignaturePolicy.canInstallPublicUpdates(
+                currentTeam: "ABCD123456",
+                allowed: []
+            )
+        )
+        XCTAssertFalse(
+            UpdateSignaturePolicy.canInstallPublicUpdates(
+                currentTeam: nil,
+                allowed: ["ABCD123456"]
+            )
+        )
+        XCTAssertFalse(
+            UpdateSignaturePolicy.canInstallPublicUpdates(
+                currentTeam: "ABCD123456",
+                allowed: ["C6BH3WS28B"]
+            )
+        )
+        XCTAssertTrue(
+            UpdateSignaturePolicy.canInstallPublicUpdates(
+                currentTeam: "C6BH3WS28B",
+                allowed: ["C6BH3WS28B"]
+            )
+        )
+    }
+
     func testRejectsTeamMismatchAndAllowsSameOrAllowlistedTeams() {
         let allowed: Set<String> = ["ABCD123456", "EFGH789012"]
         XCTAssertTrue(
@@ -105,7 +138,7 @@ final class SimpleUpdaterSignatureTests: XCTestCase {
         )
     }
 
-    func testChecksumLookupAndSHA256() {
+    func testChecksumLookupAndSHA256() throws {
         let sums = """
         # comment
         abcdef0123456789  fluidsubtitles-1.6.10.zip
@@ -123,5 +156,10 @@ final class SimpleUpdaterSignatureTests: XCTestCase {
         )
         let digest = UpdateSignaturePolicy.hexSHA256(of: Data("fluidSubtitles".utf8))
         XCTAssertEqual(digest.count, 64)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sha256-\(UUID().uuidString).bin")
+        try Data("fluidSubtitles".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        XCTAssertEqual(try UpdateSignaturePolicy.hexSHA256(ofFile: url), digest)
     }
 }

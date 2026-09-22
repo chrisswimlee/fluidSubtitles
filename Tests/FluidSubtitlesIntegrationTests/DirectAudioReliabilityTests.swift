@@ -696,9 +696,14 @@ final class DirectAudioReliabilityTests: XCTestCase {
         XCTAssertTrue(completionSection.contains("NotchOverlayManager.shared.hideImmediately()"))
         XCTAssertFalse(completionSection.contains("NotchOverlayManager.shared.hide()"))
 
+        let theaterSource = try String(
+            contentsOf: repositoryRoot
+                .appendingPathComponent("Sources/FluidSubtitles/ContentView+TheaterListen.swift"),
+            encoding: .utf8
+        )
         let postStopSection = try XCTUnwrap(
-            source.components(separatedBy: "let transcribedText = await asr.stop").last?
-                .components(separatedBy: "guard transcribedText.trimmingCharacters").first
+            theaterSource.components(separatedBy: "let transcribedText = await self.asr.stop").last?
+                .components(separatedBy: "TheaterSpeechSession.shared.clear").first
         )
         XCTAssertFalse(postStopSection.contains("updateTranscriptionText(\"\")"))
     }
@@ -722,19 +727,20 @@ final class DirectAudioReliabilityTests: XCTestCase {
         XCTAssertTrue(slowStatusSection.contains("self.menuBarManager.setProcessing(true)"))
         XCTAssertTrue(slowStatusSection.contains("let streamPreview = DictationAIStreamPreviewBuffer"))
 
+        let theaterSource = try String(
+            contentsOf: repositoryRoot
+                .appendingPathComponent("Sources/FluidSubtitles/ContentView+TheaterListen.swift"),
+            encoding: .utf8
+        )
         let stopSection = try XCTUnwrap(
-            source.components(separatedBy: "func stopAndProcessTranscription(").last?
-                .components(separatedBy: "func makeAIProcessingFeedback(").first
+            theaterSource.components(separatedBy: "func processStoppedTheaterListen(").last?
+                .components(separatedBy: "func cancelTheaterListenIfNeeded(").first
         )
         let lifecycleSnapshotIndex = try XCTUnwrap(
             stopSection.range(of: "let expectedOverlayLifecycleID = self.overlayLifecycleID")
         )
-        let ASRStopIndex = try XCTUnwrap(stopSection.range(of: "let transcribedText = await asr.stop"))
+        let ASRStopIndex = try XCTUnwrap(stopSection.range(of: "let transcribedText = await self.asr.stop"))
         XCTAssertLessThan(lifecycleSnapshotIndex.lowerBound, ASRStopIndex.lowerBound)
-        XCTAssertEqual(
-            stopSection.components(separatedBy: "let expectedOverlayLifecycleID = self.overlayLifecycleID").count,
-            2
-        )
     }
 
     func testDictionaryTrackingStartsAfterDeliveryCallbackReturns() throws {

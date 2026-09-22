@@ -28,8 +28,7 @@ struct TheaterEngineCards: View {
                     ) {
                         if self.showsVoiceCustomize, let openVoiceEngine {
                             Button("Customize", action: openVoiceEngine)
-                                .buttonStyle(.bordered)
-                                .controlSize(.regular)
+                                .buttonStyle(.theaterText)
                                 .accessibilityIdentifier("theater.customizeVoiceEngine")
                         }
                     }
@@ -39,7 +38,7 @@ struct TheaterEngineCards: View {
 
                 self.engineSection(
                     title: TheaterEngineCopy.translationTitle,
-                    systemImage: "globe",
+                    systemImage: "translate",
                     purpose: self.showsPurpose ? TheaterEngineCopy.translationPurpose : nil,
                     engineName: TheaterEngineCopy.translationName(),
                     running: self.translationRunningLine,
@@ -48,8 +47,7 @@ struct TheaterEngineCards: View {
                 ) {
                     if self.showsTranslationCustomize, let openTranslationEngine {
                         Button("Customize", action: openTranslationEngine)
-                            .buttonStyle(.bordered)
-                            .controlSize(.regular)
+                            .buttonStyle(.theaterText)
                             .accessibilityIdentifier("theater.customizeTranslationEngine")
                     }
                 }

@@ -23,141 +23,41 @@ enum TheaterCaptionFlow {
         sourceDraft: String = "",
         pendingSources: [String] = [],
         inFlightCount: Int = 0,
+        liveRowID: UInt64 = 0,
         spokenDisplay: TheaterCaptionSpokenDisplay = .isTheCaption,
         makesRoomForLive: Bool = true
     ) -> [TheaterFlowLine] {
+        _ = draft
+        _ = sourceDraft
+        _ = pendingSources
+        _ = inFlightCount
+        _ = liveRowID
+        _ = spokenDisplay
+        _ = makesRoomForLive
+        _ = nextCaptionID
         let history = committed
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .enumerated()
             .filter { !$0.element.isEmpty }
-        let draftText = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        let spoken = sourceDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        var liveText = ""
-        var liveSource = ""
-        let printedSources = committedSources
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        let pending = pendingSources
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .filter { !Self.isAlreadyOnBoard($0, lastText: history.last?.element ?? "", printedSources: printedSources) }
-        let lastText = history.last?.element ?? ""
-        let alreadyOnBoard = printedSources + pending
-        let peeledSpoken = Self.unreadCaption(
-            spoken,
-            lastText: lastText,
-            printedSources: alreadyOnBoard
-        )
-        let unreadSpoken = !peeledSpoken.isEmpty
-            && !Self.isAlreadyOnBoard(
-                peeledSpoken,
-                lastText: lastText,
-                printedSources: alreadyOnBoard
-            )
-        let printedTitles = history.map(\.element)
-        switch spokenDisplay {
-        case .hidden:
-            if !draftText.isEmpty, !Self.isSameCaption(draftText, lastText) {
-                liveText = Self.freshCaption(
-                    draftText,
-                    lastText: lastText,
-                    printedSources: printedTitles
-                )
-            }
-        case .paired:
-            if !draftText.isEmpty, !Self.isSameCaption(draftText, lastText) {
-                liveText = Self.freshCaption(
-                    draftText,
-                    lastText: lastText,
-                    printedSources: history.map(\.element)
-                )
-                if unreadSpoken, !Self.isSameCaption(peeledSpoken, liveText) {
-                    liveSource = peeledSpoken
-                }
-            } else if unreadSpoken {
-                liveSource = peeledSpoken
-            }
-        case .isTheCaption:
-            if !draftText.isEmpty, !Self.isSameCaption(draftText, lastText) {
-                liveText = Self.freshCaption(
-                    draftText,
-                    lastText: lastText,
-                    printedSources: alreadyOnBoard
-                )
-                if liveText.isEmpty, unreadSpoken {
-                    liveText = peeledSpoken
-                }
-            } else if unreadSpoken {
-                liveText = peeledSpoken
-            }
-        }
-
-        let freshLive = !liveText.isEmpty || !liveSource.isEmpty
-        let visiblePending = spokenDisplay == .hidden ? [] : pending
-        let liveSlots = (freshLive ? 1 : 0) + visiblePending.count
-        // The board keeps every row and scrolls old ones up out of view, so
-        // it passes false. Dropping the top row as a new one appears made the
-        // rows below jump up.
-        let historyLimit = makesRoomForLive
-            ? max(0, LiveTranslationTiming.visibleTheaterLines - liveSlots)
-            : LiveTranslationTiming.visibleTheaterLines
-        let visibleHistory = Array(history.suffix(historyLimit))
 
         func committedLine(index: Int, text: String, isCurrent: Bool) -> TheaterFlowLine {
-            let id = index < committedIDs.count ? "c-\(committedIDs[index])" : "c-\(index + 1)"
+            let id: String
+            if index < committedIDs.count {
+                id = "c-\(committedIDs[index])"
+            } else if committedIDs.isEmpty {
+                id = "c-\(index + 1)"
+            } else {
+                id = "c-h-\(index + 1)"
+            }
             let source = index < committedSources.count ? committedSources[index] : ""
             return TheaterFlowLine(id: id, text: text, source: source, isCurrent: isCurrent, isDraft: false)
         }
 
-        let hasRowsBelow = freshLive || !visiblePending.isEmpty
-        var result: [TheaterFlowLine] = visibleHistory.map { index, text in
-            committedLine(index: index, text: text, isCurrent: !hasRowsBelow && index == visibleHistory.last?.offset)
+        return history.map { index, text in
+            committedLine(index: index, text: text, isCurrent: index == history.last?.offset)
         }
-        let fallback = (committedIDs.max() ?? 0) + 1
-        let pendingBase = nextCaptionID > 0 ? nextCaptionID : fallback
-        for (offset, spokenLine) in visiblePending.enumerated() {
-            let id = "c-\(pendingBase + UInt64(offset))"
-            switch spokenDisplay {
-            case .hidden:
-                break
-            case .paired:
-                result.append(TheaterFlowLine(
-                    id: id,
-                    text: "",
-                    source: spokenLine,
-                    isCurrent: false,
-                    isDraft: true
-                ))
-            case .isTheCaption:
-                result.append(TheaterFlowLine(
-                    id: id,
-                    text: spokenLine,
-                    source: "",
-                    isCurrent: false,
-                    isDraft: true
-                ))
-            }
-        }
-        if freshLive {
-            result.append(TheaterFlowLine(
-                id: Self.liveID(
-                    after: committedIDs,
-                    nextID: nextCaptionID,
-                    // `visiblePending` already reflects every in-flight
-                    // source (pendingSpokenLines includes inFlightSources),
-                    // so adding `inFlightCount` here would double-count them
-                    // and forecast an id the row never actually gets.
-                    pendingCount: visiblePending.count
-                ),
-                text: liveText,
-                source: liveSource,
-                isCurrent: true,
-                isDraft: true
-            ))
-        }
-        return result
     }
+
 
     static func unreadCaption(
         _ text: String,

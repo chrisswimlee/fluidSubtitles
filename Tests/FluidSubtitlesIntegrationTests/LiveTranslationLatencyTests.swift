@@ -253,7 +253,7 @@ final class LiveTranslationLatencyTests: XCTestCase {
         )
     }
 
-    func testDraftDoesNotTranslateWhileListeningToAnOpenLine() async {
+    func testOpenLinePublishesLiveShowAsWithoutCommitting() async {
         let settings = SettingsStore.shared
         let originalSource = settings.translationSourceLanguageID
         let originalTarget = settings.translationTargetLanguageID
@@ -263,6 +263,9 @@ final class LiveTranslationLatencyTests: XCTestCase {
         }
         settings.translationSourceLanguageID = "en"
         settings.translationTargetLanguageID = "ko"
+        let originalSpoken = settings.theaterSpokenLineMode
+        defer { settings.theaterSpokenLineMode = originalSpoken }
+        settings.theaterSpokenLineMode = .afterPause
 
         let engine = FakeTranslationEngine()
         engine.result = .success("안녕 세상")
@@ -273,8 +276,8 @@ final class LiveTranslationLatencyTests: XCTestCase {
         subscriber.beginListening()
         subscriber.handlePartial("Hello world today")
         try? await Task.sleep(nanoseconds: 150_000_000)
-        XCTAssertTrue(engine.calls.isEmpty)
-        XCTAssertTrue(subscriber.liveCaptionText.isEmpty)
+        XCTAssertEqual(engine.calls, ["Hello world today"])
+        XCTAssertEqual(subscriber.liveCaptionText, "안녕 세상")
         XCTAssertTrue(subscriber.committedLines.isEmpty)
     }
 
@@ -288,6 +291,9 @@ final class LiveTranslationLatencyTests: XCTestCase {
         }
         settings.translationSourceLanguageID = "en"
         settings.translationTargetLanguageID = "ko"
+        let originalSpoken = settings.theaterSpokenLineMode
+        defer { settings.theaterSpokenLineMode = originalSpoken }
+        settings.theaterSpokenLineMode = .afterPause
 
         let engine = FakeTranslationEngine()
         engine.result = .success("안녕 세상")
@@ -297,16 +303,37 @@ final class LiveTranslationLatencyTests: XCTestCase {
         )
         subscriber.beginListening()
         subscriber.handlePartial("Hello world today")
-        XCTAssertTrue(engine.calls.isEmpty)
         subscriber.handleEndOfUtterance()
         // A brief pause keeps the thin tail open in case the thought goes on.
+        // Show-as may already be the live prefetch of that tail.
         try? await Task.sleep(nanoseconds: 900_000_000)
         XCTAssertTrue(subscriber.committedLines.isEmpty)
-        XCTAssertTrue(engine.calls.isEmpty)
+        XCTAssertEqual(engine.calls, ["Hello world today"])
         XCTAssertEqual(subscriber.sourceDraft, "Hello world today")
         // Sustained silence prints it instead of holding it until Stop.
         await subscriber.waitForIdleForTesting()
         XCTAssertEqual(engine.calls.count, 1)
+    }
+
+    func testSessionTraceRecordsTheListenWithoutTheWords() {
+        var trace = LiveTranslationSessionTrace(token: 4, kind: "captions", startedUptime: 10)
+        XCTAssertEqual(
+            trace.beginLine(mode: "translation", pair: "ko>en", model: "apple-speech", thermal: "nominal"),
+            "session begin kind=captions token=4 mode=translation pair=ko>en model=apple-speech thermal=nominal"
+        )
+        trace.partials = 12
+        trace.silenceHolds = 2
+        trace.utteranceEnds = 1
+        XCTAssertEqual(
+            trace.endLine(outcome: "finished chars=40", now: 12.5, lines: 3),
+            "session finished chars=40 kind=captions token=4 elapsedMs=2500 partials=12 silenceHolds=2 utteranceEnds=1 lines=3"
+        )
+        XCTAssertFalse(trace.endLine(outcome: "abandoned", now: 11, lines: 0).contains("hello"))
+        XCTAssertEqual(LiveTranslationTrace.packLabel(.supported), "supported")
+        XCTAssertEqual(
+            LiveTranslationTrace.event("listen blocked", token: 4, "gate=needDownload pair=ko>en"),
+            "listen blocked token=4 gate=needDownload pair=ko>en"
+        )
     }
 
     func testThermalReadoutLabels() {

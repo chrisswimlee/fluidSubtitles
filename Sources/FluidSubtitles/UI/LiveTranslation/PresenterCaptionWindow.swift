@@ -21,12 +21,10 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
     private var boardSources: [String] = []
     private var boardPending: [String] = []
     private var boardInFlight = 0
+    private var boardLiveRowID: UInt64 = 0
     private var liveDraft = ""
     private var liveSource = ""
-    private var spokenStabilizer = TheaterStableText()
-    private var revealTailWork: DispatchWorkItem?
-    /// No newer guess this long means the speaker paused; show the whole line.
-    private static let revealTailDelay: TimeInterval = 0.6
+    private var liveTentative = ""
 
     var isEditing: Bool { self.model.isEditing }
 
@@ -50,13 +48,17 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
             self.panel = Self.makePanel(model: self.model)
             self.panel?.delegate = self
         }
+        let wasMinimized = SettingsStore.shared.theaterMinimized
         SettingsStore.shared.theaterMinimized = false
         self.observeSettings()
         self.applyWindowSharing()
         self.applyPresentationStyle()
-        self.restoreFrame()
+        if wasMinimized {
+            self.applyMinimizedLayout()
+        } else {
+            self.restoreFrame()
+        }
         self.rememberExternalApp()
-        self.applyMinimizedLayout()
         self.applyOverlayPin()
         if TheaterMinimize.shouldOrderFront(minimized: SettingsStore.shared.theaterMinimized) {
             if self.model.isEditing {
@@ -85,15 +87,15 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
         self.boardSources = []
         self.boardPending = []
         self.boardInFlight = 0
+        self.boardLiveRowID = 0
         self.liveDraft = ""
         self.liveSource = ""
-        self.spokenStabilizer.reset()
-        self.revealTailWork?.cancel()
-        self.revealTailWork = nil
+        self.liveTentative = ""
         self.model.committed = []
         self.model.committedIDs = []
         self.model.nextCaptionID = 1
         self.model.source = ""
+        self.model.tentativeSpoken = ""
         self.model.draft = ""
         self.model.status = ""
         self.model.statusKind = .idle
@@ -102,6 +104,7 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
         self.model.committedSources = []
         self.model.pendingSources = []
         self.model.inFlightCount = 0
+        self.model.liveRowID = 0
         self.model.canRetryTranslation = false
         self.model.approachingLineLimit = false
         self.model.latencyReadout = ""
@@ -120,6 +123,7 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
         committedSources: [String] = [],
         pendingSources: [String] = [],
         inFlightCount: Int = 0,
+        liveRowID: UInt64 = 0,
         pairLabel: String,
         status: String,
         statusKind: TheaterStatusKind = .idle,
@@ -137,8 +141,10 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
         self.boardSources = committedSources
         self.boardPending = pendingSources
         self.boardInFlight = inFlightCount
-        self.liveDraft = draft
-        self.liveSource = self.stableSpoken(source, isLive: isListening && !isPaused)
+        self.boardLiveRowID = liveRowID
+        self.liveDraft = ""
+        self.liveSource = ""
+        self.liveTentative = ""
         if self.model.pairLabel != pairLabel { self.model.pairLabel = pairLabel }
         if self.model.status != status { self.model.status = status }
         if self.model.statusKind != statusKind { self.model.statusKind = statusKind }
@@ -169,7 +175,7 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
             self.model.paceCueKind = paceKind
         }
         if !self.model.isEditing {
-            let document = Self.captionDocument(committed: committed, draft: draft)
+            let document = Self.captionDocument(committed: committed, draft: "")
             if self.model.editedText != document {
                 self.model.editedText = document
             }
@@ -177,40 +183,11 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
         self.applyPresentedBoard()
     }
 
-    /// Type only words recognition has settled on. Stop or pause shows all.
-    private func stableSpoken(_ source: String, isLive: Bool) -> String {
-        let previous = self.spokenStabilizer.hypothesis
-        let shown = self.spokenStabilizer.ingest(source)
-        guard isLive else {
-            self.revealTailWork?.cancel()
-            self.revealTailWork = nil
-            return self.spokenStabilizer.revealAll()
-        }
-        // Only a new guess restarts the pause clock; status or latency
-        // refreshes must not keep the tail hidden.
-        let isNewGuess = self.spokenStabilizer.hypothesis != previous
-        if isNewGuess {
-            self.revealTailWork?.cancel()
-            self.revealTailWork = nil
-        }
-        if isNewGuess, self.spokenStabilizer.hasHiddenTail {
-            let work = DispatchWorkItem { [weak self] in
-                guard let self else { return }
-                self.revealTailWork = nil
-                self.liveSource = self.spokenStabilizer.revealAll()
-                self.applyPresentedBoard()
-            }
-            self.revealTailWork = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.revealTailDelay, execute: work)
-        }
-        return shown
-    }
-
     func documentTextForDelivery() -> String {
         if self.model.isEditing {
             return self.model.editedText.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        return Self.captionDocument(committed: self.boardCommitted, draft: self.liveDraft)
+        return Self.captionDocument(committed: self.boardCommitted, draft: "")
     }
 
     /// Same answer as `documentTextForDelivery().isEmpty` without joining the board.
@@ -218,10 +195,9 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
         if self.model.isEditing {
             return !self.model.editedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
-        if self.boardCommitted.contains(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
-            return true
+        return self.boardCommitted.contains {
+            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
-        return !self.liveDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     func commitEdits() {
@@ -395,8 +371,12 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
         if self.model.committedSources != self.boardSources { self.model.committedSources = self.boardSources }
         if self.model.pendingSources != self.boardPending { self.model.pendingSources = self.boardPending }
         if self.model.inFlightCount != self.boardInFlight { self.model.inFlightCount = self.boardInFlight }
+        if self.model.liveRowID != self.boardLiveRowID { self.model.liveRowID = self.boardLiveRowID }
         if self.model.draft != self.liveDraft { self.model.draft = self.liveDraft }
         if self.model.source != self.liveSource { self.model.source = self.liveSource }
+        if self.model.tentativeSpoken != self.liveTentative {
+            self.model.tentativeSpoken = self.liveTentative
+        }
     }
 
     private func rememberExternalApp() {
@@ -482,18 +462,7 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
         guard let panel = self.panel else { return }
         let screen = panel.screen ?? Self.preferredScreen()
         guard let screen else { return }
-        if let preset = SettingsStore.shared.theaterPositionPreset {
-            panel.setFrame(preset.frame(in: screen.visibleFrame), display: true)
-            return
-        }
-        panel.setFrame(
-            TheaterWindowPlacement.resolvedFrame(
-                stored: panel.frame,
-                visible: screen.visibleFrame,
-                presentation: SettingsStore.shared.theaterPresentation
-            ),
-            display: true
-        )
+        Self.place(panel, stored: panel.frame, on: screen)
     }
 
     var overlayToolsPinned: Bool { self.model.overlayToolsPinned }
@@ -533,7 +502,9 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
             toolsPinned: pinned
         )
         for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-            panel.standardWindowButton(button)?.isHidden = hideButtons
+            guard let control = panel.standardWindowButton(button) else { continue }
+            control.isHidden = hideButtons
+            control.alphaValue = hideButtons ? 0 : 1
         }
         panel.minSize = TheaterOverlayPolicy.minSize(for: presentation)
         let appIsActive = NSApp.isActive
@@ -553,19 +524,8 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
         let onScreen = NSScreen.screens.contains { $0.visibleFrame.intersects(panel.frame) }
         let screen = onScreen ? (panel.screen ?? Self.preferredScreen()) : Self.preferredScreen()
         guard let screen else { return }
-        if let preset = SettingsStore.shared.theaterPositionPreset {
-            panel.setFrame(preset.frame(in: screen.visibleFrame), display: true)
-            return
-        }
         let stored = onScreen ? panel.frame : nil
-        panel.setFrame(
-            TheaterWindowPlacement.resolvedFrame(
-                stored: stored,
-                visible: screen.visibleFrame,
-                presentation: SettingsStore.shared.theaterPresentation
-            ),
-            display: true
-        )
+        Self.place(panel, stored: stored, on: screen)
     }
 
     private func applyWindowSharing() {
@@ -590,7 +550,10 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
         if presentation == .popup {
             self.model.overlayToolsPinned = false
         }
-        panel.hasShadow = presentation != .transparent
+        panel.hasShadow = TheaterOverlayPolicy.showsWindowShadow(presentation: presentation)
+        if panel.hasShadow {
+            panel.invalidateShadow()
+        }
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.minSize = TheaterOverlayPolicy.minSize(for: presentation)
@@ -606,6 +569,9 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
     private static func makePanel(model: PresenterCaptionModel) -> NSPanel {
         let view = PresenterCaptionView(model: model)
         let hosting = NSHostingController(rootView: view)
+        hosting.sizingOptions = []
+        hosting.safeAreaRegions = []
+        hosting.view.autoresizingMask = [.width, .height]
         let panel = TheaterCaptionPanel(
             contentRect: NSRect(x: 80, y: 80, width: 1100, height: 440),
             styleMask: [
@@ -646,18 +612,52 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
             hideFromScreenShare: SettingsStore.shared.theaterHideFromScreenShare
         )
         if let screen = Self.preferredScreen() {
-            panel.setFrame(
-                TheaterWindowPlacement.resolvedFrame(
-                    stored: nil,
-                    visible: screen.visibleFrame,
-                    presentation: SettingsStore.shared.theaterPresentation
-                ),
-                display: true
-            )
+            Self.place(panel, stored: nil, on: screen)
         } else {
             panel.setContentSize(TheaterWindowPlacement.legacyDefaultSize)
         }
         return panel
+    }
+
+    /// Pop-up fills this display unless `keepUserSize` is restoring a resize
+    /// after Minimize. Overlay still uses its caption bar / presets.
+    private static func place(
+        _ panel: NSPanel,
+        stored: CGRect?,
+        on screen: NSScreen,
+        keepUserSize: Bool = false,
+        animate: Bool = false
+    ) {
+        let presentation = SettingsStore.shared.theaterPresentation
+        if presentation == .popup {
+            panel.setFrame(
+                TheaterWindowPlacement.resolvedPopupFrame(
+                    stored: stored,
+                    visible: screen.visibleFrame,
+                    keepUserSize: keepUserSize
+                ),
+                display: true,
+                animate: animate
+            )
+            return
+        }
+        if let preset = SettingsStore.shared.theaterPositionPreset {
+            let resolved = preset.resolved(for: presentation)
+            if resolved != preset {
+                SettingsStore.shared.theaterPositionPreset = resolved
+            }
+            panel.setFrame(resolved.frame(in: screen.visibleFrame), display: true, animate: animate)
+            return
+        }
+        panel.setFrame(
+            TheaterWindowPlacement.resolvedFrame(
+                stored: stored,
+                visible: screen.visibleFrame,
+                presentation: presentation
+            ),
+            display: true,
+            animate: animate
+        )
     }
 
     private func persistFrame() {
@@ -668,7 +668,7 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
         }
         if let preset = SettingsStore.shared.theaterPositionPreset,
            let screen = panel.screen,
-           !Self.isClose(panel.frame, preset.frame(in: screen.visibleFrame))
+           !TheaterWindowPlacement.isClose(panel.frame, preset.frame(in: screen.visibleFrame))
         {
             SettingsStore.shared.theaterPositionPreset = nil
         }
@@ -692,19 +692,8 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
         let screen = panel.screen ?? Self.preferredScreen()
         let stored = SettingsStore.shared.theaterExpandedWindowFrame
         let storedRect = stored.isEmpty ? nil : NSRectFromString(stored)
-        if let screen, let preset = SettingsStore.shared.theaterPositionPreset {
-            panel.setFrame(preset.frame(in: screen.visibleFrame), display: true)
-            return
-        }
         if let screen {
-            panel.setFrame(
-                TheaterWindowPlacement.resolvedFrame(
-                    stored: storedRect,
-                    visible: screen.visibleFrame,
-                    presentation: presentation
-                ),
-                display: true
-            )
+            Self.place(panel, stored: storedRect, on: screen, keepUserSize: true)
             return
         }
         var frame = panel.frame
@@ -723,17 +712,8 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
         let stored = SettingsStore.shared.theaterWindowFrame
         let storedRect = stored.isEmpty ? nil : NSRectFromString(stored)
         let screen = Self.screen(named: SettingsStore.shared.theaterScreenName) ?? Self.preferredScreen()
-        if let screen, let preset = SettingsStore.shared.theaterPositionPreset {
-            self.panel?.setFrame(preset.frame(in: screen.visibleFrame), display: true)
-        } else if let screen {
-            self.panel?.setFrame(
-                TheaterWindowPlacement.resolvedFrame(
-                    stored: storedRect,
-                    visible: screen.visibleFrame,
-                    presentation: SettingsStore.shared.theaterPresentation
-                ),
-                display: true
-            )
+        if let screen, let panel = self.panel {
+            Self.place(panel, stored: storedRect, on: screen)
         } else if let storedRect, storedRect.width > 200, storedRect.height > 160 {
             self.panel?.setFrame(storedRect, display: true)
         }
@@ -752,14 +732,10 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
     func applyPositionPreset(_ preset: TheaterPositionPreset) {
         guard let panel = self.panel else { return }
         guard let screen = panel.screen ?? Self.preferredScreen() else { return }
-        SettingsStore.shared.theaterPositionPreset = preset
-        panel.setFrame(preset.frame(in: screen.visibleFrame), display: true, animate: true)
+        let resolved = preset.resolved(for: SettingsStore.shared.theaterPresentation)
+        SettingsStore.shared.theaterPositionPreset = resolved
+        panel.setFrame(resolved.frame(in: screen.visibleFrame), display: true, animate: true)
         self.schedulePersistFrame()
-    }
-
-    private static func isClose(_ lhs: NSRect, _ rhs: NSRect) -> Bool {
-        abs(lhs.minX - rhs.minX) < 2 && abs(lhs.minY - rhs.minY) < 2
-            && abs(lhs.width - rhs.width) < 2 && abs(lhs.height - rhs.height) < 2
     }
 
     /// "Name|displayID" so two identical monitors stay distinct. Older
@@ -803,6 +779,7 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
         }
         guard !text.isEmpty else { return }
         self.makeKeyForInteraction()
+        self.model.exportShowsSaved = true
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.plainText]
         panel.nameFieldStringValue = TheaterCaptionExport.savePanelName(extension: ext)
@@ -810,6 +787,7 @@ final class PresenterCaptionController: NSObject, NSWindowDelegate {
             if response == .OK, let url = panel.url {
                 try? text.write(to: url, atomically: true, encoding: .utf8)
             }
+            PresenterCaptionController.shared.model.exportShowsSaved = false
             PresenterCaptionController.shared.scheduleReleaseKeyToExternalApp()
         }
     }

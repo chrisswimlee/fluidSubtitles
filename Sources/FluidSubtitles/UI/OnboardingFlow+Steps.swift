@@ -17,8 +17,8 @@ extension OnboardingFlowView {
                 VStack(alignment: .center, spacing: self.theme.metrics.onboardingSurface.landing.sectionSpacing) {
                     FluidOnboardingLandingHero(
                         eyebrow: FluidProduct.displayName,
-                        title: "Captions that grow while you talk.",
-                        accentTitle: "Korean, English, Thai, and Japanese.",
+                        title: "Each sentence appears when it is ready.",
+                        accentTitle: "Languages both engines share.",
                         firstDetail: FluidProduct.manifesto,
                         secondDetail: "Theater runs on macOS 15 and later. Swap I speak and Show as, then press Listen."
                     ) {
@@ -112,47 +112,38 @@ extension OnboardingFlowView {
 
                             Text("What language will\nyou speak most?")
                                 .font(.system(size: 28, weight: .semibold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(Color.primary)
                                 .multilineTextAlignment(.center)
                                 .lineSpacing(4)
                                 .padding(.bottom, 18)
 
-                            Text("fluidSubtitles works among Korean, English, Thai, and Japanese. Pick the language you speak. You can swap direction anytime.")
+                            Text("Pick the language you speak, then the one you want on screen.")
                                 .font(.system(size: 15, weight: .medium))
-                                .foregroundStyle(Color.white.opacity(0.62))
+                                .foregroundStyle(Color.primary.opacity(0.62))
                                 .multilineTextAlignment(.center)
                                 .padding(.bottom, 26)
 
-                            LazyVGrid(
-                                columns: [
-                                    GridItem(.fixed(166), spacing: 16),
-                                    GridItem(.fixed(166), spacing: 16),
-                                ],
-                                spacing: 16
-                            ) {
-                                ForEach(self.popularOnboardingLanguages) { language in
-                                    self.languageChoiceCard(for: language)
-                                }
+                            VStack(alignment: .leading, spacing: 16) {
+                                self.onboardingLanguageMenu(
+                                    title: "I speak",
+                                    selection: Binding(
+                                        get: { self.selectedLanguageID },
+                                        set: { id in
+                                            guard let language = VoiceEngineLanguageCatalog.language(id: id) else { return }
+                                            self.selectOnboardingLanguage(language)
+                                        }
+                                    )
+                                )
+                                self.onboardingLanguageMenu(
+                                    title: "Show as",
+                                    selection: self.$settings.translationTargetLanguageID
+                                )
                             }
-                            .frame(width: 348)
-
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Translate into")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(Color.white.opacity(0.7))
-                                Picker("Target language", selection: self.$settings.translationTargetLanguageID) {
-                                    ForEach(self.onboardingTargetLanguages) { language in
-                                        Text(language.displayName).tag(language.id)
-                                    }
-                                }
-                                .labelsHidden()
-                                .frame(width: 280)
-                            }
-                            .padding(.top, 22)
+                            .frame(width: 320)
 
                             Text("Same language needs no download. Pick a second language only if you need translation.")
                                 .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(Color.white.opacity(0.44))
+                                .foregroundStyle(Color.primary.opacity(0.44))
                                 .padding(.top, 18)
 
                             if SpokenLanguageResolver.sourceLanguage().id
@@ -161,7 +152,7 @@ extension OnboardingFlowView {
                                 if !self.languagePackAvailability.isEmpty {
                                     Text(self.languagePackAvailability)
                                         .font(.system(size: 12, weight: .medium))
-                                        .foregroundStyle(Color.white.opacity(0.56))
+                                        .foregroundStyle(Color.primary.opacity(0.56))
                                         .padding(.top, 10)
                                 }
                                 Button("Download language pack") {
@@ -210,82 +201,21 @@ extension OnboardingFlowView {
         }
     }
 
-    func languageChoiceCard(for language: VoiceEngineLanguage) -> some View {
-        let isSelected = self.selectedLanguageID == language.id
-        let isHovered = self.hoveredLanguageID == language.id
-        let shape = RoundedRectangle(cornerRadius: 13, style: .continuous)
-        let cardFillOpacity = isSelected
-            ? (isHovered ? 0.15 : 0.075)
-            : (isHovered ? 0.10 : 0.04)
-        let borderColor = isSelected
-            ? FluidOnboardingLandingColors.blue.opacity(isHovered ? 1 : 0.92)
-            : (isHovered ? FluidOnboardingLandingColors.blue.opacity(0.58) : Color.white.opacity(0.10))
-        let borderWidth: CGFloat = isSelected
-            ? (isHovered ? 1.8 : 1.4)
-            : (isHovered ? 1.2 : 1)
-        let shadowColor = isSelected
-            ? FluidOnboardingLandingColors.blue.opacity(isHovered ? 0.36 : 0.18)
-            : FluidOnboardingLandingColors.blue.opacity(isHovered ? 0.18 : 0)
-        let shadowRadius: CGFloat = isSelected
-            ? (isHovered ? 24 : 18)
-            : (isHovered ? 20 : 14)
-
-        return Button {
-            self.selectOnboardingLanguage(language)
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "globe")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(isSelected ? FluidOnboardingLandingColors.blue : Color.white.opacity(0.72))
-                    .frame(width: 22)
-
-                Text(language.popularDisplayName)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.76)
-
-                Spacer(minLength: 0)
-
-                if isSelected {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(FluidOnboardingLandingColors.blue)
+    func onboardingLanguageMenu(title: String, selection: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.primary.opacity(0.7))
+            Picker(title, selection: selection) {
+                ForEach(TranslationLanguageCatalog.menuOrder) { language in
+                    Text(language.displayName).tag(language.id)
                 }
             }
-            .padding(.horizontal, 15)
-            .frame(width: 166, height: 58)
-            .background(
-                shape
-                    .fill(Color.white.opacity(cardFillOpacity))
-                    .overlay(
-                        shape.stroke(
-                            borderColor,
-                            lineWidth: borderWidth
-                        )
-                    )
-            )
-            .shadow(color: shadowColor, radius: shadowRadius, x: 0, y: 0)
-            .contentShape(shape)
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel(title)
         }
-        .buttonStyle(.plain)
-        .focusable(false)
-        .onHover { isHovered in
-            if isHovered {
-                self.setHoveredLanguage(language.id)
-            } else if self.hoveredLanguageID == language.id {
-                self.setHoveredLanguage(nil)
-            }
-        }
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    self.selectOnboardingLanguage(language)
-                }
-        )
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(language.displayName)
-        .accessibilityValue(isSelected ? "Selected" : "")
     }
 
     func cinematicFooter(
@@ -372,17 +302,6 @@ extension OnboardingFlowView {
         }
     }
 
-    func setHoveredLanguage(_ languageID: String?) {
-        guard self.hoveredLanguageID != languageID else { return }
-        if self.reduceMotion {
-            self.hoveredLanguageID = languageID
-        } else {
-            withAnimation(.easeOut(duration: 0.14)) {
-                self.hoveredLanguageID = languageID
-            }
-        }
-    }
-
     func selectOnboardingLanguage(_ language: VoiceEngineLanguage) {
         guard self.selectedLanguageID != language.id else { return }
         var transaction = Transaction()
@@ -451,7 +370,7 @@ extension OnboardingFlowView {
 
                             Text("Choose your\nvoice engine")
                                 .font(.system(size: 28, weight: .semibold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(Color.primary)
                                 .multilineTextAlignment(.center)
                                 .lineSpacing(4)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -459,7 +378,7 @@ extension OnboardingFlowView {
 
                             Text(self.recommendedModelReasonText)
                                 .font(.system(size: 15, weight: .medium))
-                                .foregroundStyle(Color.white.opacity(0.62))
+                                .foregroundStyle(Color.primary.opacity(0.62))
                                 .multilineTextAlignment(.center)
                                 .padding(.bottom, 14)
 
@@ -515,7 +434,7 @@ extension OnboardingFlowView {
                             if self.isModelPreparationInProgress {
                                 Label("Initial preparation can take a while to get your Mac ready for near-instant transcription.", systemImage: "clock.arrow.circlepath")
                                     .font(self.theme.typography.captionStrong)
-                                    .foregroundStyle(Color.white.opacity(0.58))
+                                    .foregroundStyle(Color.primary.opacity(0.58))
                                     .labelStyle(.titleAndIcon)
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.86)
@@ -523,15 +442,15 @@ extension OnboardingFlowView {
                                     .padding(.vertical, 5)
                                     .background(
                                         Capsule()
-                                            .fill(Color.white.opacity(0.06))
-                                            .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 1))
+                                            .fill(Color.primary.opacity(0.06))
+                                            .overlay(Capsule().stroke(Color.primary.opacity(0.10), lineWidth: 1))
                                     )
                                     .padding(.top, 14)
                             }
 
                             Text("You can switch models later in Voice Engine settings.")
                                 .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(Color.white.opacity(0.44))
+                                .foregroundStyle(Color.primary.opacity(0.44))
                                 .padding(.top, self.isModelPreparationInProgress ? 8 : 18)
                         }
                         .frame(maxWidth: .infinity)
@@ -577,14 +496,14 @@ extension OnboardingFlowView {
 
                             Text("Let \(FluidProduct.displayName)\nhear you")
                                 .font(.system(size: 28, weight: .semibold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(Color.primary)
                                 .multilineTextAlignment(.center)
                                 .lineSpacing(4)
                                 .padding(.bottom, 16)
 
                             Text("Microphone is required. Accessibility is only if you want a translation typed into another app.")
                                 .font(.system(size: 15, weight: .medium))
-                                .foregroundStyle(Color.white.opacity(0.62))
+                                .foregroundStyle(Color.primary.opacity(0.62))
                                 .padding(.bottom, 28)
 
                             VStack(spacing: 14) {
@@ -615,7 +534,7 @@ extension OnboardingFlowView {
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text("Optional — type into another app")
                                         .font(.system(size: 12, weight: .semibold))
-                                        .foregroundStyle(Color.white.opacity(0.42))
+                                        .foregroundStyle(Color.primary.opacity(0.42))
 
                                     self.permissionRow(
                                         stepNumber: 2,
@@ -632,7 +551,7 @@ extension OnboardingFlowView {
                                     if !self.isAccessibilityReady {
                                         Text("Skip this unless you want a translation typed into another app. Theater captions do not need it.")
                                             .font(.system(size: 12, weight: .medium))
-                                            .foregroundStyle(Color.white.opacity(0.42))
+                                            .foregroundStyle(Color.primary.opacity(0.42))
                                             .padding(.top, 2)
                                     }
                                 }
@@ -682,7 +601,7 @@ extension OnboardingFlowView {
 
                             Text(TheaterAvailability.isSupported ? "Try a Theater caption." : TheaterAvailability.unsupportedCopy)
                                 .font(.system(size: 28, weight: .semibold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(Color.primary)
                                 .multilineTextAlignment(.center)
                                 .lineLimit(2)
                                 .minimumScaleFactor(0.74)
@@ -691,17 +610,17 @@ extension OnboardingFlowView {
 
                             Text(self.playgroundCaptionHint)
                                 .font(.system(size: 15, weight: .medium))
-                                .foregroundStyle(Color.white.opacity(0.62))
+                                .foregroundStyle(Color.primary.opacity(0.62))
                                 .multilineTextAlignment(.center)
                                 .padding(.bottom, 22)
 
                             if !self.translationController.overlayText.isEmpty {
                                 Text(self.translationController.overlayText)
                                     .font(.system(size: 17, weight: .medium))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(Color.primary)
                                     .frame(width: 420, alignment: .leading)
                                     .padding(14)
-                                    .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                                    .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                                     .padding(.bottom, 18)
                             }
 
@@ -709,7 +628,7 @@ extension OnboardingFlowView {
                                 if !self.languagePackAvailability.isEmpty {
                                     Text(self.languagePackAvailability)
                                         .font(.system(size: 12, weight: .medium))
-                                        .foregroundStyle(Color.white.opacity(0.56))
+                                        .foregroundStyle(Color.primary.opacity(0.56))
                                         .padding(.bottom, 8)
                                 }
                                 if !self.isOnboardingTranslationPackReady {
@@ -734,7 +653,7 @@ extension OnboardingFlowView {
                                     Text("Listen")
                                 }
                                 .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(Color.primary)
                                 .frame(width: 200, height: 40)
                                 .background(
                                     FluidOnboardingLandingColors.blue.opacity(self.canOpenOnboardingTheater ? 0.92 : 0.38),
@@ -848,13 +767,13 @@ extension OnboardingFlowView {
                     .font(.system(size: 8, weight: .bold))
             }
             .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(Color.white.opacity(0.62))
+            .foregroundStyle(Color.primary.opacity(0.62))
             .padding(.horizontal, 10)
             .frame(height: 24)
             .background(
                 Capsule()
-                    .fill(Color.white.opacity(0.025))
-                    .overlay(Capsule().stroke(Color.white.opacity(0.07), lineWidth: 1))
+                    .fill(Color.primary.opacity(0.025))
+                    .overlay(Capsule().stroke(Color.primary.opacity(0.07), lineWidth: 1))
             )
             .contentShape(Capsule())
         }
@@ -985,7 +904,7 @@ extension OnboardingFlowView {
             HStack(alignment: .top, spacing: 10) {
                 Text(self.onboardingModelTitle(for: model))
                     .font(self.theme.typography.sectionTitle)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.primary)
                     .lineLimit(2)
                     .minimumScaleFactor(0.82)
                     .fixedSize(horizontal: false, vertical: true)
@@ -994,7 +913,7 @@ extension OnboardingFlowView {
 
                 Image(systemName: "info.circle")
                     .font(self.theme.typography.sectionTitle)
-                    .foregroundStyle(Color.white.opacity(0.58))
+                    .foregroundStyle(Color.primary.opacity(0.58))
                     .frame(width: 24, height: 24)
                     .contentShape(Circle())
                     .help(self.onboardingModelTooltip(for: route))
@@ -1009,23 +928,23 @@ extension OnboardingFlowView {
             Spacer(minLength: 0)
 
             Divider()
-                .overlay(Color.white.opacity(0.10))
+                .overlay(Color.primary.opacity(0.10))
 
             HStack(spacing: 10) {
                 Image(systemName: "internaldrive")
                     .font(self.theme.typography.sectionTitle)
-                    .foregroundStyle(Color.white.opacity(0.62))
+                    .foregroundStyle(Color.primary.opacity(0.62))
                     .frame(width: 22)
 
                 Text("Download size")
                     .font(self.theme.typography.bodySmallStrong)
-                    .foregroundStyle(Color.white.opacity(0.62))
+                    .foregroundStyle(Color.primary.opacity(0.62))
 
                 Spacer()
 
                 Text(model.downloadSize)
                     .font(self.theme.typography.bodySmallStrong)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.80)
             }
@@ -1105,12 +1024,11 @@ extension OnboardingFlowView {
                     shape.stroke(
                         isSelected
                             ? FluidOnboardingLandingColors.blue.opacity(isHovered ? 0.92 : 0.78)
-                            : (isHovered ? Color.white.opacity(0.20) : Color.white.opacity(0.10)),
+                            : (isHovered ? Color.primary.opacity(0.20) : Color.primary.opacity(0.10)),
                         lineWidth: isSelected ? 1.4 : 1
                     )
                 )
         )
-        .shadow(color: Color.black.opacity(0.34), radius: isHovered ? 20 : 14, x: 0, y: isHovered ? 12 : 8)
         .contentShape(shape)
         .onTapGesture {
             guard !areModelActionsBlocked else { return }
@@ -1155,7 +1073,7 @@ extension OnboardingFlowView {
 
                     Text("Cancelling...")
                         .font(self.theme.typography.captionStrong)
-                        .foregroundStyle(Color.white.opacity(0.62))
+                        .foregroundStyle(Color.primary.opacity(0.62))
                 }
             } else if self.asr.isDownloadingModel,
                       self.asr.modelPreparationPhase == .downloading,
@@ -1167,7 +1085,7 @@ extension OnboardingFlowView {
                 HStack(spacing: 6) {
                     Text(self.asr.modelPreparationStatusText)
                         .font(self.theme.typography.captionStrong)
-                        .foregroundStyle(Color.white.opacity(0.56))
+                        .foregroundStyle(Color.primary.opacity(0.56))
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                 }
@@ -1183,7 +1101,7 @@ extension OnboardingFlowView {
                             : self.asr.modelPreparationStatusText
                     )
                     .font(self.theme.typography.captionStrong)
-                    .foregroundStyle(Color.white.opacity(0.62))
+                    .foregroundStyle(Color.primary.opacity(0.62))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                 }
@@ -1223,7 +1141,7 @@ extension OnboardingFlowView {
 
                 Text(label)
                     .font(self.theme.typography.captionStrong)
-                    .foregroundStyle(Color.white.opacity(0.66))
+                    .foregroundStyle(Color.primary.opacity(0.66))
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
             }
@@ -1232,7 +1150,7 @@ extension OnboardingFlowView {
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
                     Capsule()
-                        .fill(Color.white.opacity(0.075))
+                        .fill(Color.primary.opacity(0.075))
 
                     Capsule()
                         .fill(
@@ -1248,7 +1166,7 @@ extension OnboardingFlowView {
                                 .fill(
                                     LinearGradient(
                                         colors: [
-                                            Color.white.opacity(0.24),
+                                            Color.primary.opacity(0.24),
                                             Color.clear,
                                         ],
                                         startPoint: .top,
@@ -1262,7 +1180,7 @@ extension OnboardingFlowView {
 
             Text("\(Int(fillPercent * 100))%")
                 .font(self.theme.typography.bodySmallStrong)
-                .foregroundStyle(fillPercent > 0 ? color : Color.white.opacity(0.48))
+                .foregroundStyle(fillPercent > 0 ? color : Color.primary.opacity(0.48))
                 .lineLimit(1)
                 .minimumScaleFactor(0.82)
                 .contentTransition(.numericText())
@@ -1307,34 +1225,16 @@ extension OnboardingFlowView {
     ) -> some View {
         let shape = Capsule()
         let accentColor: Color = configuration.tone == .destructive ? .red : FluidOnboardingLandingColors.blue
-        let isFilledTone = configuration.tone == .primary || configuration.tone == .destructive
-        let fillColor: Color = {
+        let foreground: Color = {
             switch configuration.tone {
-            case .primary, .destructive:
-                return accentColor.opacity(configuration.isEnabled ? 1 : 0.34)
+            case .primary:
+                return accentColor
+            case .destructive:
+                return .red
             case .secondary:
-                return Color.white.opacity(configuration.isEnabled ? (configuration.isHovered ? 0.11 : 0.07) : 0.045)
+                return Color.secondary
             }
         }()
-        let borderColor: Color = {
-            switch configuration.tone {
-            case .primary, .destructive:
-                return Color.white.opacity(configuration.isHovered && configuration.isEnabled ? 0.30 : 0)
-            case .secondary:
-                return configuration.isHovered && configuration.isEnabled ? FluidOnboardingLandingColors.blue.opacity(0.30) : Color.white.opacity(0.07)
-            }
-        }()
-        let foregroundOpacity: Double = configuration.isEnabled ? (isFilledTone ? 1.0 : (configuration.isHovered ? 0.94 : 0.78)) : 0.42
-        let shadowOpacity: Double = {
-            guard configuration.isEnabled else { return 0 }
-            switch configuration.tone {
-            case .primary, .destructive:
-                return configuration.isHovered ? 0.56 : 0.26
-            case .secondary:
-                return configuration.isHovered ? 0.08 : 0
-            }
-        }()
-        let ringOpacity: Double = configuration.isHovered && configuration.isEnabled ? 0.50 : 0
 
         return Button {
             action()
@@ -1342,29 +1242,17 @@ extension OnboardingFlowView {
             HStack(spacing: configuration.systemImage == nil ? 0 : 8) {
                 if let systemImage = configuration.systemImage {
                     Image(systemName: systemImage)
-                        .font(.system(size: configuration.iconSize, weight: .bold))
+                        .font(.system(size: configuration.iconSize, weight: .regular))
                 }
 
                 Text(configuration.title)
-                    .font(.system(size: configuration.fontSize, weight: .semibold))
+                    .font(.system(size: configuration.fontSize, weight: .medium))
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
             }
-            .foregroundStyle(.white.opacity(foregroundOpacity))
+            .foregroundStyle(foreground.opacity(configuration.isEnabled ? 1 : 0.35))
             .frame(width: configuration.width, height: configuration.height)
             .frame(maxWidth: configuration.width == nil ? .infinity : nil)
-            .background(
-                shape
-                    .fill(fillColor)
-                    .overlay(shape.fill(Color.white.opacity(isFilledTone && configuration.isHovered && configuration.isEnabled ? 0.10 : 0)))
-                    .overlay(shape.stroke(borderColor, lineWidth: configuration.isHovered && configuration.isEnabled ? 1.2 : 1))
-                    .overlay(
-                        shape
-                            .stroke(accentColor.opacity(ringOpacity), lineWidth: configuration.isHovered && configuration.isEnabled ? 1.4 : 1)
-                            .padding(-2)
-                    )
-                    .shadow(color: accentColor.opacity(shadowOpacity), radius: configuration.isHovered && configuration.isEnabled ? 16 : 9, x: 0, y: configuration.isHovered && configuration.isEnabled ? 6 : 3)
-            )
             .contentShape(shape)
         }
         .buttonStyle(.plain)
@@ -1445,7 +1333,7 @@ extension OnboardingFlowView {
                 HStack(spacing: 8) {
                     Text(title)
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Color.primary)
 
                     Text(resolvedStatusTitle)
                         .font(.system(size: 10, weight: .bold))
@@ -1460,7 +1348,7 @@ extension OnboardingFlowView {
 
                 Text(subtitle)
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.55))
+                    .foregroundStyle(Color.primary.opacity(0.55))
                     .lineLimit(2)
             }
 
@@ -1492,7 +1380,7 @@ extension OnboardingFlowView {
         .frame(height: 88)
         .background(
             shape
-                .fill(Color.white.opacity(isReady ? 0.045 : 0.070))
+                .fill(Color.primary.opacity(isReady ? 0.045 : 0.070))
                 .overlay(
                     shape.stroke(
                         isReady ? Color.green.opacity(0.18) : FluidOnboardingLandingColors.blue.opacity(0.26),

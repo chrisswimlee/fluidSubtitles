@@ -50,13 +50,16 @@ final class LiveTranslationGlossaryTests: XCTestCase {
     }
 
     func testUnsupportedSpokenLanguagesFallBackToEnglish() {
-        XCTAssertNil(TranslationLanguageCatalog.language(id: "zh-TW"))
-        XCTAssertNil(TranslationLanguageCatalog.language(id: "vi"))
-        XCTAssertEqual(TranslationLanguageCatalog.language(matchingSpokenID: "zh-CN").id, "en")
-        XCTAssertEqual(TranslationLanguageCatalog.language(matchingSpokenID: "vi-VN").id, "en")
+        XCTAssertNil(TranslationLanguageCatalog.language(id: "el"))
+        XCTAssertNil(TranslationLanguageCatalog.language(id: "hu"))
+        XCTAssertEqual(TranslationLanguageCatalog.language(matchingSpokenID: "el-GR").id, "en")
+        XCTAssertEqual(TranslationLanguageCatalog.language(matchingSpokenID: "hu-HU").id, "en")
+        XCTAssertEqual(TranslationLanguageCatalog.language(id: "zh-TW")?.id, "zh")
+        XCTAssertEqual(TranslationLanguageCatalog.language(id: "vi")?.id, "vi")
+        XCTAssertEqual(TranslationLanguageCatalog.language(matchingSpokenID: "nb-NO").id, "no")
     }
 
-    func testLanguagesFromAppleListStayKoreanEnglishThaiJapanese() {
+    func testLanguagesFromAppleListFollowTheCatalog() {
         let languages = TranslationLanguageCatalog.languages(from: [
             Locale.Language(identifier: "en-IN"),
             Locale.Language(identifier: "en"),
@@ -64,14 +67,17 @@ final class LiveTranslationGlossaryTests: XCTestCase {
             Locale.Language(identifier: "ko"),
             Locale.Language(identifier: "ja"),
             Locale.Language(identifier: "vi"),
+            Locale.Language(identifier: "nb"),
         ])
-        XCTAssertEqual(languages.map(\.id), ["en", "ko", "ja", "th"])
+        XCTAssertEqual(languages.map(\.id), TranslationLanguageCatalog.all.map(\.id))
+        let norwegian = languages.first { $0.id == "no" }
+        XCTAssertEqual(norwegian?.localeLanguage.languageCode?.identifier, "nb")
     }
 
-    func testVoiceEngineLanguagesAreKoreanEnglishThaiJapanese() {
+    func testVoiceEngineLanguagesMatchTheCatalog() {
         XCTAssertEqual(
             Set(VoiceEngineLanguageCatalog.allLanguages().map(\.id)),
-            ["en", "ko", "ja", "th"]
+            TranslationLanguageCatalog.supportedIDs
         )
     }
 
@@ -248,7 +254,7 @@ final class LiveTranslationGlossaryTests: XCTestCase {
 
         XCTAssertEqual(
             TranslationLanguageCatalog.targets(excluding: TranslationLanguageCatalog.korean).map(\.id),
-            ["en", "ko", "ja", "th"]
+            TranslationLanguageCatalog.all.map(\.id)
         )
 
         SpokenLanguageResolver.setSourceLanguage(TranslationLanguageCatalog.korean, settings: settings)
@@ -657,6 +663,52 @@ final class LiveTranslationGlossaryTests: XCTestCase {
         XCTAssertNil(SpokenScriptDetector.languageID(in: "A", among: ["en", "ko"]))
     }
 
+    func testAlsoHearOthersSegmentsExtrasByScriptWithoutFlippingThePair() {
+        let settings = SettingsStore.shared
+        let originalSource = settings.translationSourceLanguageID
+        let originalTarget = settings.translationTargetLanguageID
+        let originalAlsoHear = settings.theaterAlsoHearOtherLanguages
+        defer {
+            settings.translationSourceLanguageID = originalSource
+            settings.translationTargetLanguageID = originalTarget
+            settings.theaterAlsoHearOtherLanguages = originalAlsoHear
+        }
+
+        settings.translationSourceLanguageID = "en"
+        settings.translationTargetLanguageID = "ko"
+        settings.theaterAlsoHearOtherLanguages = false
+        XCTAssertEqual(
+            SpokenLanguageResolver.listenLanguageID(for: "안녕하세요 여러분", settings: settings),
+            "en"
+        )
+
+        settings.theaterAlsoHearOtherLanguages = true
+        XCTAssertEqual(
+            SpokenLanguageResolver.listenLanguageID(for: "안녕하세요 여러분", settings: settings),
+            "ko"
+        )
+        XCTAssertEqual(
+            SpokenLanguageResolver.listenLanguageID(for: "สวัสดีครับ", settings: settings),
+            "th"
+        )
+        XCTAssertEqual(
+            SpokenLanguageResolver.listenLanguageID(for: "Hello there", settings: settings),
+            "en"
+        )
+        let pair = SpokenLanguageResolver.pairForSpokenText("안녕하세요 여러분", settings: settings)
+        XCTAssertEqual(pair.source.id, "en")
+        XCTAssertEqual(pair.target.id, "ko")
+    }
+
+    func testSpokenEngineReloadWaitsUntilASRIsIdle() {
+        XCTAssertTrue(TheaterSpokenEngineReload.shouldWaitForIdle(sessionWasActive: true, asrBusy: false))
+        XCTAssertTrue(TheaterSpokenEngineReload.shouldWaitForIdle(sessionWasActive: false, asrBusy: true))
+        XCTAssertFalse(TheaterSpokenEngineReload.shouldWaitForIdle(sessionWasActive: false, asrBusy: false))
+        XCTAssertFalse(TheaterSpokenEngineReload.canReload(asrBusy: true))
+        XCTAssertTrue(TheaterSpokenEngineReload.canReload(asrBusy: false))
+        XCTAssertTrue(TranslationEngineError.timeout.isTimeout)
+    }
+
     func testDynamicPairingStaysPinnedWhileEitherWayIsDeferred() {
         let settings = SettingsStore.shared
         let originalSource = settings.translationSourceLanguageID
@@ -724,6 +776,29 @@ final class LiveTranslationGlossaryTests: XCTestCase {
         )
         XCTAssertEqual(oneWay.source.id, "en")
         XCTAssertEqual(oneWay.target.id, "ko")
+    }
+
+    func testUnknownPackAllowsListenWhenMailboxIsReady() {
+        XCTAssertEqual(
+            TheaterPackListenGate.decision(availability: .installed, mailboxReady: false),
+            .allow
+        )
+        XCTAssertEqual(
+            TheaterPackListenGate.decision(availability: .unknown, mailboxReady: true),
+            .allow
+        )
+        XCTAssertEqual(
+            TheaterPackListenGate.decision(availability: .unknown, mailboxReady: false),
+            .notReady
+        )
+        XCTAssertEqual(
+            TheaterPackListenGate.decision(availability: .supported, mailboxReady: true),
+            .needDownload
+        )
+        XCTAssertEqual(
+            TheaterPackListenGate.decision(availability: .unsupported, mailboxReady: true),
+            .unsupported
+        )
     }
 
     func testTalkPackExtractsRepeatedNamesFromNotes() {

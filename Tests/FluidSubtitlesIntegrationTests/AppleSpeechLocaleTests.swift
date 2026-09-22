@@ -7,7 +7,12 @@ final class AppleSpeechLocaleTests: XCTestCase {
         XCTAssertEqual(VoiceEngineLanguageCatalog.preferredAppleSpeechAnalyzerLocale(forLanguageID: "ko"), "ko-KR")
         XCTAssertEqual(VoiceEngineLanguageCatalog.preferredAppleSpeechAnalyzerLocale(forLanguageID: "th"), "th-TH")
         XCTAssertEqual(VoiceEngineLanguageCatalog.preferredAppleSpeechAnalyzerLocale(forLanguageID: "ja"), "ja-JP")
-        XCTAssertEqual(VoiceEngineLanguageCatalog.appleSpeechAnalyzerLocaleIdentifier(for: "ja"), "ja-JP")
+        XCTAssertEqual(VoiceEngineLanguageCatalog.appleSpeechAnalyzerLocaleIdentifier(for: "fr"), "fr-FR")
+        XCTAssertEqual(VoiceEngineLanguageCatalog.appleSpeechAnalyzerLocaleIdentifier(for: "zh"), "zh-CN")
+        XCTAssertNil(VoiceEngineLanguageCatalog.appleSpeechAnalyzerLocaleIdentifier(for: "da"))
+        XCTAssertEqual(VoiceEngineLanguageCatalog.preferredAppleSpeechAnalyzerLocale(forLanguageID: "fr"), "fr-FR")
+        XCTAssertEqual(VoiceEngineLanguageCatalog.preferredAppleSpeechAnalyzerLocale(forLanguageID: "da"), "da-DK")
+        XCTAssertEqual(VoiceEngineLanguageCatalog.preferredAppleSpeechAnalyzerLocale(forLanguageID: "no"), "nb-NO")
     }
 
     func testAnalyzerMatchesLanguagePrefixNotExactMacLocale() {

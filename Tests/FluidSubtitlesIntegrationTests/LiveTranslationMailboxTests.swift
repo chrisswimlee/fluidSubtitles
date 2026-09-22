@@ -164,6 +164,36 @@ final class LiveTranslationMailboxTests: XCTestCase {
         serve.cancel()
     }
 
+    func testSecondServeClaimsTheMailboxWithoutLeakingAWaiter() async {
+        let mailbox = TranslationRequestMailbox()
+        let first = Task {
+            await mailbox.next()
+        }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertTrue(mailbox.isReady)
+        let generation = mailbox.claimServe()
+        let firstRequest = await first.value
+        XCTAssertNil(firstRequest)
+        let second = Task {
+            await mailbox.next(generation: generation)
+        }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertTrue(mailbox.isReady)
+        mailbox.cancelAll(TranslationEngineError(message: "done"))
+        let secondRequest = await second.value
+        XCTAssertNil(secondRequest)
+        XCTAssertFalse(mailbox.isReady)
+    }
+
+    func testStaleGenerationDoesNotTakeANewWaiter() async {
+        let mailbox = TranslationRequestMailbox()
+        let oldGeneration = mailbox.claimServe()
+        _ = mailbox.claimServe()
+        let stale = await mailbox.next(generation: oldGeneration)
+        XCTAssertNil(stale)
+        mailbox.cancelAll(TranslationEngineError(message: "done"))
+    }
+
     func testLiveDoesNotPreemptAQueuedCommit() async throws {
         let mailbox = TranslationRequestMailbox()
         let seen = RequestLog()
@@ -189,6 +219,39 @@ final class LiveTranslationMailboxTests: XCTestCase {
         XCTAssertEqual(committed, "t-Commit clause")
         XCTAssertEqual(liveCaption, "t-Live draft")
         XCTAssertEqual(seen.values, ["Commit clause", "Live draft"])
+        mailbox.cancelAll(TranslationEngineError(message: "done"))
+        serve.cancel()
+    }
+
+    func testCancelQueuedFailsPendingSubmitWithoutKillingTheServeLoop() async {
+        let mailbox = TranslationRequestMailbox()
+        let serve = Task {
+            if let first = await mailbox.next() {
+                try? await Task.sleep(nanoseconds: 80_000_000)
+                if !first.isCancelled {
+                    first.resume(.success("held"))
+                }
+            }
+        }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        let first = Task {
+            try await mailbox.submit("First clause", kind: .commit)
+        }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        let second = Task {
+            try await mailbox.submit("Queued clause", kind: .commit)
+        }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        mailbox.cancelQueued(TranslationEngineError.superseded)
+        XCTAssertFalse(mailbox.hasQueuedOrInFlightCommit)
+        do {
+            _ = try await second.value
+            XCTFail("queued submit should fail")
+        } catch {
+            XCTAssertTrue((error as? TranslationEngineError)?.isSuperseded == true)
+        }
+        _ = try? await first.value
+        XCTAssertTrue(mailbox.isReady)
         mailbox.cancelAll(TranslationEngineError(message: "done"))
         serve.cancel()
     }

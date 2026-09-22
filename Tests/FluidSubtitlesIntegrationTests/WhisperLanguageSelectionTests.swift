@@ -12,7 +12,7 @@ final class WhisperLanguageSelectionTests: XCTestCase {
         XCTAssertEqual(VoiceEngineLanguageCatalog.whisperLanguageCode(for: "en"), "en")
         XCTAssertEqual(
             Set(VoiceEngineLanguageCatalog.whisperLanguages.map(\.id)),
-            ["en", "ko", "ja", "th"]
+            TranslationLanguageCatalog.supportedIDs
         )
         XCTAssertNil(VoiceEngineLanguageCatalog.whisperLanguage(forCode: "hu"))
     }
@@ -177,7 +177,7 @@ final class WhisperLanguageSelectionTests: XCTestCase {
     }
 
     @MainActor
-    func testBeginSessionPinsAutomaticWhisperToSpokenSource() {
+    func testAlignSpokenEnginePinsAutomaticWhisperToSpokenSource() {
         let settings = SettingsStore.shared
         let originalModel = settings.selectedSpeechModel
         let originalSource = settings.translationSourceLanguageID
@@ -198,7 +198,7 @@ final class WhisperLanguageSelectionTests: XCTestCase {
         settings.selectedWhisperLanguageCode = nil
         settings.theaterAlsoHearOtherLanguages = false
 
-        controller.beginSession(kind: .captions)
+        controller.alignSpokenEngineWithTheater()
 
         XCTAssertEqual(settings.selectedWhisperLanguageCode, "ko")
         XCTAssertTrue(SpokenLanguageResolver.voiceEngineSupportsSource(settings: settings))

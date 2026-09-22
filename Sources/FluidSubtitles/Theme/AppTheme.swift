@@ -42,27 +42,28 @@ struct AppTheme {
         let sidebarSection: Font
         let chromeCaption: Font
 
+        /// Semantic styles track the user's text size. Caption-board sizes stay on the presenter font.
         static let standard = Typography(
-            displayTitle: .system(size: 42, weight: .semibold),
-            statement: .system(size: 17, weight: .regular),
-            title: .system(size: 22, weight: .bold),
-            titleIcon: .system(size: 22, weight: .regular),
-            sectionTitle: .system(size: 15, weight: .semibold),
-            body: .system(size: 14, weight: .regular),
-            bodyStrong: .system(size: 14, weight: .medium),
-            bodySmall: .system(size: 13, weight: .regular),
-            bodySmallStrong: .system(size: 13, weight: .medium),
-            caption: .system(size: 12, weight: .regular),
-            captionStrong: .system(size: 12, weight: .medium),
-            captionSmall: .system(size: 11, weight: .regular),
-            tiny: .system(size: 11, weight: .regular),
-            tinyStrong: .system(size: 11, weight: .bold),
-            badge: .system(size: 11, weight: .semibold),
-            metricTiny: .system(size: 11, weight: .bold, design: .rounded),
-            codeCaption: .system(size: 12, weight: .medium, design: .monospaced),
-            sidebarItem: .system(size: 14, weight: .regular),
-            sidebarSection: .system(size: 12, weight: .medium),
-            chromeCaption: .system(size: 12, weight: .regular)
+            displayTitle: .largeTitle,
+            statement: .title3,
+            title: .title2,
+            titleIcon: .title2,
+            sectionTitle: .headline,
+            body: .body,
+            bodyStrong: .body.weight(.medium),
+            bodySmall: .callout,
+            bodySmallStrong: .callout.weight(.medium),
+            caption: .caption,
+            captionStrong: .caption.weight(.medium),
+            captionSmall: .caption2,
+            tiny: .caption2,
+            tinyStrong: .caption2.weight(.medium),
+            badge: .caption2.weight(.medium),
+            metricTiny: .system(.caption2, design: .rounded).weight(.medium),
+            codeCaption: .system(.caption, design: .monospaced),
+            sidebarItem: .body,
+            sidebarSection: .caption,
+            chromeCaption: .caption
         )
     }
 
@@ -119,11 +120,11 @@ struct AppTheme {
             let borderOpacity: Double
 
             static let standard = FormRow(
-                horizontalPadding: 12,
+                horizontalPadding: 0,
                 verticalPadding: 10,
-                cornerRadius: 8,
-                materialOpacity: 0.5,
-                borderOpacity: 0.8
+                cornerRadius: 0,
+                materialOpacity: 0,
+                borderOpacity: 0
             )
         }
 
@@ -138,14 +139,14 @@ struct AppTheme {
             let selectedRowOpacity: Double
 
             static let standard = PickerControl(
-                horizontalPadding: 8,
-                verticalPadding: 5,
-                cornerRadius: 6,
-                borderOpacity: 0.35,
-                searchBorderOpacity: 0.3,
-                disclosureSize: 20,
-                disclosureBorderOpacity: 0.4,
-                selectedRowOpacity: 0.15
+                horizontalPadding: 0,
+                verticalPadding: 4,
+                cornerRadius: 0,
+                borderOpacity: 0,
+                searchBorderOpacity: 0,
+                disclosureSize: 16,
+                disclosureBorderOpacity: 0,
+                selectedRowOpacity: 0
             )
         }
 
@@ -163,24 +164,24 @@ struct AppTheme {
             let subtle: Variant
 
             static let defaults = CardSurface(
-                defaultPadding: 14,
+                defaultPadding: 0,
                 standard: Variant(
-                    borderOpacity: 0.28,
-                    hoverBorderOpacity: 0.5,
-                    borderWidth: 1,
-                    hoverShadowBoost: 0.12
+                    borderOpacity: 0,
+                    hoverBorderOpacity: 0,
+                    borderWidth: 0,
+                    hoverShadowBoost: 0
                 ),
                 prominent: Variant(
-                    borderOpacity: 0.25,
-                    hoverBorderOpacity: 0.55,
-                    borderWidth: 1.2,
-                    hoverShadowBoost: 0.15
+                    borderOpacity: 0,
+                    hoverBorderOpacity: 0,
+                    borderWidth: 0,
+                    hoverShadowBoost: 0
                 ),
                 subtle: Variant(
-                    borderOpacity: 0.18,
-                    hoverBorderOpacity: 0.32,
-                    borderWidth: 0.8,
-                    hoverShadowBoost: 0.08
+                    borderOpacity: 0,
+                    hoverBorderOpacity: 0,
+                    borderWidth: 0,
+                    hoverShadowBoost: 0
                 )
             )
         }
@@ -210,17 +211,17 @@ struct AppTheme {
             let landing: Landing
 
             static let standard = OnboardingSurface(
-                normalFillOpacity: 0.55,
-                selectedFillOpacity: 0.82,
-                normalBorderOpacity: 0.32,
-                selectedBorderOpacity: 0.45,
-                editorBorderOpacity: 0.6,
-                editorPadding: 10,
-                optionPadding: 12,
-                compactOptionPadding: 10,
-                optionCornerRadius: 12,
-                compactOptionCornerRadius: 10,
-                editorCornerRadius: 8,
+                normalFillOpacity: 0,
+                selectedFillOpacity: 0,
+                normalBorderOpacity: 0,
+                selectedBorderOpacity: 0,
+                editorBorderOpacity: 0,
+                editorPadding: 0,
+                optionPadding: 0,
+                compactOptionPadding: 0,
+                optionCornerRadius: 0,
+                compactOptionCornerRadius: 0,
+                editorCornerRadius: 0,
                 landing: Landing(
                     contentWidth: 820,
                     heroPadding: 28,
@@ -283,19 +284,20 @@ struct AppTheme {
         }
     }
 
-    /// Light theme using system colors so macOS accessibility contrast settings stay in control.
+    /// Warm paper. Label colors stay on the system so contrast settings still apply.
     static func light(accent: Color) -> AppTheme {
-        AppTheme(
+        let paper = Color(red: 0.973, green: 0.965, blue: 0.949)
+        return AppTheme(
             palette: Palette(
-                windowBackground: Color(nsColor: .windowBackgroundColor),
-                contentBackground: Color(nsColor: .controlBackgroundColor),
-                sidebarBackground: Color(nsColor: .windowBackgroundColor),
-                cardBackground: Color(nsColor: .controlBackgroundColor),
-                elevatedCardBackground: Color(nsColor: .windowBackgroundColor),
-                toolbarBackground: Color(nsColor: .windowBackgroundColor),
+                windowBackground: paper,
+                contentBackground: paper,
+                sidebarBackground: paper,
+                cardBackground: paper,
+                elevatedCardBackground: paper,
+                toolbarBackground: paper,
 
-                cardBorder: Color.black.opacity(0.12),
-                separator: Color(nsColor: .separatorColor),
+                cardBorder: .clear,
+                separator: Color.black.opacity(0.12),
                 primaryText: Color(nsColor: .labelColor),
                 secondaryText: Color(nsColor: .secondaryLabelColor),
                 tertiaryText: Color(nsColor: .tertiaryLabelColor),
@@ -312,8 +314,8 @@ struct AppTheme {
                 cardSurface: .defaults,
                 onboardingSurface: .standard,
                 window: .standard,
-                cardShadow: .subtle(color: .black, opacity: 0.18),
-                elevatedCardShadow: .subtle(color: .black, opacity: 0.22)
+                cardShadow: .subtle(color: .black, opacity: 0),
+                elevatedCardShadow: .subtle(color: .black, opacity: 0)
             ),
             materials: Materials(
                 window: .thinMaterial,
@@ -326,19 +328,20 @@ struct AppTheme {
         )
     }
 
-    /// Default dark-forward theme tuned for macOS Sonoma / Sequoia aesthetics.
+    /// Warm black. Label colors stay on the system so contrast settings still apply.
     static func dark(accent: Color) -> AppTheme {
-        AppTheme(
+        let ink = Color(red: 0.063, green: 0.055, blue: 0.047)
+        return AppTheme(
             palette: Palette(
-                windowBackground: Color(red: 0.07, green: 0.07, blue: 0.07),
-                contentBackground: Color(red: 0.09, green: 0.09, blue: 0.09),
-                sidebarBackground: Color(red: 0.06, green: 0.06, blue: 0.06),
-                cardBackground: Color(red: 0.08, green: 0.08, blue: 0.08),
-                elevatedCardBackground: Color(red: 0.11, green: 0.11, blue: 0.11),
-                toolbarBackground: Color(red: 0.06, green: 0.06, blue: 0.06),
+                windowBackground: ink,
+                contentBackground: ink,
+                sidebarBackground: ink,
+                cardBackground: ink,
+                elevatedCardBackground: ink,
+                toolbarBackground: ink,
 
-                cardBorder: Color.white.opacity(0.10),
-                separator: Color.white.opacity(0.16),
+                cardBorder: .clear,
+                separator: Color.white.opacity(0.10),
                 primaryText: Color(nsColor: .labelColor),
                 secondaryText: Color(nsColor: .secondaryLabelColor),
                 tertiaryText: Color(nsColor: .tertiaryLabelColor),
@@ -355,8 +358,8 @@ struct AppTheme {
                 cardSurface: .defaults,
                 onboardingSurface: .standard,
                 window: .standard,
-                cardShadow: .subtle(color: .black, opacity: 0.70),
-                elevatedCardShadow: .subtle(color: .black, opacity: 0.80)
+                cardShadow: .subtle(color: .black, opacity: 0),
+                elevatedCardShadow: .subtle(color: .black, opacity: 0)
             ),
             materials: Materials(
                 window: .thinMaterial,

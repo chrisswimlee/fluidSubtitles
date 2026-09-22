@@ -1,5 +1,8 @@
 // Copy this file to Local.xcconfig (gitignored) and set your Apple team ID.
 // A free Personal Team is enough for local Debug builds.
+// A paid Developer Program membership is required to notarize a public zip.
+// After you pay, use the paid team's 10-character ID here, then create a
+// Developer ID Application certificate for that same team. See docs/SIGNING.md.
 //
 //   cp xcconfig/Local.xcconfig.example xcconfig/Local.xcconfig
 //

@@ -65,6 +65,7 @@ final class SettingsStore: ObservableObject {
         self.normalizePromptSelectionsIfNeeded()
         self.purgeRetiredAppleIntelligenceState()
         self.repairForcedOnboardingResetIfNeeded()
+        self.migrateCaptionAccentIfNeeded()
         self.migrateOverlayBottomOffsetTo50IfNeeded()
         self.migratePrivateAIContextDefaultTo4KIfNeeded()
         self.refreshLaunchAtStartupStatus(clearError: true, logMismatch: false)
@@ -743,9 +744,10 @@ final class SettingsStore: ObservableObject {
             return TranslationLanguageCatalog.english.id
         }
         set {
-            objectWillChange.send()
             let id = TranslationLanguageCatalog.language(id: newValue)?.id
                 ?? TranslationLanguageCatalog.english.id
+            if self.defaults.string(forKey: Keys.translationSourceLanguageID) == id { return }
+            objectWillChange.send()
             self.defaults.set(id, forKey: Keys.translationSourceLanguageID)
         }
     }
@@ -762,12 +764,13 @@ final class SettingsStore: ObservableObject {
             return TranslationLanguageCatalog.defaultTarget(forSource: source).id
         }
         set {
-            objectWillChange.send()
             let sourceID = self.translationSourceLanguageID
             let id = TranslationLanguageCatalog.language(id: newValue)?.id
                 ?? TranslationLanguageCatalog.defaultTarget(
                     forSource: TranslationLanguageCatalog.language(id: sourceID) ?? TranslationLanguageCatalog.english
                 ).id
+            if self.defaults.string(forKey: Keys.translationTargetLanguageID) == id { return }
+            objectWillChange.send()
             self.defaults.set(id, forKey: Keys.translationTargetLanguageID)
         }
     }
@@ -809,7 +812,7 @@ final class SettingsStore: ObservableObject {
     }
 
     /// Reuses finalized Parakeet windows so long recordings only process their remaining tail at stop.
-    /// Experimental and enabled by default; users can fall back to full-buffer finalization.
+    /// Dictation leftover. Theater Listen always uses one cumulative caption window.
     var experimentalParakeetUnifiedFinalEnabled: Bool {
         get { self.defaults.object(forKey: Keys.experimentalParakeetUnifiedFinalEnabled) as? Bool ?? true }
         set {
@@ -1095,7 +1098,7 @@ final class SettingsStore: ObservableObject {
     var autoUpdateCheckEnabled: Bool {
         get {
             let value = self.defaults.object(forKey: Keys.autoUpdateCheckEnabled)
-            return value as? Bool ?? true // Default to enabled
+            return value as? Bool ?? false
         }
         set {
             self.defaults.set(newValue, forKey: Keys.autoUpdateCheckEnabled)
@@ -1713,7 +1716,7 @@ final class SettingsStore: ObservableObject {
     var showMicrophoneChangeAlerts: Bool {
         get {
             let value = self.defaults.object(forKey: Keys.showMicrophoneChangeAlerts)
-            return value as? Bool ?? true
+            return value as? Bool ?? false
         }
         set {
             objectWillChange.send()

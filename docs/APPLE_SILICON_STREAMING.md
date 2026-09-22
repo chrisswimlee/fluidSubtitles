@@ -24,8 +24,8 @@ flowchart TD
 2. PCM is resampled to 16 kHz and kept in a 30-second ring. Hours of audio are not retained.
 3. ASR ticks on a timer (Parakeet Flash: 200 ms). The first tick is not gated. After 400 ms of RMS silence, later ticks are skipped.
 4. The growing transcript is split into finished clauses plus an open tail. Already-committed prefixes are stripped so the whole talk is not re-translated. During Theater, the live stitch is capped to the newest ~2,400 characters so a long listen cannot feed hours of text into every tick. Dictation Stop still stitches the full listen.
-5. The current spoken clause can print while you talk. Apple Translation runs when a clause commits, then the Show-as title types out. Same-language pairs print the spoken sentence without a pack.
-6. The live caption grows while you talk. A finished sentence that already has more speech after it commits mid-talk. End-of-utterance or RMS silence (~400 ms) commits leftover speech. Stop flushes remaining leftover. The Pause button does not flush. A twelve-word lineCut splits leftover only at that hard commit. Thin starters like “It.” do not print. Korean/Japanese/Thai 30-second confirm runs on Stop and silence leftover only. A caption already on the board stays.
+5. The current spoken clause stays off the board until it is accepted. Apple Translation may prefetch it. Same-language pairs print the spoken sentence without a pack.
+6. Each accepted sentence appears whole. A finished sentence that already has more speech after it commits mid-talk. End-of-utterance or RMS silence (~400 ms) commits leftover speech that is a real clause. Stop captions drops an unaccepted fragment. Stop Insert still types the whole listen. The Pause button does not flush unaccepted speech. Thin starters like “It.” do not print. Korean/Japanese/Thai 30-second confirm runs on Stop and silence leftover only. A caption already on the board stays.
 
 ## Why first words are not VAD-gated
 
@@ -62,6 +62,7 @@ The app is **not sandboxed**. Hardened Runtime is on. Language packs and voice w
 | Theater SwiftUI board | 3 on-screen captions |
 | Overflow | dropped |
 | UserDefaults snapshot | visible window only |
+| Dictation history SQLite | 1 year / 20,000 rows default; Forever caps at 50,000 |
 
 Theater is a live subtitle board. Off-screen captions are dropped. Bilingual export is the visible board. SRT/VTT use commit times when every cue has a date; otherwise they fall back to 4-second slots.
 

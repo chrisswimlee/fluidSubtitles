@@ -1,178 +1,171 @@
 import CoreGraphics
 import Foundation
 
-/// How the live Theater row appears. Flow and Word type the current title
-/// through commit. Fade and Instant snap. History remounts snap.
-enum TheaterCaptionPrintStyle: String, CaseIterable, Identifiable {
-    case flow
-    case word
-    case fade
-    case instant
+/// When the original language prints under Show-as.
+enum TheaterSpokenLineMode: String, CaseIterable, Identifiable {
+    case off
+    case afterPause
+    case whileTalking
 
     var id: String { self.rawValue }
 
     var displayName: String {
         switch self {
-        case .flow: return "Flow"
-        case .word: return "Word"
-        case .fade: return "Fade"
-        case .instant: return "Instant"
+        case .off: return "Off"
+        case .afterPause: return "After a pause"
+        case .whileTalking: return "While talking"
         }
     }
 
     var help: String {
         switch self {
-        case .flow:
-            return "Letters type in one at a time, with a short breath at commas and periods."
-        case .word:
-            return "One word, or a few Korean, Japanese, or Thai syllables, at a time."
-        case .fade:
-            return "The current caption fades in."
-        case .instant:
-            return "The current caption appears all at once."
+        case .off:
+            return "Translation only. The original language does not print."
+        case .afterPause:
+            return "The original language prints under each sentence when it appears."
+        case .whileTalking:
+            return "The original language prints under each sentence when it appears."
         }
     }
 
-    var typesIn: Bool {
-        self == .flow || self == .word
-    }
+    var printsLiveSpoken: Bool { self == .whileTalking }
 
-    var fadesIn: Bool {
-        self == .fade
-    }
+    /// Prefetch Show-as as the leftover grows. No prior-clause window.
+    var translatesLive: Bool { self == .whileTalking }
 
-    var printStepSeconds: TimeInterval {
-        switch self {
-        case .flow: return Self.latinFlowStepSeconds
-        case .word: return Self.latinWordStepSeconds
-        case .fade, .instant: return 0
-        }
-    }
+    /// Hold Apple Translation until a pause, then send the whole leftover.
+    var holdsTranslationUntilPause: Bool { self == .afterPause }
 
-    /// One Latin letter. Close to reading pace, not a four-letter dump.
-    static let catchUpBacklogCharacters = 40
-    static let catchUpSpeedFactor: TimeInterval = 0.35
-    static let latinFlowStepSeconds: TimeInterval = 0.038
-    /// Compact Show-as titles walk slower so Korean reads as a title, not a dump.
-    static let compactFlowStepSeconds: TimeInterval = 0.068
-    static let latinWordStepSeconds: TimeInterval = 0.22
-    static let compactWordStepSeconds: TimeInterval = 0.16
+    var showsSpokenLine: Bool { self != .off }
 
-    func printStepSeconds(forTitle title: String) -> TimeInterval {
-        let compact = Self.titleUsesCompactScript(title)
-        switch self {
-        case .flow:
-            return compact ? Self.compactFlowStepSeconds : Self.latinFlowStepSeconds
-        case .word:
-            return compact ? Self.compactWordStepSeconds : Self.latinWordStepSeconds
-        case .fade, .instant:
-            return 0
-        }
-    }
-
-    /// Next tick after what is already on screen. Slows at word and sentence
-    /// edges. Must check spoken before translated, matching the order
-    /// TheaterLinePrinter.nextPrintStep advances (top row first) — otherwise
-    /// this times the tick off a string that is not the one being typed.
-    func printStepSeconds(
-        printedSpoken: String,
-        targetSpoken: String,
-        printedTranslated: String,
-        targetTranslated: String
-    ) -> TimeInterval {
-        if printedSpoken != targetSpoken {
-            return self.printStepSeconds(after: printedSpoken, toward: targetSpoken)
-        }
-        if printedTranslated != targetTranslated {
-            return self.printStepSeconds(after: printedTranslated, toward: targetTranslated)
-        }
-        return 0
-    }
-
-    func printStepSeconds(after printed: String, toward target: String) -> TimeInterval {
-        var step = self.printStepSeconds(forTitle: target.isEmpty ? printed : target)
-        guard self.typesIn else { return step }
-        let rest: String
-        if target.hasPrefix(printed) {
-            rest = String(target.dropFirst(printed.count))
-        } else {
-            rest = target
-        }
-        guard let next = rest.first else { return step }
-        // A big chunk landing at once (pause reveal, slow translation) must
-        // not type for seconds behind the speaker's voice.
-        if rest.count > Self.catchUpBacklogCharacters {
-            return step * Self.catchUpSpeedFactor
-        }
-        if self == .flow {
-            if next.isWhitespace {
-                step += 0.028
-            } else if Self.sentencePauseCharacters.contains(next) {
-                step += 0.14
-            } else if Self.commaPauseCharacters.contains(next) {
-                step += 0.07
-            }
-        } else if self == .word, let last = printed.last, Self.sentencePauseCharacters.contains(last) {
-            step += 0.12
-        }
-        return step
-    }
-
-    private static let sentencePauseCharacters: Set<Character> = [".", "!", "?", "。", "！", "？"]
-    private static let commaPauseCharacters: Set<Character> = [",", ";", ":", "，", "、"]
-
-    static func titleUsesCompactScript(_ text: String) -> Bool {
-        text.contains { character in
-            !character.isASCII && !character.isWhitespace && !character.isNewline
-        }
-    }
-
-    static func resolved(_ stored: String?) -> TheaterCaptionPrintStyle {
+    static func resolved(_ stored: String?) -> TheaterSpokenLineMode {
         let trimmed = stored?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return Self(rawValue: trimmed) ?? .flow
+        return Self(rawValue: trimmed) ?? .afterPause
+    }
+
+    /// Old Show the spoken line toggle. On becomes After a pause.
+    static func migrated(fromShowSource show: Bool?) -> TheaterSpokenLineMode {
+        show == false ? .off : .afterPause
     }
 }
 
 /// How the spoken line is placed on the live row.
 enum TheaterCaptionSpokenDisplay: Equatable {
-    /// Translation title on top; spoken undertone underneath.
+    /// Translation title on top; spoken undertone underneath, including live leftover.
     case paired
+    /// Spoken waits for a settled clause. Pending and committed rows still pair.
+    case pairedAfterPause
     /// Same-language: the spoken text is the caption.
     case isTheCaption
     /// Translation only. Spoken text must not flash.
     case hidden
 
-    static func resolved(showSpokenLine: Bool, sameLanguage: Bool) -> TheaterCaptionSpokenDisplay {
+    var queuesSpokenPending: Bool {
+        self == .paired || self == .pairedAfterPause
+    }
+
+    var printsSpokenOnLive: Bool {
+        self == .paired
+    }
+
+    var printsSpokenOnCommitted: Bool {
+        self == .paired || self == .pairedAfterPause
+    }
+
+    static func resolved(mode: TheaterSpokenLineMode, sameLanguage: Bool) -> TheaterCaptionSpokenDisplay {
         if sameLanguage { return .isTheCaption }
-        return showSpokenLine ? .paired : .hidden
+        switch mode {
+        case .off: return .hidden
+        case .afterPause: return .pairedAfterPause
+        case .whileTalking: return .paired
+        }
+    }
+
+    static func resolved(showSpokenLine: Bool, sameLanguage: Bool) -> TheaterCaptionSpokenDisplay {
+        self.resolved(mode: showSpokenLine ? .whileTalking : .off, sameLanguage: sameLanguage)
     }
 }
 
-/// Place Theater on the visible display. Pop-up still fills when there is no
-/// useful stored frame. Overlay falls back to a caption bar and never upgrades
-/// a thin frame to the whole screen.
+/// Idle Home, wizard, and empty-board ghosts. Language names only — never a fake caption.
+enum TheaterBoardPreview {
+    struct Lines: Equatable {
+        let title: String
+        let spoken: String?
+    }
+
+    static func lines(
+        session: TheaterSessionMode,
+        spokenDisplay: TheaterCaptionSpokenDisplay,
+        sourceName: String,
+        targetName: String
+    ) -> Lines {
+        if session == .transcription {
+            return Lines(title: sourceName, spoken: nil)
+        }
+        switch spokenDisplay {
+        case .isTheCaption:
+            return Lines(title: sourceName, spoken: nil)
+        case .hidden:
+            return Lines(title: targetName, spoken: nil)
+        case .paired, .pairedAfterPause:
+            return Lines(title: targetName, spoken: sourceName)
+        }
+    }
+
+    static func current(session: TheaterSessionMode, spokenMode: TheaterSpokenLineMode) -> Lines {
+        self.lines(
+            session: session,
+            spokenDisplay: TheaterCaptionSpokenDisplay.resolved(
+                mode: spokenMode,
+                sameLanguage: SpokenLanguageResolver.isSameLanguagePair()
+            ),
+            sourceName: SpokenLanguageResolver.sourceLanguage().displayName,
+            targetName: SpokenLanguageResolver.targetLanguage().displayName
+        )
+    }
+}
+
+/// Place Theater on the visible display. Pop-up fills that display on Open.
+/// A resized frame is kept only when asked (Minimize). Overlay falls back to
+/// a caption bar and never upgrades a thin frame to the whole screen.
 enum TheaterWindowPlacement {
     static let legacyDefaultSize = CGSize(width: 1100, height: 440)
 
     static func resolvedFrame(
         stored: CGRect?,
         visible: CGRect,
-        presentation: TheaterPresentationStyle = .popup
+        presentation: TheaterPresentationStyle = .popup,
+        keepUserSize: Bool = false
     ) -> CGRect {
         if presentation == .transparent {
             return Self.resolvedOverlayFrame(stored: stored, visible: visible)
         }
-        return Self.resolvedPopupFrame(stored: stored, visible: visible)
+        return Self.resolvedPopupFrame(stored: stored, visible: visible, keepUserSize: keepUserSize)
     }
 
-    static func resolvedPopupFrame(stored: CGRect?, visible: CGRect) -> CGRect {
-        guard let stored, stored.width > 200, stored.height > 160 else {
-            return visible
+    static func resolvedPopupFrame(
+        stored: CGRect?,
+        visible: CGRect,
+        keepUserSize: Bool = false
+    ) -> CGRect {
+        if keepUserSize, let stored, stored.width > 200, stored.height > 160 {
+            return Self.clamped(stored, to: visible)
         }
-        if Self.shouldFillScreen(stored: stored, visible: visible, presentation: .popup) {
-            return visible
-        }
-        return Self.clamped(stored, to: visible)
+        return visible
+    }
+
+    /// Overlay caption bar is ~180 tall. Pop-up fills the display so the board
+    /// is not stuck as a thin leftover strip.
+    static func isOverlayCaptionBar(_ stored: CGRect, visible: CGRect) -> Bool {
+        stored.height > 80
+            && stored.height < 220
+            && stored.width >= visible.width * 0.6
+    }
+
+    /// Auto-converted Overlay leftovers used to land on lower-third. Fill those
+    /// unless the presenter picked Lower third as a preset.
+    static func isLowerThirdLeftover(_ stored: CGRect, visible: CGRect) -> Bool {
+        Self.isClose(stored, TheaterPositionPreset.lowerThird.frame(in: visible))
     }
 
     static func resolvedOverlayFrame(stored: CGRect?, visible: CGRect) -> CGRect {
@@ -204,10 +197,15 @@ enum TheaterWindowPlacement {
     }
 
     static func isFillScreen(_ stored: CGRect, visible: CGRect) -> Bool {
-        abs(stored.width - visible.width) < 20 && abs(stored.height - visible.height) < 20
+        stored.width >= visible.width - 20 && stored.height >= visible.height - 20
     }
 
-    private static func clamped(_ stored: CGRect, to visible: CGRect) -> CGRect {
+    static func isClose(_ lhs: CGRect, _ rhs: CGRect) -> Bool {
+        abs(lhs.minX - rhs.minX) < 4 && abs(lhs.minY - rhs.minY) < 4
+            && abs(lhs.width - rhs.width) < 4 && abs(lhs.height - rhs.height) < 4
+    }
+
+    static func clamped(_ stored: CGRect, to visible: CGRect) -> CGRect {
         var placed = stored
         if !visible.intersects(placed) {
             placed.size.width = min(placed.width, visible.width)
@@ -219,8 +217,10 @@ enum TheaterWindowPlacement {
     }
 }
 
-/// One-click board positions on the chosen display, inside a 5% safe margin.
+/// One-click board positions on the chosen display. Fill screen covers the
+/// visible display. The other presets stay inside a 5% safe margin.
 enum TheaterPositionPreset: String, CaseIterable, Identifiable {
+    case fillScreen
     case lowerThird
     case topBand
     case sideColumn
@@ -234,11 +234,33 @@ enum TheaterPositionPreset: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
+        case .fillScreen: "Fill screen"
         case .lowerThird: "Lower third"
         case .topBand: "Top band"
         case .sideColumn: "Side column"
         case .captionBar: "Caption bar"
         }
+    }
+
+    func isAvailable(for presentation: TheaterPresentationStyle) -> Bool {
+        switch self {
+        case .fillScreen: presentation == .popup
+        case .captionBar: presentation == .transparent
+        default: true
+        }
+    }
+
+    /// Overlay caption bar becomes Fill screen on Pop-up, and the reverse.
+    func resolved(for presentation: TheaterPresentationStyle) -> TheaterPositionPreset {
+        switch (self, presentation) {
+        case (.captionBar, .popup): .fillScreen
+        case (.fillScreen, .transparent): .captionBar
+        default: self
+        }
+    }
+
+    static func available(for presentation: TheaterPresentationStyle) -> [Self] {
+        Self.allCases.filter { $0.isAvailable(for: presentation) }
     }
 
     func frame(in visible: CGRect) -> CGRect {
@@ -247,6 +269,8 @@ enum TheaterPositionPreset: String, CaseIterable, Identifiable {
             dy: visible.height * Self.safeMargin
         )
         switch self {
+        case .fillScreen:
+            return visible
         case .lowerThird:
             return CGRect(x: safe.minX, y: safe.minY, width: safe.width, height: safe.height / 3)
         case .topBand:
@@ -283,6 +307,11 @@ enum TheaterCaptionScale {
 
     static func translatedSize(setting: CGFloat) -> CGFloat {
         min(max(setting, 1) * Self.translatedMultiplier, Self.maxPointSize)
+    }
+
+    static func sizes(setting: CGFloat, stageWidth: CGFloat) -> (spoken: CGFloat, translated: CGFloat) {
+        let display = Self.displaySize(setting: setting, stageWidth: stageWidth)
+        return (Self.spokenSize(setting: display), Self.translatedSize(setting: display))
     }
 }
 

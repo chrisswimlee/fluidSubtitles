@@ -11,11 +11,11 @@ Theater shows a measured clock: `mic · e2e · ASR · MT · thermal`. Those HUD 
 | `MT` | Apple Translation only. Do not read MT as audience latency. |
 | `thermal` | Thermal state when the clock was written |
 
-End-to-end is speech-start to the printed caption. `MT` is Apple Translation only.
+End-to-end is speech-start to the committed caption, which is the first time the audience sees that clause. `MT` is Apple Translation only.
 
 The HUD stays visible when chrome is hidden.
 
-Apple Translation uses a warm `TranslationSession`. Hosted CI builds with the Xcode 26.3 SDK, so the later `preferredStrategy` API is not linked. Theater translates a clause when it commits, not on every ASR partial. A speculative Apple-only prefetch may start at a clause-boundary approximation (unread completed clause or a tail that is ready to commit). The HUD `MT` value is the commit-path wait: 0 on an Apple cache hit that was not sharpened, otherwise Apple plus optional first-print polish. Prefetch does not use local MLX and must not starve a queued commit. A running experimental local LLM may sharpen the Apple draft before it prints; a miss or timeout keeps the Apple line.
+Apple Translation uses a warm `TranslationSession`. Hosted CI builds with the Xcode 26.3 SDK, so the later `preferredStrategy` API is not linked. Theater translates a clause when it is accepted, not on every ASR partial. A speculative Apple-only prefetch may start at a clause-boundary approximation and stay off the board. The commit reuses that prefetch only when the unit is the same clause. The HUD `MT` value is the commit-path wait: 0 on an Apple cache hit that was not sharpened, otherwise Apple plus optional first-print polish. Prefetch does not use local MLX and must not starve a queued commit. A later commit submits as soon as its clause is known. A running experimental local LLM may sharpen the Apple line before it appears; a miss or timeout keeps the Apple line.
 
 Apple Translation is warmed when the language pair changes (swap or I-speak / caption pickers) and again on Listen. The first clause still includes pack-ready plus `TranslationSession.prepareTranslation()` if those have not finished. That setup cost is not the per-clause `MT` readout.
 
@@ -35,7 +35,7 @@ Korean, Japanese, and Thai Listen must not use Flash or TDT v2. Theater refuses 
 | Apple Translation `lowLatency` (short clause) | typically 50–200 ms |
 | Audience sees the caption | 3–8 s after the speaker finishes that sentence |
 
-English mid-listen confirmation re-decode is skipped so preview ticks keep the Neural Engine. Korean, Japanese, and Thai also print from the live stitch while you talk. A fuller pass still runs on Stop and on the first silence hold for leftover speech only. A caption already on the board stays.
+English mid-listen confirmation re-decode is skipped so preview ticks keep the Neural Engine. Korean, Japanese, and Thai confirmation still runs on Stop and on the first silence hold, and only for leftover speech that is not yet painted. A caption already on the board stays.
 
 Speech edges: the first ASR tick is immediate. After 400 ms of RMS silence, one last tick still runs, then later ticks are skipped so a long keynote pause does not keep the Neural Engine hot. Parakeet end-of-utterance holds 400 ms, then commits leftover speech that is a real clause. A mid-talk period commits only when more speech already follows that finished sentence. A twelve-word timer stays pause-only. Same-language pairs skip Apple Translation and print the spoken sentence. There is no neural VAD on this path.
 

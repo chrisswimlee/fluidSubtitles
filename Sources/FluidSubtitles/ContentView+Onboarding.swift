@@ -17,7 +17,7 @@ extension ContentView {
         appInfo: (name: String, bundleId: String, windowTitle: String),
         dictationSlot: SettingsStore.DictationShortcutSlot? = nil
     ) -> String {
-        if let slot = dictationSlot ?? self.currentDictationShortcutSlot(for: self.activeRecordingMode) {
+        if let slot = dictationSlot ?? self.currentDictationShortcutSlot() {
             return SettingsStore.shared.effectiveDictationSystemPrompt(for: slot, appBundleID: appInfo.bundleId)
         }
         return SettingsStore.shared.effectiveSystemPrompt(for: .dictate, appBundleID: appInfo.bundleId)
@@ -66,15 +66,8 @@ extension ContentView {
         ModelRepository.shared.isLocalEndpoint(urlString)
     }
 
-    func currentDictationShortcutSlot(for mode: ActiveRecordingMode) -> SettingsStore.DictationShortcutSlot? {
-        switch mode {
-        case .dictate:
-            return self.activeDictationShortcutSlot ?? .primary
-        case .promptMode:
-            return self.activeDictationShortcutSlot ?? .secondary
-        case .none:
-            return nil
-        }
+    func currentDictationShortcutSlot() -> SettingsStore.DictationShortcutSlot? {
+        nil
     }
 
     func clearActiveDictationShortcutState() {
@@ -116,63 +109,6 @@ extension ContentView {
             NotchContentState.shared.promptModeOverrideProfileName = profile.name
             NotchContentState.shared.promptModeOverrideProfileID = profile.id
         }
-    }
-
-    func beginDictationRecording(
-        for slot: SettingsStore.DictationShortcutSlot,
-        mode: ActiveRecordingMode
-    ) {
-        DebugLogger.shared.debug("Begin dictation recording for slot \(slot.rawValue)", source: "ContentView")
-        self.appBench("begin_recording slot=\(slot.rawValue) mode=\(mode.rawValue)")
-        LiveTranslationController.shared.alignSpokenEngineWithTheater()
-        if self.isOnboardingVoicePlaygroundStepActive {
-            self.asr.finalText = ""
-            self.settings.onboardingPlaygroundValidated = false
-            self.settings.onboardingPlaygroundSkipped = false
-            self.settings.playgroundUsed = false
-            self.playgroundUsed = false
-        }
-        self.applyDictationShortcutSelectionContext(for: slot)
-        self.setActiveRecordingMode(mode)
-
-        guard !self.asr.isRunningOrStarting else {
-            self.appBench("asr_start_skipped reason=already_running_or_starting")
-            return
-        }
-        self.advanceOverlayLifecycle()
-        if self.asr.micStatus == .authorized {
-            self.appBench("overlay_mode_request mode=Dictation")
-            self.menuBarManager.setOverlayMode(.dictation)
-            self.menuBarManager.showRecordingOverlayImmediately()
-            self.appBench("overlay_mode_requested mode=Dictation")
-            self.appBench("overlay_phase phase=connecting")
-        }
-        Task {
-            let asrStartStartedAt = ProcessInfo.processInfo.systemUptime
-            DebugLogger.shared.benchmark("APP_BENCH", message: "asr_start_call", source: "AppBenchmark")
-            let startOutcome = await self.asr.start(onCaptureStarted: {
-                if SettingsStore.shared.enableTranscriptionSounds {
-                    TranscriptionSoundPlayer.shared.playStartSound()
-                }
-                self.captureRecordingContext()
-                self.prewarmPrivateAIDictationIfNeeded(for: slot)
-                self.appBench("overlay_phase phase=recording trigger=first_pcm")
-            })
-            if startOutcome == .failed {
-                self.menuBarManager.hideRecordingOverlayImmediately(reason: "asr_start_failed")
-            }
-            DebugLogger.shared.benchmark(
-                "APP_BENCH",
-                message: "asr_start_return elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - asrStartStartedAt) * 1000).rounded()))",
-                source: "AppBenchmark"
-            )
-        }
-    }
-
-    func beginDictationRecording(for selection: SettingsStore.DictationPromptSelection, mode: ActiveRecordingMode) {
-        let settings = SettingsStore.shared
-        settings.setDictationPromptSelection(selection, for: .secondary)
-        self.beginDictationRecording(for: .secondary, mode: mode)
     }
 
     func appBench(_ message: String) {
@@ -292,16 +228,6 @@ extension ContentView {
         self.asr.showError = true
     }
 
-    func labelFor(status: AVAuthorizationStatus) -> String {
-        switch status {
-        case .authorized: return "Microphone: Authorized"
-        case .denied: return "Microphone: Denied"
-        case .restricted: return "Microphone: Restricted"
-        case .notDetermined: return "Microphone: Not Determined"
-        @unknown default: return "Microphone: Unknown"
-        }
-    }
-
     func checkAccessibilityPermissions() -> Bool {
         return AXIsProcessTrusted()
     }
@@ -333,7 +259,7 @@ extension ContentView {
     func positionWindowBesideSystemSettings(requestID: UUID) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
             guard self.accessibilityGuideRequestID == requestID else { return }
-            guard let window = NSApp.windows.first(where: { $0.isVisible && ($0.title == FluidProduct.displayName || $0.title == "connectingCaptions" || $0.title == "Fluid Translate" || $0.title == "FluidVoice") }) ?? NSApp.keyWindow else {
+            guard let window = NSApp.windows.first(where: { $0.isVisible && ($0.title == FluidProduct.displayName || $0.title.contains(FluidProduct.displayName)) }) ?? NSApp.keyWindow else {
                 return
             }
 
@@ -502,7 +428,7 @@ extension ContentView {
     func cancelAccessibilityPermissionFlow() {
         self.finishAccessibilityPermissionFlow()
         NSApp.activate(ignoringOtherApps: true)
-        (NSApp.windows.first { $0.isVisible && ($0.title == FluidProduct.displayName || $0.title == "connectingCaptions" || $0.title == "Fluid Translate" || $0.title == "FluidVoice") } ?? NSApp.keyWindow)?
+        (NSApp.windows.first { $0.isVisible && ($0.title == FluidProduct.displayName || $0.title.contains(FluidProduct.displayName)) } ?? NSApp.keyWindow)?
             .makeKeyAndOrderFront(nil)
     }
 
@@ -663,7 +589,8 @@ enum SidebarSymbolCache {
     ]
 
     static let images: [String: NSImage] = {
-        let configuration = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+        let pointSize = NSFont.preferredFont(forTextStyle: .body).pointSize
+        let configuration = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)
             .applying(.preferringHierarchical())
         var images: [String: NSImage] = [:]
 
@@ -690,15 +617,12 @@ enum SidebarSymbolCache {
     let reduceMotion: Bool
 
     func makeBody(configuration: Configuration) -> some View {
-        let scale = self.reduceMotion || !configuration.isPressed ? 1 : 0.985
-
         configuration.label
             .foregroundStyle(.primary)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(Color.primary.opacity(self.backgroundOpacity(isPressed: configuration.isPressed)))
             )
-            .scaleEffect(scale)
             .animation(.easeOut(duration: self.reduceMotion ? 0.08 : 0.1), value: configuration.isPressed)
             .animation(.easeOut(duration: 0.1), value: self.isHovered)
     }
@@ -721,30 +645,27 @@ struct SidebarOptionHoverModifier: ViewModifier {
     let isSelected: Bool
     let reduceMotion: Bool
 
-    @Environment(\.theme) private var theme
     @State private var isHovered = false
 
     func body(content: Content) -> some View {
         content
             .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
-            .padding(.horizontal, 5)
             .padding(.vertical, 3)
-            .background(
+            .background {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(self.backgroundColor)
-            )
-            .padding(.horizontal, -5)
-            .padding(.vertical, -3)
+            }
             .contentShape(Rectangle())
             .onHover { self.isHovered = $0 }
             .animation(.easeOut(duration: self.reduceMotion ? 0.08 : 0.12), value: self.isHovered)
+            .animation(.easeOut(duration: self.reduceMotion ? 0.08 : 0.12), value: self.isSelected)
     }
 
     var backgroundColor: Color {
         if self.isSelected {
-            return self.theme.palette.accent
+            return Color(nsColor: .selectedContentBackgroundColor)
         }
-        return Color.primary.opacity(self.isHovered ? 0.08 : 0)
+        return self.isHovered ? Color.primary.opacity(0.06) : .clear
     }
 }
 

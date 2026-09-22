@@ -10,11 +10,22 @@ import Foundation
 /// on-screen position, shift every time the translation's line count
 /// changes, which reads as a jump rather than smooth growth.
 ///
-/// Wrap is a greedy left-to-right fill. A line wraps only when the next
-/// token does not fit on the board. Each caption is the spoken line
-/// and then its Show-as title. Empty wrap slots stay off the board so a short
-/// sentence does not look like it already wrapped.
+/// Wrap fills left to right until the next token does not fit. A narrower
+/// board or a larger caption wraps earlier so the line still stays on the
+/// board. Do not wrap at a fixed word count while the line still has room.
+/// Opening quotes, hyphens, closing marks, and Japanese small kana stay
+/// on the same token so a new line starts on a word, not a stray mark.
+/// Each caption is the spoken line and then its Show-as title. Empty wrap
+/// slots stay off the ink so a short sentence does not look like it
+/// already wrapped.
 enum TheaterBilingualWrap {
+    /// Non-ASCII title scripts (Korean, Japanese, Thai) size by character, not word.
+    static func titleUsesCompactScript(_ text: String) -> Bool {
+        text.contains { character in
+            !character.isASCII && !character.isWhitespace && !character.isNewline
+        }
+    }
+
     struct Row: Equatable {
         let text: String
         let isSpoken: Bool
@@ -44,6 +55,12 @@ enum TheaterBilingualWrap {
     /// a second unused slot so wrap does not grow the board.
     static let wrapLookaheadEm: CGFloat = 5
 
+    /// Floor so a first-frame measurement does not claim the line is empty.
+    static let latinMinimumWords = 4
+    static let compactMinimumCharacters = 8
+    /// Average Latin word plus a space, used to see how many words the board holds.
+    static let latinSampleWord = "words "
+
     /// One title line plus halo. Use this for the first paint so SwiftUI does
     /// not size the live row to a single pixel and clip the opening letters.
     static func openingBoardHeight(font: NSFont) -> CGFloat {
@@ -71,25 +88,59 @@ enum TheaterBilingualWrap {
         )
     }
 
-    /// Live caption height is the ink on screen. Height grows when a wrap
-    /// actually fills, not when the next line might be needed.
+    /// Live caption height for the current pair. Spoken-only rows keep one
+    /// Show-as slot so the title does not grow the board when it starts.
+    /// A nearly-full last title line keeps one unused wrap slot so the next
+    /// glyph does not jump existing ink.
     static func reservedDisplayHeight(
         rows: [Row],
         spokenFont: NSFont,
         translatedFont: NSFont,
-        width _: CGFloat
+        width: CGFloat
     ) -> CGFloat {
-        self.displayHeight(
+        let base = self.displayHeight(
             rows: rows,
             spokenFont: spokenFont,
             translatedFont: translatedFont
         )
+        if let lastTitle = rows.last(where: { !$0.isSpoken }) {
+            guard width >= Self.minimumWrapWidth,
+                  self.lastLineIsNearlyFull(lastTitle.text, font: translatedFont, width: width)
+            else {
+                return base
+            }
+            return base + Self.rowSpacing + Self.lineHeight(for: translatedFont)
+        }
+        guard !rows.isEmpty else { return base }
+        return base + Self.rowSpacing + Self.lineHeight(for: translatedFont)
     }
 
     static func lastLineIsNearlyFull(_ text: String, font: NSFont, width: CGFloat) -> Bool {
         let usable = self.usableWidth(width)
         let used = text.isEmpty ? 0 : self.lineWidth(text, font: font)
         return usable - used < ceil(font.pointSize * Self.wrapLookaheadEm)
+    }
+
+    /// How many words (or compact characters) actually fit on this width.
+    /// Used by tests and reserved-height helpers. Wrap itself fills until
+    /// the next token does not fit.
+    static func targetLineUnits(for text: String, font: NSFont, width: CGFloat) -> Int {
+        let usable = max(width, 1)
+        if Self.titleUsesCompactScript(text) {
+            let em = max(font.pointSize, 1)
+            let fit = Int(floor(usable / em))
+            return max(fit, Self.compactMinimumCharacters)
+        }
+        let wordWidth = max(self.lineWidth(Self.latinSampleWord, font: font), 1)
+        let fit = Int(floor(usable / wordWidth))
+        return max(fit, Self.latinMinimumWords)
+    }
+
+    static func lineUnits(_ text: String) -> Int {
+        if Self.titleUsesCompactScript(text) {
+            return text.filter { !$0.isWhitespace && !$0.isNewline }.count
+        }
+        return text.split(whereSeparator: { $0.isWhitespace }).filter { !$0.isEmpty }.count
     }
 
     /// `nil` until Theater has a real board width. Wrapping against a first-frame
@@ -326,46 +377,95 @@ enum TheaterBilingualWrap {
         }
     }
 
-    /// Fill left to right and lock a line once the next token does not fit.
-    /// Remeasuring the whole sentence with AppKit wrap can move a printed word.
+    /// Fill left to right. Lock a line only when the next token does not fit.
+    /// A fixed word-count wrap hopped the last words to the next line while
+    /// the board still had room, and a restitch made that look like a jump.
     private static func fillLines(_ text: String, font: NSFont, width: CGFloat) -> [String] {
         var lines: [String] = []
         var current = ""
+
+        func commitCurrent() {
+            guard !current.isEmpty else { return }
+            lines.append(current)
+            current = ""
+        }
+
+        func startLine(_ raw: String) {
+            var piece = String(raw.drop(while: { $0.isWhitespace }))
+            if piece.isEmpty {
+                piece = raw
+            }
+            while !piece.isEmpty, self.lineWidth(piece, font: font) > width + 1, piece.count > 1 {
+                let (head, tail) = self.prefixFitting(piece, font: font, width: width)
+                if head.isEmpty {
+                    break
+                }
+                lines.append(head)
+                piece = tail
+            }
+            current = piece
+        }
+
         for token in self.tokens(text) {
             if current.isEmpty {
-                let start = String(token.drop(while: { $0.isWhitespace }))
-                current = start.isEmpty ? token : start
+                startLine(token)
                 continue
             }
             let candidate = current + token
-            if self.lineWidth(candidate, font: font) <= width + 1 {
-                current = candidate
+            if self.lineWidth(candidate, font: font) > width + 1 {
+                commitCurrent()
+                startLine(token)
                 continue
             }
-            lines.append(current)
-            let next = String(token.drop(while: { $0.isWhitespace }))
-            current = next.isEmpty ? token : next
+            current = candidate
         }
-        if !current.isEmpty {
-            lines.append(current)
-        }
+        commitCurrent()
         return lines.isEmpty ? [text] : lines
     }
 
+    /// Last-resort split so a long Latin word is not clipped off the board.
+    /// Keep opening punctuation and line-start-forbidden marks with their glyph.
+    private static func prefixFitting(
+        _ text: String,
+        font: NSFont,
+        width: CGFloat
+    ) -> (String, String) {
+        var head = ""
+        for character in text {
+            let next = head + String(character)
+            if !head.isEmpty, self.lineWidth(next, font: font) > width + 1 {
+                break
+            }
+            head = next
+        }
+        if head.isEmpty, let first = text.first {
+            head = String(first)
+        }
+        var tail = String(text.dropFirst(head.count))
+        if Self.isOpeningPrefix(head), let first = tail.first {
+            head.append(first)
+            tail.removeFirst()
+        }
+        while let first = tail.first, Self.isLineStartForbidden(first) {
+            head.append(first)
+            tail.removeFirst()
+        }
+        return (head, tail)
+    }
+
     private static func tokens(_ text: String) -> [String] {
+        self.mergeUnbreakable(self.rawAtoms(text))
+    }
+
+    /// Whitespace runs, Latin words, and one glyph for everything else.
+    /// Glue / kinsoku happens in `mergeUnbreakable` so wrap points stay
+    /// on a word, quote, or Japanese cluster instead of a stray mark.
+    private static func rawAtoms(_ text: String) -> [String] {
         var result: [String] = []
         var current = ""
         var kind: TokenKind?
 
         for character in text {
-            if Self.isGluePunctuation(character) {
-                if current.isEmpty, let last = result.indices.last {
-                    result[last].append(character)
-                } else {
-                    current.append(character)
-                }
-                continue
-            }
             let next: TokenKind
             if character.isWhitespace {
                 next = .space
@@ -395,14 +495,99 @@ enum TheaterBilingualWrap {
         return result
     }
 
-    private static func isGluePunctuation(_ character: Character) -> Bool {
-        ".,!?;:…'’”—、。！？｡､」』】〉》)]}".contains(character)
+    private static func mergeUnbreakable(_ atoms: [String]) -> [String] {
+        var result: [String] = []
+        var index = 0
+        while index < atoms.count {
+            var token = atoms[index]
+            index += 1
+
+            while index < atoms.count, self.cannotStartLine(atoms[index], previous: token) {
+                token += atoms[index]
+                index += 1
+            }
+
+            if Self.isOpeningPrefix(token),
+               index < atoms.count,
+               !atoms[index].allSatisfy({ $0.isWhitespace })
+            {
+                token += atoms[index]
+                index += 1
+                while index < atoms.count, self.cannotStartLine(atoms[index], previous: token) {
+                    token += atoms[index]
+                    index += 1
+                }
+            }
+
+            while index < atoms.count,
+                  token.last.map(Self.isWordJoiner) == true,
+                  self.isLatinAtom(atoms[index])
+            {
+                token += atoms[index]
+                index += 1
+            }
+
+            result.append(token)
+        }
+        return result
     }
+
+    private static func cannotStartLine(_ atom: String, previous: String) -> Bool {
+        guard let first = atom.first else { return false }
+        if Self.isAmbiguousQuote(first) {
+            return !previous.allSatisfy(\.isWhitespace)
+        }
+        return atom.allSatisfy(Self.isLineStartForbidden)
+    }
+
+    private static func isOpeningPrefix(_ token: String) -> Bool {
+        !token.isEmpty && token.allSatisfy {
+            Self.lineEndForbidden.contains($0) || Self.isAmbiguousQuote($0)
+        }
+    }
+
+    private static func isLatinAtom(_ atom: String) -> Bool {
+        let trimmed = atom.drop(while: { $0.isWhitespace })
+        guard let first = trimmed.first else { return false }
+        return first.isASCII && (first.isLetter || first.isNumber)
+    }
+
+    private static func isWordJoiner(_ character: Character) -> Bool {
+        character == "-" || character == "\u{2010}" || character == "\u{2011}"
+            || character == "'" || character == "\u{2019}"
+    }
+
+    private static func isAmbiguousQuote(_ character: Character) -> Bool {
+        character == "\"" || character == "'"
+    }
+
+    /// Marks that must not begin a Theater line (closing punct, small kana).
+    private static func isLineStartForbidden(_ character: Character) -> Bool {
+        Self.lineStartForbidden.contains(character) || Self.smallKana.contains(character)
+    }
+
+    /// Closing punctuation, prolonged sound, iteration marks, units.
+    private static let lineStartForbidden: Set<Character> = [
+        ".", ",", "!", "?", ";", ":", "…", "‥", "'", "’", "”", "—", "–",
+        "、", "。", "！", "？", "｡", "､", "」", "』", "】", "〉", "》",
+        ")", "]", "}", "〕", "］", "｝",
+        "ー", "ｰ", "ゝ", "ゞ", "々", "ヽ", "ヾ", "・", "･",
+        "%", "°", "ๆ", "ฯ",
+    ]
+
+    /// Opening punctuation must travel with the next word, not end a line.
+    private static let lineEndForbidden: Set<Character> = [
+        "\"", "“", "‘", "(", "「", "『", "【", "〈", "《", "[", "{", "〔", "［", "｛",
+    ]
+
+    private static let smallKana: Set<Character> = [
+        "ぁ", "ぃ", "ぅ", "ぇ", "ぉ", "っ", "ゃ", "ゅ", "ょ", "ゎ", "ゕ", "ゖ",
+        "ァ", "ィ", "ゥ", "ェ", "ォ", "ッ", "ャ", "ュ", "ョ", "ヮ", "ヵ", "ヶ",
+    ]
 
     private enum TokenKind {
         case space
         case latin
-        case other
     }
 
     private static func lineWidth(_ text: String, font: NSFont) -> CGFloat {

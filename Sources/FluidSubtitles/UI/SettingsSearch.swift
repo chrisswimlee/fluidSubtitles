@@ -12,6 +12,7 @@ import SwiftUI
 enum SettingsSearchTarget: Hashable {
     case liveTranslation
     case theaterAppearance
+    case setupWizard
     case translateInsertShortcut
     case captionListenShortcut
     case general
@@ -21,6 +22,7 @@ enum SettingsSearchTarget: Hashable {
     case accentColor
     case transcriptionSounds
     case automaticUpdates
+    case commercialLicense
 
     case dictation
     case microphonePermission
@@ -33,6 +35,7 @@ enum SettingsSearchTarget: Hashable {
     case textInsertionMode
     case spokenSend
     case transcriptionHistory
+    case historyRetention
     case audioHistory
     case usageStreak
     case skipSilentRecordings
@@ -68,7 +71,7 @@ enum SettingsSearchTarget: Hashable {
 
     var section: SettingsSection {
         switch self {
-        case .liveTranslation, .theaterAppearance, .translateInsertShortcut, .captionListenShortcut:
+        case .liveTranslation, .theaterAppearance, .setupWizard, .translateInsertShortcut, .captionListenShortcut:
             return .translation
 
         case .general,
@@ -77,12 +80,16 @@ enum SettingsSearchTarget: Hashable {
              .dockVisibility,
              .accentColor,
              .transcriptionSounds,
-             .automaticUpdates:
+             .automaticUpdates,
+             .commercialLicense,
+             .accessibilityPermission,
+             .transcriptionHistory,
+             .historyRetention,
+             .globalHotkey,
+             .dictionarySuggestions:
             return .general
 
         case .dictation,
-             .microphonePermission,
-             .globalHotkey,
              .primaryDictationShortcuts,
              .cancelRecordingShortcut,
              .pasteLastTranscriptionShortcut,
@@ -90,21 +97,18 @@ enum SettingsSearchTarget: Hashable {
              .copyToClipboard,
              .textInsertionMode,
              .spokenSend,
-             .transcriptionHistory,
              .audioHistory,
              .audioStorage,
              .usageStreak,
              .skipSilentRecordings,
              .pauseMedia,
-             .dictionarySuggestions,
-             .accessibilityPermission,
              .textFormatting:
             return .dictation
 
         case .notifications, .aiEnhancementFailures, .microphoneChanges:
             return .notifications
 
-        case .audio, .inputDevicePriority, .outputDevice:
+        case .audio, .inputDevicePriority, .outputDevice, .microphonePermission:
             return .audio
 
         case .overlay,
@@ -175,8 +179,8 @@ enum SettingsSearchIndex {
             target: .liveTranslation,
             title: "Theater",
             terms: [
-                "translate theater captions language pair apple translation korean english thai japanese I speak",
-                "voice transcription fluidvoice translate mode",
+                "translate theater captions language pair apple translation I speak show as",
+                "voice transcription translate mode",
                 "voice engine speech to text translation engine apple translation local small llm mlx experimental",
             ]
         ),
@@ -185,7 +189,8 @@ enum SettingsSearchIndex {
             title: "Theater Window",
             terms: [
                 "caption font size spoken line source translation theater window captions only dark light appearance theme",
-                "how new captions appear print-in flow word fade instant typewriter",
+                "setup wizard original language spoken line under each delivered sentence",
+                "caption font size spoken line source translation theater window captions only dark light appearance theme",
                 "popup pop-up transparent overlay board slides keynote see-through caption bar caption plate",
                 "menu bar theater font size plate theme position overlay tools",
                 "hide from screen share zoom keynote recording capture projector OBS",
@@ -193,7 +198,15 @@ enum SettingsSearchIndex {
                 "clear captions board archive wipe reset high contrast",
                 "talk notes notes pdf rtf markdown json glossary names",
                 "pace cue teleprompter behind caught up last print",
-                "voice transcription fluidvoice translate mode",
+                "voice transcription translate mode",
+            ]
+        ),
+        .init(
+            target: .setupWizard,
+            title: "Setup Wizard",
+            terms: [
+                "setup wizard first run theater captions spoken line original language",
+                "pause finish sentence while talking word by word whole sentence show as I speak Korean English Thai Japanese",
             ]
         ),
         .init(
@@ -222,16 +235,19 @@ enum SettingsSearchIndex {
             title: "Hide from Dock & App Switcher",
             terms: ["menu bar only", "dock icon command tab cmd tab app switcher"]
         ),
-        .init(target: .accentColor, title: "Accent Color", terms: ["appearance theme tint colour preset"]),
-        .init(
-            target: .transcriptionSounds,
-            title: "Transcription Sounds",
-            terms: ["recording sound cue volume independent mute start end audio"]
-        ),
+        .init(target: .accentColor, title: "Accent Color", terms: ["appearance theme tint colour color preset default caption gold"]),
         .init(
             target: .automaticUpdates,
             title: "Automatic Updates",
             terms: ["beta releases check for updates release notes rollback previous builds version"]
+        ),
+        .init(
+            target: .commercialLicense,
+            title: "Commercial License",
+            terms: [
+                "license commercial enterprise SLA IT legal procurement named organization",
+                "for work request a commercial license licensed to activation key air-gapped",
+            ]
         ),
 
         .init(target: .dictation, title: "Dictation", terms: ["typing transcription keyboard preferences"]),
@@ -278,6 +294,11 @@ enum SettingsSearchIndex {
             terms: ["stats tracking privacy remember transcript"]
         ),
         .init(
+            target: .historyRetention,
+            title: "Keep History",
+            terms: ["retention days year forever prune sqlite history limit"]
+        ),
+        .init(
             target: .audioHistory,
             title: "Save Audio With History",
             terms: ["store microphone recording locally dictation audio"]
@@ -291,11 +312,6 @@ enum SettingsSearchIndex {
             target: .skipSilentRecordings,
             title: "Skip Silent Recordings",
             terms: ["silence quiet speech avoid transcription"]
-        ),
-        .init(
-            target: .pauseMedia,
-            title: "Pause Media During Transcription",
-            terms: ["resume music audio video playback recording"]
         ),
         .init(
             target: .dictionarySuggestions,
@@ -392,11 +408,6 @@ enum SettingsSearchIndex {
             target: .debugLogs,
             title: "Debug Settings",
             terms: ["Show Debug Logs in App Reveal Log File crash diagnostics troubleshooting"]
-        ),
-        .init(
-            target: .fasterLongDictation,
-            title: "Faster Long Dictation",
-            terms: ["experimental Parakeet reuse live windows remaining tail transcription"]
         ),
         .init(
             target: .experimental,

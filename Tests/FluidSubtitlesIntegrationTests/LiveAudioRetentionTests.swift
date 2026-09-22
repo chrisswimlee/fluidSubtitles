@@ -86,6 +86,86 @@ final class LiveAudioRetentionTests: XCTestCase {
         XCTAssertEqual(stitched.components(separatedBy: "Today we will cover memory.").count - 1, 1)
     }
 
+    /// Voice log, 2026-09-19: the full ring re-decoded "what it on me" as
+    /// "what it all means", the exact overlap failed, and the whole half
+    /// minute was appended again on every tick.
+    func testFullRingRedecodeWithARevisedWordDoesNotRepeatTheWindow() {
+        let committed = "I just woke up from my dream But you and I had to say goodbye And I don't know what it on me."
+        let incoming = "I just woke up from my dream But you and I had to say goodbye And I don't know what it all means. But since I"
+        let stitched = StreamingTranscriptStitcher.stitch(committed: committed, incoming: incoming)
+
+        XCTAssertEqual(
+            stitched,
+            "I just woke up from my dream But you and I had to say goodbye And I don't know what it all means. But since I"
+        )
+        XCTAssertEqual(stitched.components(separatedBy: "I just woke up").count - 1, 1)
+
+        // The window slid: its first words are gone from the decode and the
+        // opening word is different. Only the fresh tail may be appended.
+        let slid = "Well, you and I had to say goodbye. And I don't know what it all means. But since I survived, I realized"
+        let next = StreamingTranscriptStitcher.stitch(committed: stitched, incoming: slid)
+        XCTAssertEqual(
+            next,
+            "I just woke up from my dream But you and I had to say goodbye. And I don't know what it all means. But since I survived, I realized"
+        )
+        XCTAssertEqual(next.components(separatedBy: "say goodbye").count - 1, 1)
+    }
+
+    /// Voice log, 16:19: every tick is a fresh decode of the whole ring and
+    /// the words drift ("I feel the fine" → "I really fine"). A one-word
+    /// exact overlap ("I") used to duplicate the whole block.
+    func testDriftingFullDecodesOnlyGrowAtTheTail() {
+        let ticks = [
+            "I feel fine.",
+            "I feel the fine about it.",
+            "I feel the fine about it.  Clear.",
+            "I really fine about it.  Clear.",
+            "I really fine about it.  Cle.  Exactly.",
+            "I really fine about it.  Cle.  something.  Exactly.  It was no big.  I mean, sure, I wasted a bit.",
+            "I really fine about it.  Cle.  something.  Exactly.  It was no big.  I mean, sure, I wasted a bit of time shaving my legs.  Never mind this one week later.  I",
+            "I really fine about it.  Cle.  something.  Exactly.  It was no big.  I mean, sure, I wasted a bit of time shaving my legs.  Never mind this one week later.  I'm a cute gallery.",
+        ]
+        var committed = ""
+        var previousCount = 0
+        for tick in ticks {
+            committed = StreamingTranscriptStitcher.stitch(committed: committed, incoming: tick)
+            XCTAssertLessThanOrEqual(committed.count, previousCount + tick.count + 1, tick)
+            XCTAssertLessThanOrEqual(committed.components(separatedBy: "fine about it").count - 1, 1, committed)
+            previousCount = committed.count
+        }
+        XCTAssertTrue(committed.hasSuffix("shaving my legs. Never mind this one week later. I'm a cute gallery."), committed)
+        XCTAssertFalse(committed.contains("a bit. of time"), committed)
+    }
+
+    /// Once the decoder hears the sentence end it re-spells "meaningful, but"
+    /// as "meaningful. But". The shared run takes the fresh spelling so the
+    /// sentence can split while talking.
+    func testSharedRunTakesTheFreshDecodePunctuation() {
+        let stitched = StreamingTranscriptStitcher.stitch(
+            committed: "It is quietly destroying your ability to do anything meaningful, but what if I told you",
+            incoming: "It is quietly destroying your ability to do anything meaningful. But what if I told you that the same"
+        )
+        XCTAssertEqual(
+            stitched,
+            "It is quietly destroying your ability to do anything meaningful. But what if I told you that the same"
+        )
+    }
+
+    func testUnrelatedWindowStillAppends() {
+        let stitched = StreamingTranscriptStitcher.stitch(
+            committed: "Welcome everyone to the talk.",
+            incoming: "Let us begin with memory."
+        )
+        XCTAssertEqual(stitched, "Welcome everyone to the talk. Let us begin with memory.")
+    }
+
+    func testUnspacedScriptAlignsOnSharedCharacters() {
+        let committed = "今日はモデルを学習しました。次に適用しま"
+        let incoming = "モデルを学習しました。次に適用しました。そして出荷しました"
+        let stitched = StreamingTranscriptStitcher.stitch(committed: committed, incoming: incoming)
+        XCTAssertEqual(stitched, "今日はモデルを学習しました。次に適用しました。そして出荷しました")
+    }
+
     func testWhisperReleaseMemoryLeavesDiskCacheUntouched() async {
         let provider = WhisperProvider()
         let existedOnDisk = provider.modelsExistOnDisk()

@@ -20,6 +20,25 @@ enum TheaterPresenterHotkey {
     static let modifiers: NSEvent.ModifierFlags = [.control, .option]
     static let fontStep = 2
 
+    /// Menu key equivalent for the same Control+Option chord `action` matches.
+    static func keyEquivalent(for action: Action) -> String {
+        switch action {
+        case .toggleVisible: return "h"
+        case .togglePause: return "p"
+        case .clear: return "k"
+        case .fontLarger: return "="
+        case .fontSmaller: return "-"
+        case .toggleTools: return "t"
+        case .listen: return "l"
+        }
+    }
+
+    static func menuItem(title: String, action: Selector, shortcut: Action) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: self.keyEquivalent(for: shortcut))
+        item.keyEquivalentModifierMask = self.modifiers
+        return item
+    }
+
     static func action(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> Action? {
         let relevant = modifiers.intersection([.control, .option, .command, .shift])
         guard relevant == Self.modifiers else { return nil }

@@ -177,7 +177,7 @@ extension ASRService {
             isEnabled: SettingsStore.shared.skipSilentRecordingsEnabled,
             useDictionaryTrainingPath: useDictionaryTrainingPath,
             hasRecognizedStreamingPreview: hasRecognizedStreamingPreview,
-            keepShortUtterances: LiveTranslationController.shared.isSessionActive
+            keepShortUtterances: self.speechCapturePolicy?.keepShortUtterances == true
         ) {
             let silenceGateStartedAt = ProcessInfo.processInfo.systemUptime
             let silenceAssessment = Self.assessShortAudioSilence(pcm)
@@ -344,13 +344,16 @@ extension ASRService {
             }
 
             // Do not update self.finalText here to avoid instant binding insert in playground
-            let textWithoutFillers = ASRService.removeFillerWords(result.text)
-            let dictionaryText = useDictionaryTrainingPath
-                ? textWithoutFillers
-                : ASRService.applyCustomDictionary(textWithoutFillers)
-            let outputText = useDictionaryTrainingPath
-                ? dictionaryText
-                : ASRService.applySpokenPunctuationFormatting(dictionaryText)
+            let outputText: String
+            if useDictionaryTrainingPath {
+                outputText = ASRService.removeFillerWords(result.text)
+            } else if self.speechCapturePolicy != nil {
+                outputText = ASRService.textForTheaterListen(result.text)
+            } else {
+                outputText = ASRService.applySpokenPunctuationFormatting(
+                    ASRService.applyCustomDictionary(ASRService.removeFillerWords(result.text))
+                )
+            }
             if !useDictionaryTrainingPath {
                 self.recordWordBoostHitIfAny(transcribedText: outputText)
             }

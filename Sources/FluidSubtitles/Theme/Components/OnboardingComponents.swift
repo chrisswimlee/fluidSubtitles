@@ -34,36 +34,33 @@ struct FluidOnboardingLandingHero<Actions: View>: View {
 
             if !self.eyebrow.isEmpty {
                 Text(self.eyebrow)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .tracking(0.6)
-                    .foregroundStyle(FluidOnboardingLandingColors.blue.opacity(0.86))
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(self.theme.palette.secondaryText)
                     .padding(.bottom, 16)
             }
 
             VStack(spacing: 4) {
                 Text(self.title)
-                    .font(.system(size: 52, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .font(.system(size: 40, weight: .regular))
+                    .foregroundStyle(self.theme.palette.primaryText)
                     .multilineTextAlignment(.center)
                     .minimumScaleFactor(0.82)
 
                 Text(self.accentTitle)
-                    .font(.system(size: 50, weight: .semibold))
-                    .italic()
-                    .foregroundStyle(FluidOnboardingLandingColors.blue)
+                    .font(.system(size: 40, weight: .regular))
+                    .foregroundStyle(self.theme.palette.accent)
                     .multilineTextAlignment(.center)
                     .minimumScaleFactor(0.76)
             }
             .lineLimit(1)
-            .shadow(color: .black.opacity(0.34), radius: 10, x: 0, y: 5)
             .padding(.bottom, 28)
 
             VStack(spacing: 8) {
                 Text(self.firstDetail)
                 Text(self.secondDetail)
             }
-            .font(.system(size: 22, weight: .medium))
-            .foregroundStyle(Color.white.opacity(0.70))
+            .font(.system(size: 18, weight: .regular))
+            .foregroundStyle(self.theme.palette.secondaryText)
             .multilineTextAlignment(.center)
             .lineLimit(3)
             .minimumScaleFactor(0.82)
@@ -77,6 +74,8 @@ struct FluidOnboardingLandingHero<Actions: View>: View {
 }
 
 struct FluidOnboardingLandingBackdrop: View {
+    @Environment(\.theme) private var theme
+
     let glowCenter: UnitPoint
 
     init(glowCenter: UnitPoint = UnitPoint(x: 0.5, y: 0.18)) {
@@ -84,31 +83,9 @@ struct FluidOnboardingLandingBackdrop: View {
     }
 
     var body: some View {
-        ZStack {
-            Color(red: 0.012, green: 0.019, blue: 0.031)
-
-            RadialGradient(
-                colors: [
-                    FluidOnboardingLandingColors.blue.opacity(0.18),
-                    Color(red: 0.014, green: 0.032, blue: 0.068).opacity(0.30),
-                    .clear,
-                ],
-                center: self.glowCenter,
-                startRadius: 0,
-                endRadius: 620
-            )
-
-            RadialGradient(
-                colors: [
-                    Color.white.opacity(0.026),
-                    .clear,
-                ],
-                center: .center,
-                startRadius: 0,
-                endRadius: 520
-            )
-        }
-        .ignoresSafeArea()
+        self.theme.palette.windowBackground
+            .ignoresSafeArea()
+            .onAppear { _ = self.glowCenter }
     }
 }
 
@@ -121,16 +98,15 @@ struct FluidOnboardingCompactProgress: View {
             let width = proxy.size.width
 
             ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Color.white.opacity(0.08))
+                Rectangle()
+                    .fill(Color.primary.opacity(0.08))
 
-                Capsule()
+                Rectangle()
                     .fill(FluidOnboardingLandingColors.blue)
                     .frame(width: width * clampedValue)
-                    .shadow(color: FluidOnboardingLandingColors.blue.opacity(0.38), radius: 8, x: 0, y: 0)
             }
         }
-        .frame(width: 292, height: 4)
+        .frame(width: 292, height: 2)
         .accessibilityHidden(true)
     }
 }
@@ -151,8 +127,6 @@ struct FluidOnboardingCompactAppIconMark: View {
             .interpolation(.high)
             .scaledToFit()
             .frame(width: self.size, height: self.size)
-            .shadow(color: FluidOnboardingLandingColors.blue.opacity(0.45), radius: 24, x: 0, y: 0)
-            .shadow(color: Color.black.opacity(0.42), radius: 14, x: 0, y: 9)
             .accessibilityHidden(true)
     }
 }
@@ -286,11 +260,7 @@ struct FluidOnboardingLandingPrimaryButton: NSViewRepresentable {
 }
 
 private final class LandingPrimaryNSButton: NSButton {
-    private static let normalColor = NSColor(srgbRed: 0.16, green: 0.49, blue: 1.0, alpha: 1.0)
-    private static let highlightedColor = NSColor(srgbRed: 0.10, green: 0.40, blue: 0.92, alpha: 1.0)
-    private static let hoverColor = NSColor(srgbRed: 0.20, green: 0.54, blue: 1.0, alpha: 1.0)
     private var trackingArea: NSTrackingArea?
-    private var isHovering = false
 
     override var isHighlighted: Bool {
         didSet {
@@ -312,7 +282,7 @@ private final class LandingPrimaryNSButton: NSButton {
 
     override func layout() {
         super.layout()
-        self.layer?.cornerRadius = self.bounds.height / 2
+        self.layer?.cornerRadius = 0
     }
 
     override func updateTrackingAreas() {
@@ -330,41 +300,29 @@ private final class LandingPrimaryNSButton: NSButton {
 
     override func mouseEntered(with event: NSEvent) {
         super.mouseEntered(with: event)
-        self.isHovering = true
         self.update(title: self.title, isHighlighted: self.isHighlighted)
     }
 
     override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
-        self.isHovering = false
         self.update(title: self.title, isHighlighted: self.isHighlighted)
     }
 
     func update(title: String, isHighlighted: Bool) {
         self.title = title
+        let gold = NSColor(srgbRed: 0.910, green: 0.647, blue: 0.294, alpha: isHighlighted ? 0.55 : 1)
         self.attributedTitle = NSAttributedString(
             string: title,
             attributes: [
-                .font: NSFont.systemFont(ofSize: 18, weight: .semibold),
-                .foregroundColor: NSColor.white,
+                .font: NSFont.systemFont(ofSize: 18, weight: .medium),
+                .foregroundColor: gold,
             ]
         )
         self.alignment = .center
         self.layer?.masksToBounds = false
-        self.layer?.backgroundColor = self.backgroundColor(isHighlighted: isHighlighted).cgColor
-        self.layer?.cornerRadius = self.bounds.height > 0 ? self.bounds.height / 2 : 28
-        self.layer?.shadowColor = Self.normalColor.withAlphaComponent(0.34).cgColor
-        self.layer?.shadowOpacity = isHighlighted ? 0.20 : 0.34
-        self.layer?.shadowRadius = isHighlighted ? 8 : 14
-        self.layer?.shadowOffset = NSSize(width: 0, height: isHighlighted ? 4 : 7)
-    }
-
-    private func backgroundColor(isHighlighted: Bool) -> NSColor {
-        if isHighlighted {
-            return Self.highlightedColor
-        }
-
-        return self.isHovering ? Self.hoverColor : Self.normalColor
+        self.layer?.backgroundColor = NSColor.clear.cgColor
+        self.layer?.cornerRadius = 0
+        self.layer?.shadowOpacity = 0
     }
 }
 
@@ -374,62 +332,40 @@ private struct FluidOnboardingAppIconMark: View {
 
     var body: some View {
         ZStack {
-            Circle()
-                .fill(FluidOnboardingLandingColors.blue.opacity(0.28))
-                .blur(radius: 42)
-                .frame(width: 188, height: 188)
-                .offset(y: -16)
-
-            FluidOnboardingPortalGlow()
-                .offset(y: 58)
+            FluidOnboardingCaptionPlate()
+                .offset(y: 78)
 
             Image(nsImage: Self.appIconImage)
                 .resizable()
                 .interpolation(.high)
                 .scaledToFit()
-                .frame(width: 116, height: 116)
-                .shadow(color: Color.black.opacity(0.56), radius: 20, x: 0, y: 15)
-                .shadow(color: FluidOnboardingLandingColors.blue.opacity(0.58), radius: 36, x: 0, y: 0)
+                .frame(width: 88, height: 88)
         }
         .frame(width: 360, height: 176)
         .accessibilityHidden(true)
     }
 }
 
-private struct FluidOnboardingPortalGlow: View {
+/// Sample board under the app icon. A caption plate, not a portal glow.
+private struct FluidOnboardingCaptionPlate: View {
     var body: some View {
-        ZStack {
-            Ellipse()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color.white.opacity(0.74),
-                            FluidOnboardingLandingColors.blue.opacity(0.64),
-                            FluidOnboardingLandingColors.blue.opacity(0.05),
-                            .clear,
-                        ],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: 112
-                    )
-                )
-                .blur(radius: 7)
-                .frame(width: 230, height: 25)
-
-            Ellipse()
-                .stroke(FluidOnboardingLandingColors.blue.opacity(0.42), lineWidth: 3)
-                .blur(radius: 1.4)
-                .frame(width: 326, height: 35)
-
-            Ellipse()
-                .stroke(FluidOnboardingLandingColors.blue.opacity(0.24), lineWidth: 1.4)
-                .frame(width: 260, height: 22)
+        VStack(alignment: .leading, spacing: 4) {
+            Text("오늘 모델을 학습했습니다")
+                .font(.system(size: 15, weight: .regular))
+                .foregroundStyle(Color.primary)
+                .lineLimit(1)
+            Text("Today we trained the model.")
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(Color.secondary)
+                .lineLimit(1)
         }
+        .accessibilityHidden(true)
     }
 }
 
 enum FluidOnboardingLandingColors {
-    static let blue = Color(red: 0.10, green: 0.46, blue: 1.0)
+    /// Caption gold. The old landing blue matched a dictation app.
+    static let blue = Color(red: 0.91, green: 0.65, blue: 0.29)
 }
 
 private struct OnboardingSelectableSurfaceModifier: ViewModifier {
@@ -440,66 +376,39 @@ private struct OnboardingSelectableSurfaceModifier: ViewModifier {
     let selectedBorderOpacity: Double?
 
     func body(content: Content) -> some View {
-        let surface = self.theme.metrics.onboardingSurface
-        let radius = self.cornerRadius ?? surface.optionCornerRadius
-        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
-
         content
-            .padding(self.padding ?? surface.optionPadding)
-            .background(
-                shape
-                    .fill(self.theme.palette.cardBackground.opacity(
-                        self.isSelected ? surface.selectedFillOpacity : surface.normalFillOpacity
-                    ))
-                    .overlay(
-                        shape.stroke(
-                            self.isSelected
-                                ? self.theme.palette.accent.opacity(self.selectedBorderOpacity ?? surface.selectedBorderOpacity)
-                                : self.theme.palette.cardBorder.opacity(surface.normalBorderOpacity),
-                            lineWidth: 1
-                        )
-                    )
-            )
-            .contentShape(shape)
+            .padding(.vertical, 8)
+            .overlay(alignment: .bottom) {
+                if self.isSelected {
+                    Rectangle()
+                        .fill(self.theme.palette.accent)
+                        .frame(height: 1)
+                }
+            }
+            .contentShape(Rectangle())
     }
 }
 
 private struct OnboardingEditorSurfaceModifier: ViewModifier {
-    @Environment(\.theme) private var theme
     let cornerRadius: CGFloat?
 
     func body(content: Content) -> some View {
-        let surface = self.theme.metrics.onboardingSurface
-        let radius = self.cornerRadius ?? surface.editorCornerRadius
-        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
-
         content
-            .padding(surface.editorPadding)
-            .background(
-                shape
-                    .fill(self.theme.palette.cardBackground)
-                    .overlay(
-                        shape.stroke(self.theme.palette.cardBorder.opacity(surface.editorBorderOpacity), lineWidth: 1)
-                    )
-            )
     }
 }
 
 private struct OnboardingProminentButtonModifier: ViewModifier {
-    @Environment(\.theme) private var theme
     let controlSize: ControlSize?
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if let controlSize {
             content
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.theaterTextProminent)
                 .controlSize(controlSize)
-                .tint(self.theme.palette.accent)
         } else {
             content
-                .buttonStyle(.borderedProminent)
-                .tint(self.theme.palette.accent)
+                .buttonStyle(.theaterTextProminent)
         }
     }
 }
@@ -511,11 +420,11 @@ private struct OnboardingSecondaryButtonModifier: ViewModifier {
     func body(content: Content) -> some View {
         if let controlSize {
             content
-                .buttonStyle(.bordered)
+                .buttonStyle(.theaterText)
                 .controlSize(controlSize)
         } else {
             content
-                .buttonStyle(.bordered)
+                .buttonStyle(.theaterText)
         }
     }
 }

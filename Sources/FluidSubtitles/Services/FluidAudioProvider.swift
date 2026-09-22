@@ -1,3 +1,4 @@
+// Upstream: FluidVoice (altic-dev), GPLv3. Parakeet engine. Do not rewrite it to look original.
 import Foundation
 #if arch(arm64)
 import FluidAudio
@@ -187,8 +188,12 @@ final class FluidAudioProvider: TranscriptionProvider {
         try await self.transcribeFinal(samples)
     }
 
+    /// One cumulative caption window. Faster Long Dictation reused incremental
+    /// tails; Theater's stitcher needs the whole growing transcript.
+    private static let usesIncrementalCaptionWindow = false
+
     var streamingPreviewMode: StreamingPreviewMode {
-        SettingsStore.shared.experimentalParakeetUnifiedFinalEnabled ? .incrementalDelta : .trailingWindow
+        Self.usesIncrementalCaptionWindow ? .incrementalDelta : .trailingWindow
     }
 
     var hasIncrementalSession: Bool {
@@ -218,7 +223,7 @@ final class FluidAudioProvider: TranscriptionProvider {
 
         let startedAt = Date().timeIntervalSince1970
         let result: ASRResult
-        if SettingsStore.shared.experimentalParakeetUnifiedFinalEnabled,
+        if Self.usesIncrementalCaptionWindow,
            samples.count > Self.incrementalChunkingThresholdSamples,
            let incrementalManager = self.finalAsrManager ?? self.streamingAsrManager
         {
@@ -239,7 +244,7 @@ final class FluidAudioProvider: TranscriptionProvider {
                 result = try await fullPreviewManager.transcribe(samples, source: AudioSource.microphone)
             }
         } else {
-            if !SettingsStore.shared.experimentalParakeetUnifiedFinalEnabled
+            if !Self.usesIncrementalCaptionWindow
                 || samples.count < self.incrementalAcceptedSampleCount
             {
                 self.resetIncrementalSession()
@@ -269,7 +274,7 @@ final class FluidAudioProvider: TranscriptionProvider {
     /// growing recording on every live-preview tick.
     func incrementalPreviewDeltaStart(totalSampleCount: Int) -> Int? {
         Self.incrementalPreviewDeltaRange(
-            enabled: SettingsStore.shared.experimentalParakeetUnifiedFinalEnabled,
+            enabled: Self.usesIncrementalCaptionWindow,
             hasSession: self.incrementalSession != nil,
             acceptedSampleCount: self.incrementalAcceptedSampleCount,
             totalSampleCount: totalSampleCount
@@ -379,7 +384,7 @@ final class FluidAudioProvider: TranscriptionProvider {
             )
         }
 
-        if SettingsStore.shared.experimentalParakeetUnifiedFinalEnabled,
+        if Self.usesIncrementalCaptionWindow,
            self.incrementalSession != nil
         {
             do {

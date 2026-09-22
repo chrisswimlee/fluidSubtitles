@@ -1,3 +1,4 @@
+// Upstream: FluidVoice (altic-dev), GPLv3. Model download. Do not rewrite it to look original.
 import CoreML
 import Foundation
 #if arch(arm64)

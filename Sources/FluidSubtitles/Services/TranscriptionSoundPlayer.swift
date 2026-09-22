@@ -1,5 +1,4 @@
 import AVFoundation
-import CoreAudio
 import Foundation
 
 final class TranscriptionSoundPlayer {
@@ -7,11 +6,14 @@ final class TranscriptionSoundPlayer {
 
     private let playbackQueue = DispatchQueue(label: "app.fluidsubtitles.transcription-sounds", qos: .userInteractive)
     private var players: [String: AVAudioPlayer] = [:]
-    private var savedSystemVolume: Float?
 
     private init() {}
 
+    @MainActor
     func playStartSound() {
+        guard TheaterListenCapture.shouldPlayListenChime(
+            policyPlaysChime: TheaterSpeechSession.shared.playsListenChime
+        ) else { return }
         let settings = SettingsStore.shared
         guard settings.enableTranscriptionSounds else { return }
         let selected = settings.transcriptionStartSound
@@ -23,7 +25,11 @@ final class TranscriptionSoundPlayer {
         )
     }
 
+    @MainActor
     func playStopSound() {
+        guard TheaterListenCapture.shouldPlayListenChime(
+            policyPlaysChime: TheaterSpeechSession.shared.playsListenChime
+        ) else { return }
         let settings = SettingsStore.shared
         guard settings.enableTranscriptionSounds else { return }
         let selected = settings.transcriptionStartSound
@@ -92,14 +98,7 @@ final class TranscriptionSoundPlayer {
         independentVolume: Bool,
         startedAt: TimeInterval
     ) {
-        if independentVolume {
-            let currentSystemVol = Self.getSystemVolume()
-            guard currentSystemVol > 0.001 else { return }
-            // Save current system volume and temporarily set it to desired level
-            self.savedSystemVolume = currentSystemVol
-            Self.setSystemVolume(desiredVolume)
-        }
-
+        _ = independentVolume
         do {
             let player: AVAudioPlayer
             if let existing = self.players[soundName] {
@@ -111,88 +110,19 @@ final class TranscriptionSoundPlayer {
             }
 
             player.currentTime = 0
-            if independentVolume {
-                player.volume = 1.0
-            } else {
-                player.volume = desiredVolume
-            }
+            player.volume = desiredVolume
             player.play()
-            WatchPlaybackReference.noteChime()
             DebugLogger.shared.benchmark(
                 "APP_BENCH",
                 message: "sound_play_dispatched sound=\(soundName) elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - startedAt) * 1000).rounded()))",
                 source: "AppBenchmark"
             )
 
-            // Restore system volume after the sound finishes
-            if independentVolume, let saved = self.savedSystemVolume {
-                let duration = player.duration
-                self.playbackQueue.asyncAfter(deadline: .now() + duration + 0.05) { [weak self] in
-                    Self.setSystemVolume(saved)
-                    self?.savedSystemVolume = nil
-                }
-            }
         } catch {
-            // Restore system volume on error
-            if let saved = self.savedSystemVolume {
-                Self.setSystemVolume(saved)
-                self.savedSystemVolume = nil
-            }
             DebugLogger.shared.error(
                 "Failed to play sound \(soundName).m4a: \(error.localizedDescription)",
                 source: "TranscriptionSoundPlayer"
             )
-        }
-    }
-
-    // MARK: - System Volume via CoreAudio
-
-    private static func getDefaultOutputDeviceID() -> AudioObjectID? {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var deviceID = AudioObjectID(0)
-        var size = UInt32(MemoryLayout<AudioObjectID>.size)
-        let status = AudioObjectGetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject),
-            &address,
-            0,
-            nil,
-            &size,
-            &deviceID
-        )
-        guard status == noErr, deviceID != kAudioObjectUnknown else { return nil }
-        return deviceID
-    }
-
-    static func getSystemVolume() -> Float {
-        guard let deviceID = getDefaultOutputDeviceID() else { return 1.0 }
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
-            mScope: kAudioDevicePropertyScopeOutput,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var volume: Float32 = 1.0
-        var size = UInt32(MemoryLayout<Float32>.size)
-        let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &volume)
-        guard status == noErr else { return 1.0 }
-        return volume
-    }
-
-    private static func setSystemVolume(_ volume: Float) {
-        guard let deviceID = getDefaultOutputDeviceID() else { return }
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
-            mScope: kAudioDevicePropertyScopeOutput,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var vol = Float32(max(0, min(1, volume)))
-        let size = UInt32(MemoryLayout<Float32>.size)
-        let status = AudioObjectSetPropertyData(deviceID, &address, 0, nil, size, &vol)
-        if status != noErr {
-            DebugLogger.shared.error("Failed to set system volume: OSStatus \(status)", source: "TranscriptionSoundPlayer")
         }
     }
 }

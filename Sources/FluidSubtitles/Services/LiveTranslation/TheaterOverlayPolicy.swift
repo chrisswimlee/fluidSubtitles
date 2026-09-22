@@ -36,6 +36,11 @@ enum TheaterOverlayPolicy {
         !minimized && Self.hidesAllChrome(presentation: presentation, toolsPinned: toolsPinned)
     }
 
+    /// Pop-up keeps a window shadow. Overlay is text on the slide, so it does not.
+    static func showsWindowShadow(presentation: TheaterPresentationStyle) -> Bool {
+        !Self.isOverlay(presentation)
+    }
+
     static func hidesTitlebarButtons(
         presentation: TheaterPresentationStyle,
         toolsPinned: Bool

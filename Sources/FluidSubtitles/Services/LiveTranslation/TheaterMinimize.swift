@@ -27,8 +27,9 @@ enum TheaterMinimize {
 
     static func homeSystemImage(for action: HomeAction) -> String {
         switch action {
-        case .open, .show: return "rectangle.on.rectangle"
-        case .close: return "rectangle.inset.filled"
+        case .open: return "captions.bubble"
+        case .show: return "rectangle.expand.vertical"
+        case .close: return "xmark"
         }
     }
 

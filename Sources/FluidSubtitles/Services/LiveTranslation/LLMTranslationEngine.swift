@@ -376,22 +376,14 @@ final class LLMTranslationEngine: TranslationEngine {
     }
 
     private func resolveRoute(settings: SettingsStore) -> (model: String, baseURL: String, apiKey: String) {
-        if settings.mlxRunnerEnabled {
-            let model = MLXRunnerCatalog.model(
-                id: settings.mlxRunnerModelID,
-                extras: MLXRunnerService.shared.availableModels
-            )
-            return (
-                model: model?.repo ?? settings.mlxRunnerModelID,
-                baseURL: MLXRunnerService.shared.baseURL,
-                apiKey: "mlx-runner"
-            )
-        }
-        let route = DictationProviderRoute.resolve(settings: settings)
+        let model = MLXRunnerCatalog.model(
+            id: settings.mlxRunnerModelID,
+            extras: MLXRunnerService.shared.availableModels
+        )
         return (
-            model: route.model,
-            baseURL: route.baseURL,
-            apiKey: route.apiKey.isEmpty ? "lm-studio" : route.apiKey
+            model: model?.repo ?? settings.mlxRunnerModelID,
+            baseURL: MLXRunnerService.shared.baseURL,
+            apiKey: "mlx-runner"
         )
     }
 }

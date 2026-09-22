@@ -791,7 +791,7 @@ extension ASRService {
         guard !self.isProcessingChunk else {
             DebugLogger.shared.debug("⚠️ Skipping chunk - previous transcription still in progress", source: "ASRService")
             self.benchmarkLog("chunk_skip index=\(chunkIndex) reason=busy ageMs=\(chunkAgeMs)")
-            if LiveTranslationController.shared.isSessionActive {
+            if self.speechCapturePolicy?.preferLatestChunk == true {
                 self.pendingLatestChunk = true
             } else {
                 self.skipNextChunk = true
@@ -803,7 +803,7 @@ extension ASRService {
             self.pendingLatestChunk = false
         } else if self.skipNextChunk {
             self.skipNextChunk = false
-            if !LiveTranslationController.shared.isSessionActive {
+            if self.speechCapturePolicy?.isSessionActive != true {
                 DebugLogger.shared.debug("⚠️ Skipping chunk for ANE recovery", source: "ASRService")
                 self.benchmarkLog("chunk_skip index=\(chunkIndex) reason=recovery ageMs=\(chunkAgeMs)")
                 return
@@ -818,7 +818,7 @@ extension ASRService {
             thermal: ProcessInfo.processInfo.thermalState
         ) {
             self.benchmarkLog("chunk_skip index=\(chunkIndex) reason=silence ageMs=\(chunkAgeMs)")
-            LiveTranslationController.shared.markSilenceHold()
+            self.speechCapturePolicy?.markSilenceHold()
             return
         }
         if LiveTranslationSilenceGate.isPastHold(
@@ -970,9 +970,7 @@ extension ASRService {
                 source: "ASRService"
             )
             let rawText = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            let newText = ASRService.applySpokenPunctuationFormatting(
-                ASRService.applyCustomDictionary(ASRService.removeFillerWords(rawText))
-            )
+            let newText = self.cleanedLiveTranscript(rawText)
             self.recordWordBoostHitIfAny(transcribedText: newText)
             self.benchmarkCompletedStreamingChunks += 1
             self.lastProcessedSampleCount = currentSampleCount
@@ -995,17 +993,20 @@ extension ASRService {
                     let updatedText = self.smartDiffUpdate(previous: self.previousFullTranscription, current: newText)
                     self.committedStreamingText = updatedText
                 }
-                if LiveTranslationController.shared.isSessionActive {
+                if self.speechCapturePolicy?.boundLiveTranscript == true {
                     self.committedStreamingText = StreamingTranscriptStitcher.boundLiveTranscript(
                         self.committedStreamingText
                     )
                 }
                 self.partialTranscription = self.committedStreamingText
                 self.previousFullTranscription = newText
-                DebugLogger.shared.debug("✅ Streaming: '\(self.partialTranscription)' (\(String(format: "%.2f", duration))s)", source: "ASRService")
+                let previewCount = self.partialTranscription.count
+                DebugLogger.shared.logLazy(level: .debug, source: "ASRService") {
+                    "✅ Streaming: \(previewCount) chars (\(String(format: "%.2f", duration))s)"
+                }
             }
             if result.endOfUtterance {
-                LiveTranslationController.shared.handleEndOfUtterance()
+                self.speechCapturePolicy?.handleEndOfUtterance()
             }
             self.dropRetainedAudioAfterPreview(
                 currentSampleCount: currentSampleCount,
@@ -1155,6 +1156,21 @@ extension ASRService {
             source: "TypingBenchmark"
         )
         return outcome
+    }
+
+    /// Theater keeps the custom dictionary. Dictation punctuation and filler stripping stay off that path.
+    func cleanedLiveTranscript(_ text: String) -> String {
+        if self.speechCapturePolicy != nil {
+            return ASRService.applyCustomDictionary(text)
+        }
+        return ASRService.applySpokenPunctuationFormatting(
+            ASRService.applyCustomDictionary(ASRService.removeFillerWords(text))
+        )
+    }
+
+    /// Theater captions. The word "period" stays a word.
+    static func textForTheaterListen(_ text: String) -> String {
+        self.applyCustomDictionary(text)
     }
 
     /// Removes filler sounds from transcribed text

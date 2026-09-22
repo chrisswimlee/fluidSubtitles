@@ -70,6 +70,7 @@ extension SettingsStore {
             transcriptionPreviewCharLimit: self.transcriptionPreviewCharLimit,
             userTypingWPM: self.userTypingWPM,
             saveTranscriptionHistory: self.saveTranscriptionHistory,
+            historyRetention: self.historyRetention.rawValue,
             saveAudioWithTranscriptionHistory: self.saveAudioWithTranscriptionHistory,
             audioHistoryBudgetGB: self.audioHistoryBudgetGB,
             notifyAIProcessingFailures: self.notifyAIProcessingFailures,
@@ -114,7 +115,8 @@ extension SettingsStore {
             theaterHideFromScreenShare: self.theaterHideFromScreenShare,
             theaterAlsoHearOtherLanguages: self.theaterAlsoHearOtherLanguages,
             theaterDynamicPairing: self.theaterDynamicPairing,
-            theaterCaptionPrintStyle: self.theaterCaptionPrintStyle.rawValue
+            theaterCaptionPrintStyle: nil,
+            theaterSpokenLineMode: self.theaterSpokenLineMode.rawValue
         )
     }
 
@@ -225,6 +227,9 @@ extension SettingsStore {
         self.transcriptionPreviewCharLimit = payload.transcriptionPreviewCharLimit
         self.userTypingWPM = payload.userTypingWPM
         self.saveTranscriptionHistory = payload.saveTranscriptionHistory
+        if let historyRetention = payload.historyRetention {
+            self.historyRetention = HistoryRetention.resolved(historyRetention)
+        }
         if let saveAudioWithTranscriptionHistory = payload.saveAudioWithTranscriptionHistory {
             self.saveAudioWithTranscriptionHistory = saveAudioWithTranscriptionHistory
         }
@@ -314,8 +319,8 @@ extension SettingsStore {
         if let theaterDynamicPairing = payload.theaterDynamicPairing {
             self.theaterDynamicPairing = theaterDynamicPairing
         }
-        if let theaterCaptionPrintStyle = payload.theaterCaptionPrintStyle {
-            self.theaterCaptionPrintStyle = TheaterCaptionPrintStyle.resolved(theaterCaptionPrintStyle)
+        if let theaterSpokenLineMode = payload.theaterSpokenLineMode {
+            self.theaterSpokenLineMode = TheaterSpokenLineMode.resolved(theaterSpokenLineMode)
         }
         if let translationSourceLanguageID = payload.translationSourceLanguageID {
             self.translationSourceLanguageID = translationSourceLanguageID
@@ -333,5 +338,14 @@ extension SettingsStore {
         self.isSecondaryDictationPromptOff = payload.secondaryDictationPromptOff ?? false
         self.normalizePromptSelectionsIfNeeded()
         self.purgeRetiredAppleIntelligenceState()
+        self.pauseMediaDuringTranscription = false
+        self.spokenSendEnabled = false
+        self.spokenSendImmediatelyEnabled = false
+        self.autoConvertPunctuationEnabled = false
+        self.removeFillerWordsEnabled = false
+        self.enableTranscriptionSounds = false
+        self.transcriptionSoundIndependentVolume = false
+        self.promptModeShortcutEnabled = false
+        self.automaticDictionaryLearningEnabled = false
     }
 }

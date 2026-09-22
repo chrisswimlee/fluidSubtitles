@@ -147,9 +147,13 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
 
         // Subscribe to partial transcription updates for streaming preview
         asrService.$partialTranscription
+            .removeDuplicates()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] newText in
                 guard self != nil else { return }
+                if TheaterSpeechSession.shared.isSessionActive {
+                    return
+                }
                 if asrService.isRunning,
                    NotchContentState.shared.mode == .dictation,
                    SettingsStore.shared.spokenSendEnabled,
@@ -162,9 +166,7 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
                     ).shouldSend
                     NotchContentState.shared.setSpokenSendIndicatorState(detected ? .detected : .hidden)
                 }
-                if LiveTranslationController.shared.isSessionActive, asrService.isRunning {
-                    LiveTranslationController.shared.handlePartial(newText)
-                } else if NotchOverlayManager.shared.shouldShowOrTrackLivePreviewText {
+                if NotchOverlayManager.shared.shouldShowOrTrackLivePreviewText {
                     NotchOverlayManager.shared.updateTranscriptionText(newText)
                 }
             }
@@ -186,13 +188,9 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
             return
         }
 
-        // Theater captions fill their own window and never type into another
-        // app, so the dictation notch popping up underneath is a leftover
-        // dictation-only reflex, not a Theater status indicator — it only
-        // confuses users pressing Theater's Listen. Insert still types into
-        // the focused app like normal dictation, so it keeps the notch.
-        if LiveTranslationController.shared.isSessionActive,
-           LiveTranslationController.shared.listenKind == .captions
+        // Theater captions and Insert type into the captured app. The dictation
+        // notch is not a status indicator for either listen.
+        if LiveTranslationController.shared.isSessionActive
         {
             self.pendingShowOperation?.cancel()
             self.pendingShowOperation = nil
@@ -548,13 +546,13 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         theaterMenu.addItem(theaterItem)
         self.theaterMenuItem = theaterItem
 
-        let listenItem = NSMenuItem(
+        let listenItem = TheaterPresenterHotkey.menuItem(
             title: LiveTranslationController.shared.isSessionActive
                 && LiveTranslationController.shared.listenKind == .captions
                 ? "Stop"
                 : "Listen",
             action: #selector(toggleCaptionListen),
-            keyEquivalent: ""
+            shortcut: .listen
         )
         listenItem.target = self
         theaterMenu.addItem(listenItem)
@@ -932,7 +930,7 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         }
 
         // Activate the app and bring it to the front
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
 
         var mainWindows = NSApp.windows.filter(self.isFluidMainWindow)
         if let hostedWindow,
@@ -949,39 +947,23 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         if let window = mainWindows.first {
             self.ensureUsableMainWindow(window)
             window.animationBehavior = .none
-            self.bringToFront(window)
+            MainWindowReveal.bringToFront(window)
             if let hostedWindow, window !== hostedWindow {
                 self.hostedWindow = nil
             }
         } else if let window = hostedWindow, window.isReleasedWhenClosed == false {
             self.ensureUsableMainWindow(window)
             window.animationBehavior = .none
-            self.bringToFront(window)
+            MainWindowReveal.bringToFront(window)
         } else {
             // If there is no suitable window (or it's minimized), create a fresh one.
             self.createAndShowMainWindow()
         }
-
-        // Final attempt: ensure app is active and visible
-        NSApp.activate(ignoringOtherApps: true)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-            NSApp.activate(ignoringOtherApps: true)
-        }
     }
 
     private func isFluidMainWindow(_ window: NSWindow) -> Bool {
-        guard window.level == .normal else { return false }
-        guard window.styleMask.contains(.titled) else { return false }
-        guard window.canBecomeKey else { return false }
-        guard window.isMiniaturized == false else { return false }
-        return window.title == FluidProduct.displayName
-            || window.title.contains(FluidProduct.displayName)
-            || window.title == "connectingCaptions"
-            || window.title.contains("connectingCaptions")
-            || window.title == "Fluid Translate"
-            || window.title.contains("Fluid Translate")
-            || window.title == "FluidVoice"
-            || window.title.contains("FluidVoice")
+        guard window.canBecomeKey, window.isMiniaturized == false else { return false }
+        return MainWindowReveal.isMainWindow(window)
     }
 
     @objc private func openPreferences() {
@@ -1062,19 +1044,14 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
             defer: false
         )
         window.title = FluidProduct.displayName
+        MainWindowReveal.mark(window)
         window.animationBehavior = .none
         window.minSize = self.mainWindowMinimumSize
         window.isReleasedWhenClosed = false
         window.contentViewController = hostingController
         window.setFrame(self.defaultWindowFrame(), display: false)
-        self.bringToFront(window)
+        MainWindowReveal.bringToFront(window)
         self.hostedWindow = window
-
-        // Bring app to front in case we're running as an accessory app (no Dock)
-        NSApp.activate(ignoringOtherApps: true)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-            NSApp.activate(ignoringOtherApps: true)
-        }
     }
 
     private func ensureUsableMainWindow(_ window: NSWindow) {
@@ -1104,12 +1081,4 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         return NSSize(width: window.mainMinWidth, height: window.mainMinHeight)
     }
 
-    private func bringToFront(_ window: NSWindow) {
-        // Keep ordering explicit to avoid "opened but behind other apps" behavior.
-        if window.alphaValue <= 0.01 {
-            window.alphaValue = 1
-        }
-        window.orderFrontRegardless()
-        window.makeKeyAndOrderFront(nil)
-    }
 }

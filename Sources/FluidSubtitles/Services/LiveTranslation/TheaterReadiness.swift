@@ -4,7 +4,7 @@ import Foundation
 /// First-run and stage-call checks. Listen still gates on engine + pack.
 enum TheaterReadiness {
     static let captionsPrintAfterSentence =
-        "The live caption grows while you talk. A finished sentence plus more speech starts the next pair. A pause commits leftover speech."
+        "A real clause appears once when it is accepted. Caption Pause and Stop drop a leftover fragment; Listen and type Stop still types one."
 
     static let listeningStatus =
         "Listening. A finished sentence plus more speech starts the next pair. Spoken and Show-as stay paired."
@@ -14,6 +14,12 @@ enum TheaterReadiness {
 
     static let pressListen =
         "Press Listen. Each sentence prints as soon as it ends. Spoken and Show-as stay paired."
+
+    static let boardIdle =
+        "Press Listen. A sentence prints when it ends."
+
+    static let boardListening =
+        "Listening… the next sentence prints here."
 
     static let talkPackCarryOver = "These names stay for the next talk until you Remove."
 
@@ -37,13 +43,13 @@ enum TheaterReadiness {
         "Slides stay clickable. Use the Theater item in the menu bar to show tools or Listen."
 
     static let stopHelp =
-        "Stop. Printed lines stay."
+        "Stop. A real leftover clause appears once; a fragment does not. Printed lines stay."
 
     static let pauseHelp =
-        "Pause. Printed lines stay."
+        "Pause. Drops a leftover fragment. Printed lines stay; an in-flight translation may still land."
 
     static let resumeHelp =
-        "Resume. Printed lines stay."
+        "Resume. Printed lines stay. A dropped fragment does not come back."
 
     static let pausedStatus = "Paused."
 
@@ -100,7 +106,7 @@ enum TheaterReadiness {
         "The microphone is allowed. Voice and Translate both use it."
 
     static let printedLinesStay =
-        "A line already on screen stays. Pause and Stop do not rewrite it."
+        "A line already on screen stays. A real clause appears once; caption Pause and Stop drop a fragment. Listen and type Stop still types a trailing fragment into the other app."
 
     static let clearCaptions =
         "Clear removes every caption. Talk notes stay. Listen can keep going."
@@ -118,7 +124,7 @@ enum TheaterReadiness {
         "Best with one speaker and a close mic. Halls, PA bleed, and Q&A will miss words."
 
     static let transcriptionCopy =
-        "Voice Engine sharpens speech into text. Voice writes that text in the language you speak. Switch to Translate for Korean, English, Thai, or Japanese."
+        "Voice Engine sharpens speech into text. Voice writes that text in the language you speak. Switch to Translate for a supported language."
 
     static let insertIMECaveat =
         "Type into app needs Accessibility. A Korean, Japanese, or Thai IME uses paste instead of keystrokes."
@@ -130,10 +136,13 @@ enum TheaterReadiness {
         "Listen and type unlocks after your first Theater caption."
 
     static let typeIntoAppBody =
-        "Click into an app, press this shortcut, and speak. It starts its own Listen and types the translation of what you say there. Theater's Type into app button is different: it types captions already on the board. \(insertIMECaveat)"
+        "Click into an app, press this shortcut, and speak. It starts its own Listen and types the translation of what you say there, including a trailing fragment. Theater's Type into app button is different: it types captions already on the board. \(insertIMECaveat)"
 
     static let typeIntoAppShortcutDetail =
-        "Starts its own Listen. Types what you say next, translated."
+        "Starts its own Listen. Types what you say next, translated, including a trailing fragment."
+
+    static let typeIntoAppNeedsAccessibility =
+        "This shortcut is saved, but macOS is blocking it. Allow Accessibility, click into another app, then press it."
 
     /// Type into app is off because every board line was already typed.
     static let insertAlreadyTyped = "Already typed. Copy still has the board."
@@ -152,13 +161,18 @@ enum TheaterReadiness {
     static let closeWhileListeningButton = "Stop and Close"
 
     static let modeStopsListen =
-        "Voice writes what you say. Translate turns each sentence into Korean, English, Thai, or Japanese with Apple Translation. Switching stops Listen."
+        "Voice writes what you say. Translate turns each sentence into a supported language with Apple Translation. Switching stops Listen."
+
+    static let spokenLineTitle = "Spoken line"
 
     static let spokenLineSameLanguage =
         "Same-language captions already show the spoken line."
 
     static let spokenLineTranslate =
-        "Show what you said under the translation, smaller and dimmer."
+        "Off is translation only. Any other choice prints the original language under each delivered sentence."
+
+    static let spokenLineSetupNote =
+        "The original language can sit under each sentence after it appears. Off keeps the translation only."
 
     static let captionsOnlyWindow =
         "On the Theater window, show captions only. Listen stays. Move the pointer to show languages and the rest."
@@ -171,7 +185,7 @@ enum TheaterReadiness {
     static let captionSize = "Caption size."
 
     static let captionSizeSpoken =
-        "Spoken undertone size. The translated title is larger."
+        "Spoken and Show-as size. Show-as stays larger."
 
     static let downloadPack = "Download pack"
 
@@ -194,10 +208,10 @@ enum TheaterReadiness {
         "Clear these notes so their names do not carry into the next talk."
 
     static let presenterHotkeys =
-        "Control-Option-H hides or shows Theater, P pauses, K clears, T shows Overlay tools, L starts or stops Listen, = and - change the text size. The menu-bar Theater item changes font, size, plate, and position. Your slides keep focus. A custom Listen shortcut with the same chord wins."
+        "Control-Option-H hides or shows Theater, P pauses, K clears, T shows Overlay tools, L starts or stops Listen, = and - change caption size. The menu-bar Theater item changes font, size, plate, and position. Your slides keep focus. A custom Listen shortcut with the same chord wins."
 
     static let popupStyle =
-        "Pop-up is a solid floating board you can place over slides or a second display."
+        "Pop-up is a solid board that fills this display. Drag a corner to resize."
 
     static let transparentStyle =
         "Overlay keeps the caption text and hides the board, so slides show through and stay clickable. Control-Option-T shows tools."
@@ -296,7 +310,8 @@ enum TheaterReadyGate {
         osSupported: Bool = true
     ) -> Snapshot {
         let canPromptMic = microphone != .denied && microphone != .restricted
-        let packOK = mode == .transcription || sameLanguagePair || pack == .installed
+        let packOK = mode == .transcription || sameLanguagePair
+            || pack == .installed || pack == .unknown
         return Snapshot(
             osSupported: osSupported,
             voiceEngineReady: engineSupportsSource && modelInstalled,

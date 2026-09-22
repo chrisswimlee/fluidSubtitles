@@ -2,7 +2,7 @@ import Foundation
 import TranscribeCpp
 
 // swiftlint:disable function_body_length cyclomatic_complexity type_body_length
-// Tracked grandfather: existing FluidVoice-era file. New work belongs in a smaller file.
+// Upstream: FluidVoice (altic-dev), GPLv3. Speech engine. Do not rewrite it to look original.
 
 /// TranscriptionProvider implementation using transcribe.cpp for Whisper GGUF models.
 final class WhisperProvider: TranscriptionProvider {

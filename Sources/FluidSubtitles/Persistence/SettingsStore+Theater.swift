@@ -2,7 +2,7 @@
 //  SettingsStore+Theater.swift
 //  Fluid
 //
-//  Theater capture and Q&A keys. New Theater settings belong here.
+//  Theater window and listen keys. New Theater settings belong here.
 //
 
 import Combine
@@ -15,17 +15,16 @@ extension SettingsStore {
         static let alsoHearOtherLanguages = "TheaterAlsoHearOtherLanguages"
         static let dynamicPairing = "TheaterDynamicPairing"
         static let sessionMode = "TheaterSessionMode"
-        /// Leftover Watch keys. Theater Listen is the microphone.
-        static let watchTarget = "TheaterWatchTarget"
-        static let watchAppBundleID = "TheaterWatchAppBundleID"
         static let minimized = "TheaterMinimized"
         static let expandedWindowFrame = "TheaterExpandedWindowFrame"
-        static let captionPrintStyle = "TheaterCaptionPrintStyle"
+        static let spokenLineMode = "TheaterSpokenLineMode"
         static let lastTranslateTarget = "TheaterLastTranslateTargetLanguageID"
         static let backingBar = "TheaterBackingBar"
         static let positionPreset = "TheaterPositionPreset"
         static let presenterHotkeys = "TheaterPresenterHotkeys"
         static let overlayCoachSeen = "TheaterOverlayCoachSeen"
+        static let setupWizardCompleted = "TheaterSetupWizardCompleted"
+        static let setupWizardStep = "TheaterSetupWizardStep"
     }
 
     var theaterSessionMode: TheaterSessionMode {
@@ -46,28 +45,6 @@ extension SettingsStore {
         }
     }
 
-    /// Leftover Watch setting. Theater Listen ignores this and uses the microphone.
-    var theaterWatchTarget: TheaterWatchTarget {
-        get {
-            TheaterWatchTarget(
-                rawValue: self.defaults.string(forKey: TheaterDefaults.watchTarget) ?? ""
-            ) ?? .thisMac
-        }
-        set {
-            objectWillChange.send()
-            self.defaults.set(newValue.rawValue, forKey: TheaterDefaults.watchTarget)
-        }
-    }
-
-    /// Leftover Watch setting. Theater Listen ignores this and uses the microphone.
-    var theaterWatchAppBundleID: String {
-        get { self.defaults.string(forKey: TheaterDefaults.watchAppBundleID) ?? "" }
-        set {
-            objectWillChange.send()
-            self.defaults.set(newValue, forKey: TheaterDefaults.watchAppBundleID)
-        }
-    }
-
     var theaterMinimized: Bool {
         get { self.defaults.bool(forKey: TheaterDefaults.minimized) }
         set {
@@ -82,10 +59,6 @@ extension SettingsStore {
             objectWillChange.send()
             self.defaults.set(newValue, forKey: TheaterDefaults.expandedWindowFrame)
         }
-    }
-
-    var theaterCaptureSource: TheaterCaptureSource {
-        .lecternMicrophone
     }
 
     /// Pop-up is a solid board. Overlay (stored as transparent) lets slides show through.
@@ -118,16 +91,22 @@ extension SettingsStore {
         }
     }
 
-    /// How the live Theater row appears. Flow and Word type the current title through commit.
-    var theaterCaptionPrintStyle: TheaterCaptionPrintStyle {
+    /// Off, after a pause, or while talking. Migrates the old Show the spoken line toggle.
+    var theaterSpokenLineMode: TheaterSpokenLineMode {
         get {
-            TheaterCaptionPrintStyle.resolved(
-                self.defaults.string(forKey: TheaterDefaults.captionPrintStyle)
-            )
+            if let stored = self.defaults.string(forKey: TheaterDefaults.spokenLineMode)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                !stored.isEmpty
+            {
+                return TheaterSpokenLineMode.resolved(stored)
+            }
+            let legacy = self.defaults.object(forKey: Keys.translationShowSource) as? Bool
+            return TheaterSpokenLineMode.migrated(fromShowSource: legacy)
         }
         set {
             objectWillChange.send()
-            self.defaults.set(newValue.rawValue, forKey: TheaterDefaults.captionPrintStyle)
+            self.defaults.set(newValue.rawValue, forKey: TheaterDefaults.spokenLineMode)
+            self.defaults.set(newValue.showsSpokenLine, forKey: Keys.translationShowSource)
         }
     }
 
@@ -184,5 +163,56 @@ extension SettingsStore {
             objectWillChange.send()
             self.defaults.set(newValue, forKey: TheaterDefaults.overlayCoachSeen)
         }
+    }
+
+    /// Existing installs already finished first-run onboarding; they skip the
+    /// new wizard until they open it. Fresh installs see it after onboarding.
+    var theaterSetupWizardCompleted: Bool {
+        get {
+            if self.defaults.object(forKey: TheaterDefaults.setupWizardCompleted) == nil {
+                return self.onboardingCompleted
+            }
+            return self.defaults.bool(forKey: TheaterDefaults.setupWizardCompleted)
+        }
+        set {
+            objectWillChange.send()
+            self.defaults.set(newValue, forKey: TheaterDefaults.setupWizardCompleted)
+        }
+    }
+
+    var theaterSetupWizardStep: Int {
+        get {
+            TheaterSetupWizard.Step.resolved(self.defaults.integer(forKey: TheaterDefaults.setupWizardStep)).rawValue
+        }
+        set {
+            objectWillChange.send()
+            self.defaults.set(
+                TheaterSetupWizard.Step.resolved(newValue).rawValue,
+                forKey: TheaterDefaults.setupWizardStep
+            )
+        }
+    }
+
+    var shouldShowSetupWizard: Bool {
+        !self.shouldShowOnboarding && !self.theaterSetupWizardCompleted
+    }
+
+    func bootstrapSetupWizardState() {
+        guard self.defaults.object(forKey: TheaterDefaults.setupWizardCompleted) == nil else { return }
+        objectWillChange.send()
+        self.defaults.set(self.onboardingCompleted, forKey: TheaterDefaults.setupWizardCompleted)
+        self.defaults.set(0, forKey: TheaterDefaults.setupWizardStep)
+    }
+
+    func startSetupWizard() {
+        objectWillChange.send()
+        self.defaults.set(false, forKey: TheaterDefaults.setupWizardCompleted)
+        self.defaults.set(0, forKey: TheaterDefaults.setupWizardStep)
+    }
+
+    func completeSetupWizard() {
+        objectWillChange.send()
+        self.defaults.set(true, forKey: TheaterDefaults.setupWizardCompleted)
+        self.defaults.set(0, forKey: TheaterDefaults.setupWizardStep)
     }
 }

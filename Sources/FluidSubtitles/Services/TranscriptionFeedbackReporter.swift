@@ -1,7 +1,7 @@
 import Foundation
 
 enum TranscriptionFeedbackReporter {
-    struct Payload: Encodable {
+    struct Payload: Equatable, Sendable {
         let rawText: String
         let processedText: String
         let processingModel: String
@@ -9,39 +9,44 @@ enum TranscriptionFeedbackReporter {
     }
 
     enum ReporterError: LocalizedError {
-        case invalidURL
-        case invalidResponse
-        case httpError(Int)
+        case emptyExample
 
         var errorDescription: String? {
             switch self {
-            case .invalidURL:
-                return "Invalid report endpoint."
-            case .invalidResponse:
-                return "Invalid report response."
-            case let .httpError(statusCode):
-                return "Report failed with HTTP \(statusCode)."
+            case .emptyExample:
+                return "Add the raw or processed text before saving a local example."
             }
         }
     }
 
-    static func submit(_ payload: Payload) async throws {
-        guard let url = FluidProduct.examplesURL else {
-            throw ReporterError.invalidURL
-        }
+    static func markdown(for payload: Payload) -> String {
+        """
+        Speech stays on this Mac. Attach this file to a GitHub issue if you want to share it.
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.timeoutInterval = 12
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(payload)
+        **Model:** \(payload.processingModel)
 
-        let (_, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw ReporterError.invalidResponse
+        **Raw**
+        ```
+        \(payload.rawText)
+        ```
+
+        **Processed**
+        ```
+        \(payload.processedText)
+        ```
+
+        **Comments**
+        \(payload.comments.isEmpty ? "(none)" : payload.comments)
+        """
+    }
+
+    @MainActor
+    static func submit(_ payload: Payload) throws {
+        let raw = payload.rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let processed = payload.processedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty || !processed.isEmpty else {
+            throw ReporterError.emptyExample
         }
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw ReporterError.httpError(httpResponse.statusCode)
-        }
+        _ = try LocalFeedbackDraft.share(title: "Transcription example", body: self.markdown(for: payload))
     }
 }

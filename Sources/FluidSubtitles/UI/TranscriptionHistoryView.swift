@@ -818,9 +818,9 @@ private struct TranscriptionFeedbackReportSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Share anonymous datapoint")
+                Text("Save a local example")
                     .font(.system(size: 18, weight: .semibold))
-                Text("Help improve our model. Only the example shown below will be sent.")
+                Text("Speech stays on this Mac. A draft is copied so you can attach it to a GitHub issue.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
@@ -856,7 +856,7 @@ private struct TranscriptionFeedbackReportSheet: View {
                                 .controlSize(.small)
                                 .fixedSize()
                         }
-                        Text(self.isSending ? "Sending..." : "Send Example")
+                        Text(self.isSending ? "Saving..." : "Save Local Example")
                     }
                 }
                 .keyboardShortcut(.defaultAction)
@@ -887,7 +887,7 @@ private struct TranscriptionFeedbackReportSheet: View {
         self.isSending = true
         self.errorMessage = nil
         do {
-            try await TranscriptionFeedbackReporter.submit(payload)
+            try TranscriptionFeedbackReporter.submit(payload)
             self.isSending = false
             self.onSent()
         } catch {

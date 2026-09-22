@@ -18,7 +18,7 @@ enum TheaterSessionMode: String, CaseIterable, Identifiable {
         case .transcription:
             return "Voice writes what you say. Voice Engine sharpens that speech into text."
         case .translation:
-            return "Translate after each sentence among Korean, English, Thai, and Japanese. Translation Engine is Apple Translation."
+            return "Translate after each sentence into a supported language. Translation Engine is Apple Translation."
         }
     }
 
@@ -33,22 +33,5 @@ enum TheaterSessionMode: String, CaseIterable, Identifiable {
         default:
             return Self(rawValue: stored ?? "") ?? .translation
         }
-    }
-}
-
-enum TheaterWatchTarget: String, CaseIterable, Identifiable {
-    case thisMac
-    case app
-
-    var id: String { self.rawValue }
-}
-
-enum TheaterCaptureSource: String, Sendable {
-    case lecternMicrophone
-    case watchThisMac
-    case watchApp
-
-    var isWatch: Bool {
-        self != .lecternMicrophone
     }
 }

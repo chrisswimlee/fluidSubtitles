@@ -36,7 +36,7 @@ struct WelcomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 FluidPageHeader(
-                    systemImage: "book.fill",
+                    systemImage: "captions.bubble",
                     title: "Getting Started",
                     subtitle: FluidProduct.tagline
                 )
@@ -45,6 +45,27 @@ struct WelcomeView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         FluidSectionHeader(title: "Checklist", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(self.theme.palette.accent)
+
+                        Button {
+                            self.settings.startSetupWizard()
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(TheaterSetupWizard.title)
+                                        .font(self.theme.typography.bodyStrong)
+                                    Text(TheaterReadiness.spokenLineSetupNote)
+                                        .font(self.theme.typography.bodySmall)
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                Spacer()
+                                Text("Open")
+                                    .font(self.theme.typography.captionStrong)
+                                    .foregroundStyle(self.theme.palette.accent)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("getting-started-setup-wizard")
 
                         VStack(alignment: .leading, spacing: 8) {
                             SetupStepView(
@@ -55,7 +76,7 @@ struct WelcomeView: View {
                                     : (
                                         self.asr.modelsExistOnDisk
                                             ? "The speech-to-text model is on disk. It loads when you Listen."
-                                            : "Download a speech-to-text model for Korean, English, Thai, or Japanese. Apple Speech is enough to try."
+                                            : "Download a speech-to-text model for the language you speak. Apple Speech is enough to try."
                                     ),
                                 status: (self.asr.isAsrReady || self.asr.modelsExistOnDisk) ? .completed : .pending,
                                 action: {
@@ -88,7 +109,7 @@ struct WelcomeView: View {
                                     step: 3,
                                     title: self.isLanguagePackReady ? "Language pack ready" : "Download language pack",
                                     description: self.languagePackAvailability.isEmpty
-                                        ? "Translation Engine is Apple Translation by default. Download the Korean, English, Thai, or Japanese pack once, or try the experimental local LLM."
+                                        ? "Translation Engine is Apple Translation by default. Download the language pack once, or try the experimental local LLM."
                                         : self.languagePackAvailability,
                                     status: self.isLanguagePackReady ? .completed : .pending,
                                     action: {
@@ -146,6 +167,8 @@ struct WelcomeView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+
+                CommercialLicenseStatusCard()
             }
             .fluidPageContent()
         }

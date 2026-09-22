@@ -31,7 +31,7 @@ struct TranslationEngineSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             FluidPageHeader(
-                systemImage: "globe",
+                systemImage: "translate",
                 title: TheaterEngineCopy.translationTitle,
                 subtitle: TheaterEngineCopy.translationPurpose
             )

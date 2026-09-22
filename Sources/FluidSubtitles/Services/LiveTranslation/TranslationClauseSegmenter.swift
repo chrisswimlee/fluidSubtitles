@@ -277,7 +277,33 @@ nonisolated enum TranslationClauseSegmenter {
     static func isSameClause(_ left: String, _ right: String) -> Bool {
         let a = self.normalized(left)
         let b = self.normalized(right)
-        return !a.isEmpty && a == b
+        if !a.isEmpty, a == b { return true }
+        if self.hasCompactLetters(left) || self.hasCompactLetters(right) {
+            let compactA = self.compactKey(left)
+            let compactB = self.compactKey(right)
+            return !compactA.isEmpty && compactA == compactB
+        }
+        return false
+    }
+
+    /// The last printed sentence grew in place ("We trained the model." →
+    /// "We trained the model on Korean data too.") rather than gaining a
+    /// new clause after it.
+    static func isInPlaceGrowth(previous: String, incoming: String) -> Bool {
+        let prev = previous.trimmingCharacters(in: .whitespacesAndNewlines)
+        let next = incoming.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prev.isEmpty, !next.isEmpty, !self.isSameClause(prev, next) else { return false }
+        guard self.isGrowingClause(prev, toward: next) else { return false }
+        let leftover = self.leftoverTail(next, already: [prev])
+        if leftover.isEmpty || leftover == next || self.isSameClause(leftover, next) {
+            return true
+        }
+        // leftoverTail peels the printed prefix. A lowercase rest is still
+        // this caption, not a new sentence. Growth was already required above.
+        if let first = self.tokens(leftover).first {
+            return !self.looksLikeClauseBoundaryStart(first)
+        }
+        return false
     }
 
     /// ASR often grows a clause by inserting words before the period.
@@ -368,7 +394,10 @@ nonisolated enum TranslationClauseSegmenter {
                 return false
             }
             let error = TheaterQualityScore.wordErrorRate(reference: prev, hypothesis: next)
-            return error > 0 && error <= 0.34
+            guard error > 0, error <= 0.34 else { return false }
+            // WER treats "English" → "Korean" the same as "modal" → "model".
+            // Only a close spelling is an ASR correction of the printed line.
+            return self.hasOnlyCloseSubstitutions(prevTokens, nextTokens)
         }
         let prevCount = max(self.stripped(prev).count, 1)
         let nextCount = max(self.stripped(next).count, 1)
@@ -378,8 +407,56 @@ nonisolated enum TranslationClauseSegmenter {
         guard prevCount >= 10, nextCount >= 10 else { return false }
         let lengthRatio = Double(min(prevCount, nextCount)) / Double(max(prevCount, nextCount))
         guard lengthRatio >= 0.7 else { return false }
+        // 영어 → 한국어 / 英語 → 韓国語 keeps most of the clause, so overall
+        // CER looks like an ASR fix. English already rejects a different
+        // first token; compact scripts need the same opening check.
+        guard self.sharesRevisionOpening(prev, next) else { return false }
         let error = TheaterQualityScore.characterErrorRate(reference: prev, hypothesis: next)
         return error > 0 && error <= 0.34
+    }
+
+    /// A restitch keeps the start of the printed line. A new sentence that
+    /// only shares the later words ("영어 데이터로…" then "한국어 데이터로…")
+    /// is leftover speech, not a correction.
+    fileprivate static func sharesRevisionOpening(_ previous: String, _ incoming: String) -> Bool {
+        if previous.contains(where: \.isWhitespace), incoming.contains(where: \.isWhitespace) {
+            let previousTokens = self.tokens(previous)
+            let incomingTokens = self.tokens(incoming)
+            if previousTokens.count >= 2, incomingTokens.count >= 2,
+               let firstPrevious = previousTokens.first,
+               let firstIncoming = incomingTokens.first
+            {
+                return self.tokenKey(firstPrevious) == self.tokenKey(firstIncoming)
+            }
+        }
+        let previousKey = self.compactKey(previous)
+        let incomingKey = self.compactKey(incoming)
+        let head = min(2, previousKey.count, incomingKey.count)
+        guard head > 0 else { return false }
+        return incomingKey.hasPrefix(String(previousKey.prefix(head)))
+    }
+
+    /// True when every substituted token is a close spelling ("modal" /
+    /// "model"), not a different content word ("English" / "Korean").
+    fileprivate static func hasOnlyCloseSubstitutions(_ previous: [String], _ incoming: [String]) -> Bool {
+        let count = min(previous.count, incoming.count)
+        var sawMismatch = previous.count != incoming.count
+        for index in 0..<count {
+            let left = self.tokenKey(previous[index])
+            let right = self.tokenKey(incoming[index])
+            if left == right { continue }
+            sawMismatch = true
+            if !self.isCloseTokenSubstitution(left, right) {
+                return false
+            }
+        }
+        return sawMismatch
+    }
+
+    fileprivate static func isCloseTokenSubstitution(_ left: String, _ right: String) -> Bool {
+        if left == right { return true }
+        if left.isEmpty || right.isEmpty { return false }
+        return TheaterQualityScore.characterErrorRate(reference: left, hypothesis: right) <= 0.34
     }
 
     /// Word-for-word containment after the same normalization as `isSameClause`.
@@ -392,10 +469,16 @@ nonisolated enum TranslationClauseSegmenter {
         if self.hasUnspacedScript(key) {
             return haystack.contains(key)
         }
-        return (" " + haystack + " ").contains(" " + key + " ")
+        if (" " + haystack + " ").contains(" " + key + " ") { return true }
+        if self.hasCompactLetters(clause) || self.hasCompactLetters(text) {
+            let compactClause = self.compactKey(clause)
+            let compactText = self.compactKey(text)
+            return !compactClause.isEmpty && compactText.contains(compactClause)
+        }
+        return false
     }
 
-    /// Kana, Han, or Thai: words are not separated by spaces.
+    /// Hangul, kana, Han, or Thai: words are not separated by spaces.
     static func hasUnspacedScript(_ text: String) -> Bool {
         text.unicodeScalars.contains { scalar in
             (0x3040...0x30FF).contains(scalar.value)
@@ -404,7 +487,26 @@ nonisolated enum TranslationClauseSegmenter {
                 || (0x3400...0x4DBF).contains(scalar.value)
                 || (0x4E00...0x9FFF).contains(scalar.value)
                 || (0x0E00...0x0E7F).contains(scalar.value)
+                || (0xAC00...0xD7AF).contains(scalar.value)
+                || (0x1100...0x11FF).contains(scalar.value)
+                || (0x3130...0x318F).contains(scalar.value)
         }
+    }
+
+    /// Hangul, kana, Han, or Thai — spacing is not a word boundary.
+    static func hasCompactLetters(_ text: String) -> Bool {
+        if self.hasUnspacedScript(text) { return true }
+        return text.unicodeScalars.contains { scalar in
+            (0xAC00...0xD7AF).contains(scalar.value)
+                || (0x1100...0x11FF).contains(scalar.value)
+                || (0x3130...0x318F).contains(scalar.value)
+        }
+    }
+
+    static func clauseUnitCount(_ text: String, languageID: String) -> Int {
+        let split = self.split(text, languageID: languageID)
+        let tail = split.tail.trimmingCharacters(in: .whitespacesAndNewlines)
+        return split.completed.count + (tail.isEmpty ? 0 : 1)
     }
 
     static func shouldReplaceLast(previous: String, incoming: String) -> Bool {
@@ -478,37 +580,39 @@ nonisolated enum TranslationClauseSegmenter {
 
     /// ASR partials are cumulative. After a clause is committed, only the leftover
     /// suffix should stay open. Otherwise Theater re-translates the whole talk.
+    ///
+    /// Hot path: match a prefix of `already` left-to-right and return the unread
+    /// remainder. Cost is linear in the current leftover (plus one align search
+    /// when older speech sits before the peel window), not a per-clause rescan of
+    /// the whole talk.
     static func leftoverTail(_ text: String, already: [String], languageID: String = "") -> String {
         var remainder = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let afterLast = self.consumeAfterLastPrinted(remainder, already: already) {
-            remainder = afterLast
-        } else {
-            let fast = self.consumeLeadingChunks(remainder, chunks: already)
-            remainder = fast.remainder
-            for chunk in already.dropFirst(fast.consumed) {
-                if let next = self.consumePrefix(remainder, prefix: chunk) {
-                    remainder = next
-                    continue
-                }
-                if self.looksLikeRevisedPrefix(text: remainder, prefix: chunk),
-                   let next = self.consumeApproximatePrefix(remainder, prefix: chunk)
-                {
-                    remainder = next
-                    continue
-                }
-                if !self.containsPrintedClause(remainder, chunk: chunk) {
-                    continue
-                }
+        guard !remainder.isEmpty, !already.isEmpty else {
+            return self.collapseRepeatedSpeech(
+                remainder,
+                languageID: languageID.isEmpty ? "en" : languageID
+            )
+        }
+
+        remainder = self.peelPrintedPrefix(remainder, already: already)
+        remainder = self.stripLeadingBoundaries(remainder)
+        // Only when a recent printed clause vanished from the full hypothesis
+        // (ASR restitch), not merely because prefix peel already removed it.
+        for chunk in already.suffix(3).reversed() where !self.contains(text, clause: chunk) {
+            if let next = self.consumeDriftedPrefix(remainder, prefix: chunk) {
+                remainder = next
                 break
             }
         }
-        remainder = self.stripLeadingBoundaries(remainder)
         if !languageID.isEmpty {
+            // Reuse one normalized haystack so intact checks stay O(|already| + |text|),
+            // not O(|already| · |text|) from re-stripping the talk on every clause.
+            let intactInText = self.intactPrintedClauses(in: text, already: already)
             remainder = self.peelPrintedLeadingClauses(
                 remainder,
                 already: already,
                 languageID: languageID,
-                intactInText: already.filter { self.contains(text, clause: $0) }
+                intactInText: intactInText
             )
         }
         remainder = self.peelLeadingPrintedCopies(remainder, already: already)
@@ -516,6 +620,112 @@ nonisolated enum TranslationClauseSegmenter {
             remainder,
             languageID: languageID.isEmpty ? "en" : languageID
         )
+    }
+
+    /// Peel already-printed clauses from the front of `text`. When the cumulative
+    /// transcript still starts with older offscreen speech, jump once to the peel
+    /// window, then continue matching forward on the shrinking remainder.
+    fileprivate static func peelPrintedPrefix(_ text: String, already: [String]) -> String {
+        var remainder = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !remainder.isEmpty, !already.isEmpty else { return remainder }
+
+        let leading = self.consumeLeadingChunks(remainder, chunks: already)
+        remainder = leading.remainder
+        var nextIndex = leading.consumed
+
+        if nextIndex == 0, let aligned = self.alignToPeelWindow(remainder, already: already) {
+            remainder = aligned.remainder
+            nextIndex = aligned.consumed
+        }
+
+        for chunk in already.dropFirst(nextIndex) {
+            if let next = self.consumePrefix(remainder, prefix: chunk) {
+                remainder = next
+                continue
+            }
+            if self.looksLikeRevisedPrefix(text: remainder, prefix: chunk),
+               let next = self.consumeApproximatePrefix(remainder, prefix: chunk),
+               self.acceptedPrefixLeftover(next, prefix: chunk) != nil
+            {
+                remainder = next
+                continue
+            }
+            if !self.containsPrintedClause(remainder, chunk: chunk) {
+                continue
+            }
+            // A later printed clause still sits in the remainder, but unread
+            // speech is ahead of it. Stop forward peel and keep that unread
+            // prefix — do not jump to the last printed clause (that dropped
+            // Point 1 when Point 0 and Point 2 were already on the board).
+            break
+        }
+        return remainder
+    }
+
+    /// Drop speech before the first still-present peel-window clause. Returns the
+    /// text from that clause onward after consuming it, plus how many `already`
+    /// entries that accounts for.
+    ///
+    /// Do not call `consumePrefix` on the full talk first: a miss runs
+    /// `dropWhileMatching` across every character and is quadratic in talk length.
+    fileprivate static func alignToPeelWindow(
+        _ text: String,
+        already: [String]
+    ) -> (remainder: String, consumed: Int)? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        for (index, chunk) in already.enumerated() {
+            let prefixN = chunk.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !prefixN.isEmpty else { continue }
+            if let after = self.consumeEmbeddedClause(trimmed, prefix: chunk) {
+                return (after, index + 1)
+            }
+            if let range = trimmed.range(of: prefixN)
+                ?? trimmed.range(of: prefixN, options: .caseInsensitive)
+            {
+                if range.lowerBound > trimmed.startIndex {
+                    let before = trimmed[trimmed.startIndex..<range.lowerBound]
+                    guard let last = before.last else { continue }
+                    let boundary = last.isWhitespace
+                        || self.isTerminal(last)
+                        || self.looksComplete(String(before), languageID: "ko")
+                        || self.looksComplete(String(before), languageID: "th")
+                        || self.looksComplete(String(before), languageID: "ja")
+                    guard boundary else { continue }
+                }
+                var end = range.upperBound
+                while end < trimmed.endIndex,
+                      let scalar = trimmed[end].unicodeScalars.first,
+                      Self.terminalPunctuation.contains(scalar)
+                {
+                    end = trimmed.index(after: end)
+                }
+                let after = self.stripLeadingBoundaries(String(trimmed[end...]))
+                return (after, index + 1)
+            }
+        }
+        return nil
+    }
+
+    /// Printed clauses still present word-for-word in `text`, using one normalize.
+    fileprivate static func intactPrintedClauses(in text: String, already: [String]) -> [String] {
+        let haystack = self.normalized(text)
+        guard !haystack.isEmpty else { return [] }
+        let spacedHaystack = " " + haystack + " "
+        let compactText = self.compactKey(text)
+        return already.filter { clause in
+            let key = self.normalized(clause)
+            guard !key.isEmpty else { return false }
+            if self.hasUnspacedScript(key) {
+                return haystack.contains(key)
+            }
+            if spacedHaystack.contains(" " + key + " ") { return true }
+            if self.hasCompactLetters(clause) || self.hasCompactLetters(text) {
+                let compactClause = self.compactKey(clause)
+                return !compactClause.isEmpty && compactText.contains(compactClause)
+            }
+            return false
+        }
     }
 
     /// Whisper often restates the last clause. Keep one copy on the live row.
@@ -548,20 +758,52 @@ nonisolated enum TranslationClauseSegmenter {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         let split = self.absorbThinCompleted(self.split(trimmed, languageID: languageID), languageID: languageID)
-        guard let first = split.completed.first,
-              !self.isTooThinToCommit(first, languageID: languageID)
-        else {
-            return nil
+        if let first = split.completed.first,
+           !self.isTooThinToCommit(first, languageID: languageID)
+        {
+            // An unpunctuated run-on past the draft cap was force-cut by `split`.
+            // Print that head while talking; otherwise nothing prints until a pause.
+            let isForcedCut = trimmed.count >= LiveTranslationTiming.maxDraftCharacters
+            if self.looksComplete(first, languageID: languageID) || isForcedCut {
+                let rest = self.remainder(after: first, split: split, original: trimmed, languageID: languageID)
+                if !rest.isEmpty {
+                    return (first, rest)
+                }
+            }
         }
-        // An unpunctuated run-on past the draft cap was force-cut by `split`.
-        // Print that head while talking; otherwise nothing prints until a pause.
-        let isForcedCut = trimmed.count >= LiveTranslationTiming.maxDraftCharacters
-        guard self.looksComplete(first, languageID: languageID) || isForcedCut else {
-            return nil
+        return self.unpunctuatedSentenceBreak(trimmed, languageID: languageID)
+    }
+
+    /// Trailing-window ASR often stitches the next sentence with no period:
+    /// "Today we trained the model Then we applied it".
+    static func unpunctuatedSentenceBreak(
+        _ text: String,
+        languageID: String
+    ) -> (unit: String, rest: String)? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        switch self.languageCode(from: languageID) {
+        case "ko":
+            return self.compactSentenceBreak(
+                trimmed,
+                starters: Self.koreanSentenceStarters,
+                languageID: languageID
+            )
+        case "ja":
+            return self.compactSentenceBreak(
+                trimmed,
+                starters: Self.japaneseSentenceStarters,
+                languageID: languageID
+            )
+        case "th":
+            return self.compactSentenceBreak(
+                trimmed,
+                starters: Self.thaiSentenceStarters,
+                languageID: languageID
+            )
+        default:
+            return self.englishSentenceBreak(trimmed, languageID: languageID)
         }
-        let rest = self.remainder(after: first, split: split, original: trimmed, languageID: languageID)
-        guard !rest.isEmpty else { return nil }
-        return (first, rest)
     }
 
     /// Pause / Stop leftover unit. Follow-along and pause-finalize live here.
@@ -577,6 +819,9 @@ nonisolated enum TranslationClauseSegmenter {
         if let first = split.completed.first, !self.isTooThinToCommit(first, languageID: languageID) {
             return (first, self.remainder(after: first, split: split, original: trimmed, languageID: languageID))
         }
+        if let broken = self.unpunctuatedSentenceBreak(trimmed, languageID: languageID) {
+            return broken
+        }
         if self.looksComplete(split.tail, languageID: languageID) {
             return self.singleClause(split.tail, languageID: languageID)
         }
@@ -585,9 +830,7 @@ nonisolated enum TranslationClauseSegmenter {
             guard !cut.head.isEmpty else { return nil }
             return (unit: cut.head, rest: cut.rest)
         }
-        if allowPauseFinalize,
-           self.isReadyToCommit(split.tail, languageID: languageID, allowPauseFinalize: true)
-        {
+        if allowPauseFinalize, self.isPauseFinalizable(split.tail, languageID: languageID) {
             let cut = self.followAlongCut(split.tail, languageID: languageID)
             guard !cut.head.isEmpty else { return nil }
             return (unit: cut.head, rest: cut.rest)
@@ -600,6 +843,18 @@ nonisolated enum TranslationClauseSegmenter {
         let trimmed = leftover.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "" }
         return self.currentSpokenLine(trimmed, languageID: languageID)
+    }
+
+    /// Current spoken clause only. Uses the same mid-talk gate as
+    /// `nextCompletedSentence` so an internal แล้ว / connective does not hide
+    /// sentence one while that sentence is still the live caption.
+    static func liveOpenClause(_ leftover: String, languageID: String) -> String {
+        let trimmed = leftover.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        if let next = self.nextCompletedSentence(trimmed, languageID: languageID) {
+            return next.rest
+        }
+        return trimmed
     }
 
     /// Finished sentences stay on their own rows. The open line is the one still being said.
@@ -693,6 +948,17 @@ nonisolated enum TranslationClauseSegmenter {
         return self.leftoverTail(cleaned, already: already, languageID: languageID).isEmpty
     }
 
+    /// A new Listen may say "Hello." again. A five-word lecture sentence
+    /// already on the board is not a greeting.
+    static func isRepeatableGreeting(_ text: String, languageID: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        if self.isCompactScript(languageID) || self.hasUnspacedScript(trimmed) {
+            return self.stripped(trimmed).filter { !$0.isWhitespace }.count < 10
+        }
+        return self.tokens(trimmed).count < 4
+    }
+
     /// Join committed translations for typing or history.
     static func joinTranslatedLines(_ lines: [String], languageID: String) -> String {
         let cleaned = lines
@@ -750,6 +1016,9 @@ extension TranslationClauseSegmenter {
         let atEnd = next == text.endIndex
         let followedBySpace = !atEnd && text[next].isWhitespace
 
+        if character.isNewline {
+            return !atEnd
+        }
         if let scalar = character.unicodeScalars.first, Self.terminalPunctuation.contains(scalar) {
             if character == ".", self.isDecimalPoint(in: text, at: index) {
                 return false
@@ -765,6 +1034,104 @@ extension TranslationClauseSegmenter {
 
     /// ASR often restitches "Hello.Then we" with no space after the period.
     /// Treat that as a sentence break so leftover cannot dump as one line.
+    fileprivate static let englishSentenceStarters: Set<String> = [
+        "then", "and", "but", "so", "now", "next", "also", "after",
+        "later", "still", "however", "therefore", "meanwhile", "finally",
+        "first", "second", "plus", "afterward", "afterwards",
+    ]
+
+    /// Analyzer often starts the next sentence in lowercase. Only `then` /
+    /// `next` — lowercase `and` / `but` / `so` are still this caption.
+    fileprivate static let englishSoftSentenceStarters: Set<String> = [
+        "then", "next",
+    ]
+
+    fileprivate static let englishConnectives: Set<String> = [
+        "and", "but", "so", "then", "or",
+    ]
+
+    fileprivate static let koreanSentenceStarters: [String] = [
+        "그리고", "그다음", "그 다음", "그런데", "그래서", "그러면", "근데", "다음으로",
+        "그걸", "그것을", "그게", "그건", "이제", "이번에는",
+    ]
+
+    fileprivate static let japaneseSentenceStarters: [String] = [
+        "そして", "それから", "次に", "また",
+    ]
+
+    fileprivate static let thaiSentenceStarters: [String] = [
+        "หลังจากนั้น", "ต่อมา", "จากนั้น",
+    ]
+
+    fileprivate static func englishSentenceBreak(
+        _ text: String,
+        languageID: String
+    ) -> (unit: String, rest: String)? {
+        let words = self.tokens(text)
+        let floor = LiveTranslationTiming.minPauseFinalizeWords
+        guard words.count >= floor + 2 else { return nil }
+        for index in floor..<words.count {
+            let word = words[index]
+            let key = self.tokenKey(word)
+            let capital = word.first?.isUppercase == true
+            let isStarter = capital
+                ? Self.englishSentenceStarters.contains(key)
+                : Self.englishSoftSentenceStarters.contains(key)
+            guard isStarter else { continue }
+            if index > 0, Self.englishConnectives.contains(self.tokenKey(words[index - 1])) {
+                continue
+            }
+            if index > 0, let mark = words[index - 1].last, ",;:".contains(mark) {
+                continue
+            }
+            if index + 1 < words.count,
+               Self.englishConnectives.contains(self.tokenKey(words[index + 1]))
+            {
+                continue
+            }
+            let restWords = words.suffix(from: index)
+            guard restWords.count >= 2 else { continue }
+            let unit = words.prefix(index).joined(separator: " ")
+            let rest = restWords.joined(separator: " ")
+            guard !self.isTooThinToCommit(unit, languageID: languageID) else { continue }
+            return (unit, rest)
+        }
+        return nil
+    }
+
+    fileprivate static func compactSentenceBreak(
+        _ text: String,
+        starters: [String],
+        languageID: String
+    ) -> (unit: String, rest: String)? {
+        let folded = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        for starter in starters {
+            var search = folded.startIndex
+            while search < folded.endIndex,
+                  let range = folded.range(of: starter, range: search..<folded.endIndex)
+            {
+                if range.lowerBound == folded.startIndex {
+                    search = range.upperBound
+                    continue
+                }
+                let unit = String(folded[..<range.lowerBound])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let rest = String(folded[range.lowerBound...])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let unitLetters = self.stripped(unit).filter { !$0.isWhitespace }
+                let isFinished = self.looksComplete(unit, languageID: languageID) || unitLetters.count >= 16
+                if isFinished,
+                   !self.isTooThinToCommit(unit, languageID: languageID),
+                   !rest.isEmpty
+                {
+                    return (unit, rest)
+                }
+                search = range.upperBound
+            }
+        }
+        return nil
+    }
+
     fileprivate static func looksLikeSentenceBreak(in text: String, at index: String.Index) -> Bool {
         let next = text.index(after: index)
         guard next < text.endIndex else { return false }
@@ -952,7 +1319,39 @@ extension TranslationClauseSegmenter {
         let prefixCount = max(self.stripped(prefixN).count, 1)
         let ratio = Double(matchedCount) / Double(prefixCount)
         guard (0.7...1.6).contains(ratio) else { return nil }
-        return String(trimmed[end...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let leftover = String(trimmed[end...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        // Last-word anchors collide on a similar next sentence ("…English
+        // data." vs "…Korean data."). Empty leftover of a complete clause
+        // that is not an ASR revision is new speech.
+        if leftover.isEmpty,
+           !self.isSameClause(prefixN, trimmed),
+           self.isCompletedPrintedPrefix(trimmed),
+           !self.shouldReviseCommitted(previous: prefixN, incoming: trimmed, languageID: "en")
+        {
+            return nil
+        }
+        return leftover
+    }
+
+    /// A full re-decode of the ring changed a word inside a printed line
+    /// ("One day after tea" → "One day after day"). The line is gone from
+    /// the hypothesis, so nothing exact can peel it, and it would print
+    /// again. Peel the same number of words when most of them still match.
+    /// Callers only try this when `prefix` is no longer intact in the text,
+    /// so a real next sentence that shares its opening words is kept.
+    fileprivate static func consumeDriftedPrefix(_ text: String, prefix: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let prefixN = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !prefixN.isEmpty else { return nil }
+        if self.hasUnspacedScript(prefixN) { return nil }
+        let textTokens = self.tokens(trimmed)
+        let prefixKeys = self.tokens(prefixN).map(self.tokenKey)
+        guard prefixKeys.count >= 4, textTokens.count > prefixKeys.count else { return nil }
+        let textKeys = textTokens.prefix(prefixKeys.count).map(self.tokenKey)
+        let matches = zip(textKeys, prefixKeys).filter { $0 == $1 }.count
+        let needed = Int((Double(prefixKeys.count) * 0.75).rounded(.up))
+        guard matches >= needed, matches < prefixKeys.count else { return nil }
+        return textTokens.dropFirst(prefixKeys.count).joined(separator: " ")
     }
 
     /// Approximate peel is only for a revised *prefix*. A later sentence that
@@ -1040,7 +1439,10 @@ extension TranslationClauseSegmenter {
         languageID: String
     ) -> String {
         let trimmed = original.trimmingCharacters(in: .whitespacesAndNewlines)
-        let leftover = self.leftoverTail(trimmed, already: [first], languageID: languageID)
+        // Do not pass `languageID` here. leftoverTail would call
+        // peelPrintedLeadingClauses → remainder → leftoverTail and overflow
+        // the stack on a Korean / Japanese / Thai restitch.
+        let leftover = self.leftoverTail(trimmed, already: [first], languageID: "")
         if leftover != trimmed {
             return leftover
         }
@@ -1095,6 +1497,24 @@ extension TranslationClauseSegmenter {
                 break
             }
             let next = self.remainder(after: first, split: split, original: remainder, languageID: languageID)
+            // leftoverTail is often called on speech already peeled to the
+            // next sentence. A similar complete leftover is new speech, not a
+            // restitch of the printed line — that restitch still has more
+            // after the revised clause. A close ASR correction of that line
+            // ("modal." → "model.") still peels empty.
+            if next.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               self.looksComplete(first, languageID: languageID),
+               !already.contains(where: { self.isSameClause($0, first) }),
+               !already.contains(where: {
+                   self.shouldReviseCommitted(
+                       previous: $0,
+                       incoming: first,
+                       languageID: languageID
+                   )
+               })
+            {
+                break
+            }
             if next == remainder { break }
             remainder = next
         }
@@ -1102,13 +1522,15 @@ extension TranslationClauseSegmenter {
     }
 
     /// consumeAfterLastPrinted can leave a second copy that lost its period.
+    /// Only the peel window can still lead the leftover; older lines are gone.
     fileprivate static func peelLeadingPrintedCopies(_ text: String, already: [String]) -> String {
         var remainder = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let window = already.suffix(LiveTranslationTiming.peelWindowLines)
         var steps = 0
         while steps < 32, !remainder.isEmpty {
             steps += 1
             var peeled = false
-            for chunk in already {
+            for chunk in window {
                 guard let next = self.consumePrefix(remainder, prefix: chunk) else { continue }
                 let stripped = self.stripLeadingBoundaries(next)
                 if stripped != remainder {
@@ -1217,8 +1639,11 @@ extension TranslationClauseSegmenter {
             of: prefixN,
             options: [.caseInsensitive, .diacriticInsensitive, .backwards]
         ) {
-            return String(trimmed[range.upperBound...])
+            let leftover = String(trimmed[range.upperBound...])
                 .trimmingCharacters(in: .whitespacesAndNewlines)
+            if leftover.isEmpty { return leftover }
+            let matched = String(trimmed[..<range.upperBound])
+            return self.leftoverAfterExactPrefix(leftover, prefix: matched)
         }
 
         let textTokens = self.tokens(trimmed)
@@ -1231,10 +1656,24 @@ extension TranslationClauseSegmenter {
                 while start >= 0 {
                     let slice = textKeys[start..<(start + chunkKeys.count)]
                     if zip(slice, chunkKeys).allSatisfy({ $0 == $1 }) {
-                        return textTokens.dropFirst(start + chunkKeys.count).joined(separator: " ")
+                        let leftover = textTokens.dropFirst(start + chunkKeys.count)
+                            .joined(separator: " ")
+                        if self.leftoverAfterExactPrefix(leftover, prefix: prefixN) != nil {
+                            return leftover
+                        }
                     }
                     start -= 1
                 }
+            }
+        }
+
+        if self.hasCompactLetters(prefixN) || self.hasCompactLetters(trimmed) {
+            let compactNeedle = self.compactKey(prefixN)
+            let compactHay = self.compactKey(trimmed)
+            if compactNeedle.count >= 8, let range = compactHay.range(of: compactNeedle, options: .backwards) {
+                let afterLetters = compactHay.distance(from: range.upperBound, to: compactHay.endIndex)
+                let leftover = self.suffixKeepingLetters(trimmed, letterCount: afterLetters)
+                if self.leftoverAfterExactPrefix(leftover, prefix: prefixN) != nil { return leftover }
             }
         }
 
@@ -1243,7 +1682,9 @@ extension TranslationClauseSegmenter {
         let haystack = self.stripped(trimmed)
         guard let range = haystack.range(of: needle, options: .backwards) else { return nil }
         let afterLetters = haystack.distance(from: range.upperBound, to: haystack.endIndex)
-        return self.suffixKeepingLetters(trimmed, letterCount: afterLetters)
+        let leftover = self.suffixKeepingLetters(trimmed, letterCount: afterLetters)
+        if self.leftoverAfterExactPrefix(leftover, prefix: prefixN) != nil { return leftover }
+        return nil
     }
 
     fileprivate static func suffixKeepingLetters(_ text: String, letterCount: Int) -> String {
@@ -1401,9 +1842,14 @@ extension TranslationClauseSegmenter {
         // with the clause just printed. Everything below rescans the whole
         // transcript, which a 200 ms tick cannot afford once the board is long.
         if trimmed.hasPrefix(prefixN) {
-            return String(trimmed.dropFirst(prefixN.count))
+            let leftover = String(trimmed.dropFirst(prefixN.count))
                 .trimmingCharacters(in: .whitespacesAndNewlines)
+            return self.leftoverAfterExactPrefix(leftover, prefix: prefixN)
         }
+
+        let compactText = self.compactKey(trimmed)
+        let compactPrefix = self.compactKey(prefixN)
+        if !compactPrefix.isEmpty, compactText == compactPrefix { return "" }
 
         let textTokens = self.tokens(trimmed)
         let prefixTokens = self.tokens(prefixN)
@@ -1411,15 +1857,114 @@ extension TranslationClauseSegmenter {
            textTokens.count >= prefixTokens.count,
            zip(textTokens, prefixTokens).allSatisfy({ self.tokenKey($0) == self.tokenKey($1) })
         {
-            return textTokens.dropFirst(prefixTokens.count).joined(separator: " ")
+            let leftover = textTokens.dropFirst(prefixTokens.count).joined(separator: " ")
+            if let peeled = self.leftoverAfterExactPrefix(leftover, prefix: prefixN) {
+                return peeled
+            }
         }
 
         if self.stripped(trimmed) == self.stripped(prefixN) { return "" }
 
-        if let leftover = self.dropWhileMatching(trimmed, prefix: prefixN, using: self.normalized) {
+        // Cheap reject before dropWhileMatching: that scanner walks every
+        // prefix of `text` and re-strips, so a miss on a long talk is O(n²).
+        // Divergent leading tokens mean this clause is not the prefix.
+        if !prefixTokens.isEmpty, !textTokens.isEmpty {
+            let check = min(3, prefixTokens.count, textTokens.count)
+            let leadingMismatch = (0..<check).contains {
+                self.tokenKey(textTokens[$0]) != self.tokenKey(prefixTokens[$0])
+            }
+            if leadingMismatch {
+                return nil
+            }
+        }
+
+        if let leftover = self.dropWhileMatching(trimmed, prefix: prefixN, using: self.stripped),
+           self.leftoverAfterExactPrefix(leftover, prefix: prefixN) != nil
+        {
             return leftover
         }
-        return self.dropWhileMatching(trimmed, prefix: prefixN, using: self.stripped)
+        return nil
+    }
+
+    /// Token-key peel must not eat a longer sentence that merely starts with
+    /// the printed words ("We trained the model." vs "We trained the model on
+    /// Korean data too."). An unpunctuated pause-cut of the same open clause
+    /// still peels.
+    fileprivate static func tokenMatchEndsAtClauseBoundary(
+        textTokens: [String],
+        prefixTokens: [String]
+    ) -> Bool {
+        guard !prefixTokens.isEmpty, textTokens.count >= prefixTokens.count else { return false }
+        if textTokens.count == prefixTokens.count { return true }
+        let leftover = textTokens[prefixTokens.count...].joined(separator: " ")
+        let prefix = prefixTokens.joined(separator: " ")
+        return self.leftoverAfterExactPrefix(leftover, prefix: prefix) != nil
+    }
+
+    fileprivate static func prefixEndsClause(_ prefix: String) -> Bool {
+        let trimmed = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let last = trimmed.last else { return false }
+        return self.isTerminal(last)
+    }
+
+    /// Exact leading match. A finished printed sentence only peels when the
+    /// leftover starts the next clause, so "We trained the model." does not
+    /// eat "We trained the model on Korean data too." An unpunctuated
+    /// pause-cut is still the same open clause. Compact scripts do not
+    /// tokenize into English starters; a finished leftover sentence after a
+    /// finished printed line is the next caption.
+    fileprivate static func leftoverAfterExactPrefix(_ leftover: String, prefix: String) -> String? {
+        let rest = leftover.trimmingCharacters(in: .whitespacesAndNewlines)
+        if rest.isEmpty { return leftover }
+        if self.hasUnspacedScript(prefix) || self.hasUnspacedScript(rest) {
+            return leftover
+        }
+        if self.isCompletedPrintedPrefix(prefix) {
+            guard let first = self.tokens(rest).first else { return nil }
+            if self.looksLikeClauseBoundaryStart(first) {
+                return leftover
+            }
+            // A lowercase opener ("on Korean data too.") cannot stand as its own
+            // sentence even if it ends in punctuation — it is the tail of the
+            // printed prefix growing in place, not a fresh clause.
+            // An uppercase opener is the next sentence, even while it is still
+            // growing ("Point 12 is…") and does not yet lookComplete.
+            if first.first?.isUppercase == true {
+                return leftover
+            }
+            return nil
+        }
+        return leftover
+    }
+
+    fileprivate static func isCompletedPrintedPrefix(_ prefix: String) -> Bool {
+        if self.prefixEndsClause(prefix) { return true }
+        return ["en", "ko", "th", "ja"].contains {
+            self.looksComplete(prefix, languageID: $0)
+        }
+    }
+
+    fileprivate static func acceptedPrefixLeftover(_ leftover: String, prefix _: String) -> String? {
+        let rest = leftover.trimmingCharacters(in: .whitespacesAndNewlines)
+        if rest.isEmpty { return leftover }
+        if let first = rest.first, self.isTerminal(first) { return leftover }
+        if let first = self.tokens(rest).first, self.looksLikeClauseBoundaryStart(first) {
+            return leftover
+        }
+        return nil
+    }
+
+    fileprivate static func looksLikeClauseBoundaryStart(_ token: String) -> Bool {
+        let key = self.tokenKey(token)
+        if key.isEmpty { return false }
+        if Self.englishSentenceStarters.contains(key) { return true }
+        if Self.englishSoftSentenceStarters.contains(key) { return true }
+        if Self.koreanSentenceStarters.contains(token) || Self.koreanSentenceStarters.contains(key) {
+            return true
+        }
+        if Self.japaneseSentenceStarters.contains(token) { return true }
+        if Self.thaiSentenceStarters.contains(token) { return true }
+        return false
     }
 
     /// Peel as many leading printed clauses as possible from one tokenization.
@@ -1445,6 +1990,12 @@ extension TranslationClauseSegmenter {
                 break
             }
             guard matches else { break }
+            let chunkTokens = self.tokens(chunk)
+            let remainingTokens = Array(textTokens[index...])
+            guard self.tokenMatchEndsAtClauseBoundary(
+                textTokens: remainingTokens,
+                prefixTokens: chunkTokens
+            ) else { break }
             index += chunkKeys.count
             consumed += 1
         }
@@ -1551,15 +2102,35 @@ extension TranslationClauseSegmenter {
         token.lowercased().trimmingCharacters(in: Self.tokenTrimSet)
     }
 
+    fileprivate static func compactKey(_ text: String) -> String {
+        String(self.stripped(text).filter { !$0.isWhitespace })
+    }
+
+    fileprivate static func collapseWhitespace(_ text: String) -> String {
+        var result = ""
+        result.reserveCapacity(text.count)
+        var previousSpace = false
+        for character in text {
+            if character.isWhitespace {
+                if !previousSpace {
+                    result.append(" ")
+                    previousSpace = true
+                }
+            } else {
+                result.append(character)
+                previousSpace = false
+            }
+        }
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     fileprivate static func stripped(_ text: String) -> String {
         let kept = text.lowercased().compactMap { character -> Character? in
             if character.isLetter || character.isNumber { return character }
             if character.isWhitespace { return " " }
             return nil
         }
-        return String(kept)
-            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return self.collapseWhitespace(String(kept))
     }
 }
 
@@ -1645,11 +2216,14 @@ struct LectureCaptionLog: Equatable {
         let cleanedTranslation = translated.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanedSource.isEmpty, !cleanedTranslation.isEmpty else { return nil }
 
-        // A racing stale commit and a fresh one can resolve to the exact same
-        // clause. This is a duplicate, not a revise, so it applies even when
-        // `mayReviseLast` is false (an in-flight commit forbids replacing —
-        // it does not mean "append this again").
-        if self.entries.last?.source == cleanedSource { return nil }
+        // A racing stale commit and a fresh one can resolve to the same
+        // clause, including "Hello" then "Hello." Treat that as one line.
+        if let lastSource = self.entries.last?.source,
+           lastSource == cleanedSource
+            || TranslationClauseSegmenter.isSameClause(lastSource, cleanedSource)
+        {
+            return nil
+        }
 
         if mayReviseLast, let lastSource = self.entries.last?.source {
             if TranslationClauseSegmenter.shouldIgnoreAsStalePrefix(previous: lastSource, incoming: cleanedSource) {
@@ -1660,7 +2234,6 @@ struct LectureCaptionLog: Equatable {
                 already: [lastSource],
                 languageID: SpokenLanguageResolver.listenLanguageID(for: cleanedSource)
             ).trimmingCharacters(in: .whitespacesAndNewlines)
-            let languageID = SpokenLanguageResolver.listenLanguageID(for: cleanedSource)
             // `cleanedTranslation` is MT's output for the whole incoming
             // `cleanedSource`, which can still carry the previous entry's
             // translation as a leading chunk. A peeled *source* paired with
@@ -1671,48 +2244,31 @@ struct LectureCaptionLog: Equatable {
                 priorTranslations: [self.entries.last?.translated ?? ""],
                 targetID: SpokenLanguageResolver.targetLanguage().id
             ) ?? cleanedTranslation
-            let leftoverIsNewClause = !peeledSource.isEmpty && peeledSource != cleanedSource
-                && (
-                    TranslationClauseSegmenter.looksComplete(peeledSource, languageID: languageID)
-                        || TranslationClauseSegmenter.isPauseFinalizable(peeledSource, languageID: languageID)
-                        || TranslationClauseSegmenter.shouldFollowAlong(peeledSource, languageID: languageID)
-                )
-            if leftoverIsNewClause {
-                return self.commit(
-                    source: peeledSource,
-                    translated: peeledTranslation,
-                    mayReviseLast: false
-                )
-            }
-            // Safety net: even when the completeness heuristics above miss it,
-            // a peeled leftover that is a large, independent chunk of the
-            // incoming text is almost never "the same sentence, corrected" —
-            // it is a new sentence. Overwriting the previous entry below would
-            // silently delete its already-finished translation, which is how
-            // a whole prior sentence's Korean can vanish from the board.
-            let peeledIsSubstantial = !peeledSource.isEmpty && peeledSource != cleanedSource
-                && peeledSource.count >= 12
-                && Double(peeledSource.count) >= Double(cleanedSource.count) * 0.4
-            if peeledIsSubstantial {
-                DebugLogger.shared.debug(
-                    "Theater commit treated substantial peeled leftover as a new "
-                        + "sentence instead of replacing last: previous=\"\(lastSource)\" "
-                        + "incoming=\"\(cleanedSource)\" peeledSource=\"\(peeledSource)\"",
-                    source: "LiveTranslation"
-                )
-                return self.commit(
-                    source: peeledSource,
-                    translated: peeledTranslation,
-                    mayReviseLast: false
-                )
-            }
-            // A previous build replaced the last entry in place here when
-            // `incoming` was judged a growing correction of the same
-            // utterance. That mutated a line already on screen, which is
-            // exactly what must never happen — the peeled-leftover append
-            // below (or the duplicate/stale rejections that follow it)
-            // now cover this case without touching `lastSource`.
+            let languageID = SpokenLanguageResolver.listenLanguageID(for: cleanedSource)
             if !peeledSource.isEmpty, peeledSource != cleanedSource {
+                let clearlyNew = TranslationClauseSegmenter.looksComplete(peeledSource, languageID: languageID)
+                    || TranslationClauseSegmenter.isPauseFinalizable(peeledSource, languageID: languageID)
+                    || TranslationClauseSegmenter.shouldFollowAlong(peeledSource, languageID: languageID)
+                    || (
+                        peeledSource.count >= 12
+                            && Double(peeledSource.count) >= Double(cleanedSource.count) * 0.4
+                    )
+                let replacesLast = TranslationClauseSegmenter.shouldReplaceLast(
+                    previous: lastSource,
+                    incoming: cleanedSource
+                )
+                // Prefix growth ("Hello" → "Hello world today") appends the delta.
+                // A close spelling that is not that growth ("modal" → "model") does not.
+                if !clearlyNew,
+                   !replacesLast,
+                   TranslationClauseSegmenter.shouldReviseCommitted(
+                       previous: lastSource,
+                       incoming: cleanedSource,
+                       languageID: languageID
+                   )
+                {
+                    return nil
+                }
                 return self.commit(
                     source: peeledSource,
                     translated: peeledTranslation,
@@ -1728,8 +2284,13 @@ struct LectureCaptionLog: Equatable {
             if TranslationClauseSegmenter.shouldReviseCommitted(
                 previous: lastSource,
                 incoming: cleanedSource,
-                languageID: SpokenLanguageResolver.listenLanguageID(for: cleanedSource)
-            ), peeledSource != cleanedSource {
+                languageID: languageID
+            ),
+               !TranslationClauseSegmenter.shouldReplaceLast(
+                   previous: lastSource,
+                   incoming: cleanedSource
+               )
+            {
                 return nil
             }
         }

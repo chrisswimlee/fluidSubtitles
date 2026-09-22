@@ -111,7 +111,8 @@ run_release_build() {
     local app_path
     local zip_name
     local zip_path
-    local identity="${FLUIDSUBTITLES_CODESIGN_IDENTITY:-Developer ID Application}"
+    local identity="${FLUIDSUBTITLES_CODESIGN_IDENTITY:-}"
+    local identity_hash=""
     local -a build_args=(
         -project fluidSubtitles.xcodeproj
         -scheme fluidSubtitles
@@ -128,10 +129,29 @@ run_release_build() {
         exit 1
     fi
 
+    identity_hash="$(security find-identity -v -p codesigning 2>/dev/null \
+        | grep "Developer ID Application:.*(${development_team})" \
+        | awk '{ print $2 }' \
+        | tail -n 1)"
+    if [[ "${identity}" =~ ^[A-Fa-f0-9]{40}$ ]]; then
+        :
+    elif [ -n "${identity_hash}" ]; then
+        identity="${identity_hash}"
+    fi
+    if [ -z "${identity}" ]; then
+        echo "No Developer ID Application identity for team ${development_team}." >&2
+        echo "Create one in Xcode → Settings → Accounts, then rerun ./scripts/prepare-release-signing.sh." >&2
+        exit 1
+    fi
+    echo "Developer ID identity: ${identity}"
+
     echo "Running signed Release fluidSubtitles build..."
+    # Ad-hoc compile. SPM package targets reject a project-wide Developer ID
+    # identity. Hosted CI only imports the Developer ID .p12. Re-sign below.
     xcodebuild "${build_args[@]}" \
         DEVELOPMENT_TEAM="${development_team}" \
-        CODE_SIGN_IDENTITY="${identity}"
+        CODE_SIGN_IDENTITY=- \
+        CODE_SIGNING_REQUIRED=NO
 
     app_path="${DERIVED_DATA_PATH}/Build/Products/Release/fluidSubtitles.app"
     if [ ! -d "${app_path}" ]; then

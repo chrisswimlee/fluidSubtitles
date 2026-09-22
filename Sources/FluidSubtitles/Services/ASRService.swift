@@ -1,3 +1,4 @@
+// Upstream: FluidVoice (altic-dev), GPLv3. Speech engine. Do not rewrite it to look original.
 import Accelerate
 import AVFoundation
 import Combine
@@ -104,6 +105,8 @@ final class ASRService: ObservableObject {
     }
 
     @Published var isRunning: Bool = false
+    /// Theater installs a policy for this Listen. Dictation leaves it nil.
+    weak var speechCapturePolicy: (any SpeechCapturePolicy)?
     @Published var finalText: String = ""
     @Published var partialTranscription: String = ""
     @Published var wordBoostStatusText: String = "Word boost: off"
@@ -656,7 +659,6 @@ final class ASRService: ObservableObject {
         case none
         case directCoreAudio
         case audioEngine
-        case systemAudio
     }
 
     struct AudioRouteRecoveryRequest {
@@ -687,7 +689,6 @@ final class ASRService: ObservableObject {
     }()
 
     var activeAudioCaptureBackend: AudioCaptureBackend = .none
-    let systemAudioCapture = SystemAudioCapture()
     var audioStartAttemptInputUID: String?
     var audioStartAttemptInputName: String?
     var audioStartAttemptIsBluetooth = false
@@ -1050,8 +1051,6 @@ final class ASRService: ObservableObject {
             if let engine = self.engineStorage as? AVAudioEngine, engine.isRunning {
                 engine.stop()
             }
-        case .systemAudio:
-            await self.systemAudioCapture.stop()
         case .none:
             break
         }
@@ -1139,6 +1138,7 @@ final class ASRService: ObservableObject {
 
     func beginStreamingWavWriterIfNeeded() {
         self.abortStreamingWavWriter()
+        if self.speechCapturePolicy?.retainsAudio == false { return }
         guard SettingsStore.shared.saveTranscriptionHistory,
               SettingsStore.shared.saveAudioWithTranscriptionHistory
         else { return }
@@ -1233,7 +1233,7 @@ final class ASRService: ObservableObject {
               self.isStarting == false,
               self.isLoadingModel == false,
               self.modelDownloadTask == nil,
-              LiveTranslationController.shared.isSessionActive == false
+              self.speechCapturePolicy?.isSessionActive != true
         else { return }
         if self.transcriptionProvider is AppleSpeechProvider { return }
         await self.transcriptionProvider.releaseMemory()
@@ -1269,8 +1269,8 @@ final class ASRService: ObservableObject {
                         attemptID: attemptID
                     )
                 }
-                DispatchQueue.main.async {
-                    LiveTranslationController.shared.markFirstBuffer()
+                DispatchQueue.main.async { [weak self] in
+                    self?.speechCapturePolicy?.markFirstBuffer()
                     let bufferMs = Int((Double(frameLength) / sampleRate * 1000).rounded())
                     DebugLogger.shared.benchmark(
                         "ASR_BENCH",
@@ -1289,11 +1289,11 @@ final class ASRService: ObservableObject {
                 }
             },
             onSpeechEnergy: { [weak self] (hostTime: UInt64, voiced: Bool) in
+                guard voiced else { return }
                 DispatchQueue.main.async { [weak self] in
-                    guard voiced else { return }
                     self?.lastVoicedUptime = ProcessInfo.processInfo.systemUptime
                     self?.didConsumeSilenceEdgeTick = false
-                    LiveTranslationController.shared.markSpeechStart(hostTime: hostTime)
+                    self?.speechCapturePolicy?.markSpeechStart(hostTime: hostTime)
                 }
             },
             onCaptureHealth: { [weak self] sessionID, attemptID, audioMs, sampleCount, rms, peak in

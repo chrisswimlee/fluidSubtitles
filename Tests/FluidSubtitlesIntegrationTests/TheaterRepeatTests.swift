@@ -84,8 +84,9 @@ final class TheaterRepeatTests: XCTestCase {
             sourceDraft: "Hello. Hello. How are you",
             spokenDisplay: .isTheCaption
         )
-        XCTAssertEqual(repeated.map(\.text), ["Hello.", "How are you"])
-        XCTAssertEqual(repeated.last?.id, TheaterCaptionFlow.liveID(after: [1]))
+        XCTAssertEqual(repeated.map(\.text), ["Hello."])
+        XCTAssertEqual(repeated.last?.id, "c-1")
+        XCTAssertFalse(repeated.contains { $0.isDraft })
 
         let midTalk = TheaterCaptionFlow.lines(
             committed: [],
@@ -93,7 +94,7 @@ final class TheaterRepeatTests: XCTestCase {
             sourceDraft: "Hello. Hello. How are you",
             spokenDisplay: .isTheCaption
         )
-        XCTAssertEqual(midTalk.map(\.text), ["Hello. How are you"])
+        XCTAssertTrue(midTalk.isEmpty)
 
         let pairedSame = TheaterCaptionFlow.lines(
             committed: [],
@@ -101,7 +102,106 @@ final class TheaterRepeatTests: XCTestCase {
             sourceDraft: "Hello",
             spokenDisplay: .paired
         )
-        XCTAssertEqual(pairedSame.last?.text, "Hello.")
-        XCTAssertEqual(pairedSame.last?.source, "")
+        XCTAssertTrue(pairedSame.isEmpty)
+    }
+
+    func testLeftoverKeepsASupersetSentenceAfterAPrintedPrefix() {
+        XCTAssertEqual(
+            TranslationClauseSegmenter.leftoverTail(
+                "We trained the model. We trained the model on Korean data too.",
+                already: ["We trained the model."],
+                languageID: "en"
+            ),
+            "We trained the model on Korean data too."
+        )
+        XCTAssertEqual(
+            TranslationClauseSegmenter.leftoverTail(
+                "Thank you. Thank you very much for coming today.",
+                already: ["Thank you."],
+                languageID: "en"
+            ),
+            "Thank you very much for coming today."
+        )
+        XCTAssertEqual(
+            TranslationClauseSegmenter.leftoverTail(
+                "We trained the model on Korean data too.",
+                already: ["We trained the model."],
+                languageID: "en"
+            ),
+            "We trained the model on Korean data too."
+        )
+        XCTAssertTrue(
+            TranslationClauseSegmenter.isInPlaceGrowth(
+                previous: "We trained the model.",
+                incoming: "We trained the model on Korean data too."
+            )
+        )
+    }
+
+    func testCompactWhitespaceRestitchIsTheSameClause() {
+        XCTAssertTrue(
+            TranslationClauseSegmenter.isSameClause(
+                "오늘 모델을 학습했습니다",
+                "오늘모델을 학습했습니다"
+            )
+        )
+        XCTAssertTrue(
+            TranslationClauseSegmenter.isAlreadyPrintedSource(
+                "오늘모델을 학습했습니다",
+                already: ["오늘 모델을 학습했습니다"],
+                languageID: "ko"
+            )
+        )
+        XCTAssertEqual(
+            TranslationClauseSegmenter.leftoverTail(
+                "오늘모델을 학습했습니다 그리고 적용했습니다",
+                already: ["오늘 모델을 학습했습니다"],
+                languageID: "ko"
+            ),
+            "그리고 적용했습니다"
+        )
+        XCTAssertTrue(
+            TranslationClauseSegmenter.isSameClause(
+                "วันนี้เราฝึกโมเดลครับ",
+                "วันนี้ เราฝึกโมเดลครับ"
+            )
+        )
+    }
+
+    func testHiddenPendingDoesNotPaintALiveCaption() {
+        let lines = TheaterCaptionFlow.lines(
+            committed: ["안녕."],
+            committedIDs: [1],
+            nextCaptionID: 2,
+            committedSources: ["Hello."],
+            draft: "그리고 출시했습니다",
+            sourceDraft: "And we shipped it",
+            pendingSources: ["We trained the model."],
+            spokenDisplay: .hidden
+        )
+        XCTAssertEqual(lines.map(\.text), ["안녕."])
+        XCTAssertEqual(lines.map(\.source), ["Hello."])
+        XCTAssertEqual(lines.last?.id, "c-1")
+        XCTAssertFalse(lines.contains { $0.isDraft })
+        // liveID still reserves the next committed slot for pending + in-flight.
+        XCTAssertEqual(
+            TheaterCaptionFlow.liveID(after: [1], nextID: 2, pendingCount: 1),
+            "c-3"
+        )
+    }
+
+
+    func testDoubleStopDoesNotStartASecondFinish() {
+        let controller = LiveTranslationController.shared
+        controller.cancelSession()
+        controller.subscriber.reset()
+        controller.beginSession(kind: .insert)
+        controller.stopListening()
+        XCTAssertTrue(controller.isFinishingSessionForTesting)
+        controller.stopListening()
+        XCTAssertTrue(controller.isFinishingSessionForTesting)
+        controller.cancelSession()
+        XCTAssertFalse(controller.isFinishingSessionForTesting)
+        controller.subscriber.reset()
     }
 }

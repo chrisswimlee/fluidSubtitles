@@ -171,7 +171,7 @@ extension ContentView {
 
         DebugLogger.shared.debug("Using app context for AI: app=\(appInfo.name), bundleId=\(appInfo.bundleId), title=\(appInfo.windowTitle)", source: "ContentView")
         if self.shouldTracePromptProcessing {
-            let activeSlot = dictationSlot ?? self.currentDictationShortcutSlot(for: self.activeRecordingMode) ?? .primary
+            let activeSlot = dictationSlot ?? self.currentDictationShortcutSlot() ?? .primary
             let selectedProfile = SettingsStore.shared.resolvedDictationPromptProfile(
                 for: activeSlot,
                 appBundleID: appInfo.bundleId

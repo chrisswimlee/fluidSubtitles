@@ -453,16 +453,7 @@ final class TypingService {
                         // any synchronous Accessibility queries on the main thread.
                         completion?(completedOutcome)
                         self.bench("delivery_main_callback_return")
-                        if tracksDictionaryCorrections,
-                           postInsertionKey == nil,
-                           completedOutcome.didInsert
-                        {
-                            AutomaticDictionaryCorrectionTracker.shared.beginObservingInsertion(
-                                text,
-                                targetPID: preferredTargetPID
-                            )
-                            self.bench("dictionary_tracking_scheduled afterDeliveryCallback=true")
-                        }
+                        _ = tracksDictionaryCorrections
                     }
                 }
 

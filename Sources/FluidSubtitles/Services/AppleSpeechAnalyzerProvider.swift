@@ -1,3 +1,4 @@
+// Upstream: FluidVoice (altic-dev), GPLv3. Apple Speech engine. Do not rewrite it to look original.
 import AVFoundation
 import Combine
 import Foundation

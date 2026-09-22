@@ -78,6 +78,15 @@ nonisolated enum UpdateSignaturePolicy {
         return false
     }
 
+    /// Unsigned and ad-hoc builds cannot install a GitHub zip. An allowlist
+    /// alone must not make Check for Updates look installed. A Personal Team
+    /// or other non-allowlisted team must not look up to date either.
+    static func canInstallPublicUpdates(currentTeam: String?, allowed: Set<String>) -> Bool {
+        guard let currentTeam, self.isUsableTeamID(currentTeam) else { return false }
+        if allowed.isEmpty { return true }
+        return allowed.contains(currentTeam)
+    }
+
     static func expectedSHA256(fromChecksumFile contents: String, assetName: String) -> String? {
         let needle = assetName.lowercased()
         for rawLine in contents.split(whereSeparator: \.isNewline) {
@@ -98,6 +107,23 @@ nonisolated enum UpdateSignaturePolicy {
 
     static func hexSHA256(of data: Data) -> String {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func hexSHA256(ofFile url: URL, chunkBytes: Int = 1_048_576) throws -> String {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        var hasher = SHA256()
+        while true {
+            let chunk: Data = try autoreleasepool {
+                guard let data = try handle.read(upToCount: chunkBytes), !data.isEmpty else {
+                    return Data()
+                }
+                return data
+            }
+            if chunk.isEmpty { break }
+            hasher.update(data: chunk)
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     static func isSafeExtractedApp(_ appURL: URL, workDirectory: URL) -> Bool {

@@ -160,6 +160,7 @@ extension SettingsStore {
     // MARK: - Preferences Settings
 
     enum AccentColorOption: String, CaseIterable, Identifiable, Codable {
+        case caption = "Caption"
         case teal = "Teal"
         case cyan = "Cyan"
         case green = "Green"
@@ -173,6 +174,7 @@ extension SettingsStore {
 
         var hex: String {
             switch self {
+            case .caption: return "#E8A54B"
             case .teal: return "#2DD4BF"
             case .cyan: return "#3AC8C6"
             case .green: return "#22C55E"
@@ -259,12 +261,23 @@ extension SettingsStore {
         }
     }
 
+    /// One-time: the inherited teal default is FluidVoice. Caption gold is this product.
+    /// A later choice of Teal stays put.
+    func migrateCaptionAccentIfNeeded() {
+        guard self.defaults.object(forKey: Keys.captionAccentMigration) == nil else { return }
+        self.defaults.set(true, forKey: Keys.captionAccentMigration)
+        let raw = self.defaults.string(forKey: Keys.accentColorOption)
+        if raw == nil || raw == AccentColorOption.teal.rawValue {
+            self.accentColorOption = .caption
+        }
+    }
+
     var accentColorOption: AccentColorOption {
         get {
             guard let raw = self.defaults.string(forKey: Keys.accentColorOption),
                   let option = AccentColorOption(rawValue: raw)
             else {
-                return .teal
+                return .caption
             }
             return option
         }
@@ -275,7 +288,7 @@ extension SettingsStore {
     }
 
     var accentColor: Color {
-        Color(hex: self.accentColorOption.hex) ?? Color(red: 0.227, green: 0.784, blue: 0.776)
+        Color(hex: self.accentColorOption.hex) ?? Color(red: 0.910, green: 0.647, blue: 0.294)
     }
 
     var themePreference: ThemePreference {
@@ -296,7 +309,7 @@ extension SettingsStore {
     var enableTranscriptionSounds: Bool {
         get {
             let value = self.defaults.object(forKey: Keys.enableTranscriptionSounds)
-            return value as? Bool ?? true
+            return value as? Bool ?? false
         }
         set {
             objectWillChange.send()

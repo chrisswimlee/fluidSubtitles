@@ -195,6 +195,7 @@ enum SpokenLanguageResolver {
             if VoiceEngineLanguageCatalog.supports(settings.selectedSpeechModel, languageID: source.id) {
                 return nil
             }
+            return "\(settings.selectedSpeechModel.displayName) does not hear \(source.displayName). Switch Voice Engine to Apple Speech or Whisper."
         }
 
         guard !self.voiceEngineSupportsSource(settings: settings) else { return nil }
@@ -213,7 +214,7 @@ enum SpokenLanguageResolver {
         case .parakeetRealtime, .parakeetTDTv2:
             return "Parakeet Flash and TDT v2 only hear English. Switch Voice Engine to Apple Speech or Whisper for \(source.displayName)."
         case .parakeetTDT:
-            return "Parakeet TDT v3 does not hear Korean, Japanese, or Thai. Switch Voice Engine to Apple Speech or Whisper for \(source.displayName)."
+            return "Parakeet TDT v3 only hears English. Switch Voice Engine to Apple Speech or Whisper for \(source.displayName)."
         default:
             if source.id == TranslationLanguageCatalog.thai.id {
                 let heard = spoken?.displayName ?? "another language"
@@ -285,8 +286,12 @@ enum SpokenLanguageResolver {
     }
 
     static func setSourceLanguage(_ language: TranslationLanguage, settings: SettingsStore = .shared) {
-        settings.translationSourceLanguageID = language.id
-        settings.onboardingSelectedLanguageID = language.id
+        if settings.translationSourceLanguageID != language.id {
+            settings.translationSourceLanguageID = language.id
+        }
+        if settings.onboardingSelectedLanguageID != language.id {
+            settings.onboardingSelectedLanguageID = language.id
+        }
         Self.pinSpokenEngineToSource(settings: settings)
     }
 
@@ -328,26 +333,35 @@ enum SpokenLanguageResolver {
         if self.shouldAutoDetectWhisper(settings: settings) { return }
         let sourceID = self.sourceLanguage(settings: settings).id
         guard let code = VoiceEngineLanguageCatalog.whisperLanguageCode(for: sourceID) else { return }
-        settings.selectedWhisperLanguageCode = code
+        if settings.selectedWhisperLanguageCode != code {
+            settings.selectedWhisperLanguageCode = code
+        }
     }
 
-    /// Speech Analyzer rejects the Mac locale when it is not Korean, English, Japanese, or Thai.
+    /// Pins Apple Speech to I speak. Speech Analyzer locales stay on the languages
+    /// that engine includes; every other product language uses Apple Speech's locale.
     static func pinAppleSpeechToSpokenSource(settings: SettingsStore = .shared) {
         let sourceID = self.sourceLanguage(settings: settings).id
-        settings.selectedAppleSpeechLocaleIdentifier =
-            VoiceEngineLanguageCatalog.preferredAppleSpeechAnalyzerLocale(forLanguageID: sourceID)
+        let locale = VoiceEngineLanguageCatalog.preferredAppleSpeechAnalyzerLocale(forLanguageID: sourceID)
+        if settings.selectedAppleSpeechLocaleIdentifier != locale {
+            settings.selectedAppleSpeechLocaleIdentifier = locale
+        }
     }
 
     static func pinCohereToSpokenSource(settings: SettingsStore = .shared) {
         let sourceID = self.sourceLanguage(settings: settings).id
         guard let language = VoiceEngineLanguageCatalog.cohereLanguage(forLanguageID: sourceID) else { return }
-        settings.selectedCohereLanguage = language
+        if settings.selectedCohereLanguage != language {
+            settings.selectedCohereLanguage = language
+        }
     }
 
     static func pinNemotronToSpokenSource(settings: SettingsStore = .shared) {
         let sourceID = self.sourceLanguage(settings: settings).id
         guard let language = VoiceEngineLanguageCatalog.nemotronLanguage(forLanguageID: sourceID) else { return }
-        settings.selectedNemotronLanguage = language
+        if settings.selectedNemotronLanguage != language {
+            settings.selectedNemotronLanguage = language
+        }
     }
 
     static func isSameLanguagePair(settings: SettingsStore = .shared) -> Bool {
@@ -387,7 +401,10 @@ enum SpokenLanguageResolver {
     }
 
     static func listenLanguageID(for text: String, settings: SettingsStore = .shared) -> String {
-        self.pairForSpokenText(text, settings: settings).source.id
+        let configured = self.sourceLanguage(settings: settings).id
+        guard settings.theaterAlsoHearOtherLanguages else { return configured }
+        let allowed = TranslationLanguageCatalog.all.map(\.id)
+        return SpokenScriptDetector.languageID(in: text, among: allowed) ?? configured
     }
 }
 
@@ -472,11 +489,17 @@ nonisolated enum LiveTranslationTiming {
     static let maxLineWords = 12
     static let maxLineCharacters = 80
     static let contextSentenceCount = 4
-    /// Captions kept on the Theater board. Off-screen lines are dropped.
-    static let visibleTheaterLines = 3
+    /// The window is the viewport. This only bounds a very long Listen.
+    /// Resizing the board shows more or less of the lines still kept.
+    static let visibleTheaterLines = 240
     static let maxCommittedLines = visibleTheaterLines
+    /// Leftover peel runs on every speech update. It uses this recent
+    /// suffix, not the whole board, so a full-screen talk stays inside one tick.
+    static let peelWindowLines = 12
     /// Leftover peel and last-4 MT priors. Older clauses drop as new ones commit.
-    static let maxListenHistory = contextSentenceCount + maxCommittedLines
+    /// Sized off `peelWindowLines`, not the Theater board, since `listenHistory`
+    /// never needs more than the largest suffix its consumers take.
+    static let maxListenHistory = contextSentenceCount + peelWindowLines
     /// After this much silence, skip ASR ticks and start a new e2e measurement.
     static let silenceHoldNanoseconds: UInt64 = 400_000_000
     static let silenceHoldSeconds: TimeInterval = 0.4
@@ -491,6 +514,20 @@ nonisolated enum LiveTranslationTiming {
     /// seconds. This only needs to catch a truly hung call, not enforce
     /// snappy latency, so the floor stays generous.
     static let translateClauseTimeoutNanoseconds: UInt64 = 25_000_000_000
+    /// After mailbox cancel exists, a hung commit fails here instead of at 25 s.
+    static let commitMailboxTimeoutNanoseconds: UInt64 = 7_000_000_000
+    static let liveMailboxTimeoutNanoseconds: UInt64 = 1_500_000_000
+
+    static func mailboxTimeoutNanoseconds(for kind: TranslationRequestKind) -> UInt64 {
+        switch kind {
+        case .live:
+            return Self.liveMailboxTimeoutNanoseconds
+        case .firstCommit:
+            return Self.translateClauseTimeoutNanoseconds
+        case .commit:
+            return Self.commitMailboxTimeoutNanoseconds
+        }
+    }
     /// Local first-print polish and Apple-failure MT must lose to Apple if slower than a clause.
     static let commitTranslationTimeoutNanoseconds: UInt64 = 4_000_000_000
     /// After this many local attempts, an 80% miss rate disables local MT for the listen.

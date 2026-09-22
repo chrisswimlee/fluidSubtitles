@@ -2,6 +2,37 @@ import XCTest
 @testable import FluidSubtitles_Debug
 
 final class InsertIMEGuardTests: XCTestCase {
+    func testShortcutInsertTypesIntoTheCapturedAppEvenIfFluidIsFront() {
+        XCTAssertTrue(
+            TheaterInsertDelivery.shouldTypeCurrentListen(
+                text: "안녕.",
+                targetBundleID: "com.apple.Notes",
+                selfBundleID: FluidProduct.bundleIdentifier
+            )
+        )
+        XCTAssertFalse(
+            TheaterInsertDelivery.shouldTypeCurrentListen(
+                text: "안녕.",
+                targetBundleID: FluidProduct.bundleIdentifier,
+                selfBundleID: FluidProduct.bundleIdentifier
+            )
+        )
+        XCTAssertFalse(
+            TheaterInsertDelivery.shouldTypeCurrentListen(
+                text: "안녕.",
+                targetBundleID: nil,
+                selfBundleID: FluidProduct.bundleIdentifier
+            )
+        )
+        XCTAssertFalse(
+            TheaterInsertDelivery.shouldTypeCurrentListen(
+                text: "   ",
+                targetBundleID: "com.apple.Notes",
+                selfBundleID: FluidProduct.bundleIdentifier
+            )
+        )
+    }
+
     func testKoreanJapaneseAndThaiInputSourcesRequirePaste() {
         XCTAssertTrue(
             InsertIMEGuard.isIMEInputSource("com.apple.inputmethod.Korean.2SetKorean")

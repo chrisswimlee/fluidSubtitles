@@ -14,9 +14,6 @@ struct TheaterTalkPackCard: View {
         ThemedCard(style: .standard, hoverEffect: false) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: "doc.text")
-                        .font(.title3)
-                        .foregroundStyle(self.theme.palette.accent)
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Talk notes")
                             .font(self.theme.typography.bodyStrong)
@@ -37,7 +34,7 @@ struct TheaterTalkPackCard: View {
                         Button(self.settings.hasTheaterTalkPack ? "Replace" : "Import") {
                             self.importNotes()
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.theaterText)
                         .controlSize(.regular)
                         .accessibilityIdentifier("theater.talkPack.import")
                         if self.settings.hasTheaterTalkPack {
@@ -45,7 +42,7 @@ struct TheaterTalkPackCard: View {
                                 self.settings.clearTheaterTalkPack()
                                 self.loadError = nil
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.theaterText)
                             .controlSize(.regular)
                             .accessibilityIdentifier("theater.talkPack.remove")
                         }
@@ -103,7 +100,7 @@ struct TheaterTalkPackCard: View {
                     .onSubmit { self.addTerm() }
                     .accessibilityIdentifier("theater.talkPack.addField")
                 Button("Add") { self.addTerm() }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.theaterText)
                     .disabled(
                         self.newTerm.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                             || self.settings.theaterTalkPackTerms.count >= TheaterTalkPack.maxTerms

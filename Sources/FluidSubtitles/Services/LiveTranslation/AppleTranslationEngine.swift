@@ -24,6 +24,10 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
     var isMailboxReady: Bool { self.mailbox.isReady }
     var hasQueuedOrInFlightCommit: Bool { self.mailbox.hasQueuedOrInFlightCommit }
 
+    func cancelQueuedTranslations() {
+        self.mailbox.cancelQueued(TranslationEngineError.superseded)
+    }
+
     func prepare(source: TranslationLanguage, target: TranslationLanguage) {
         guard source.id != target.id else {
             self.tearDownSession(reason: "Language pair changed.")
@@ -73,9 +77,8 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
         self.prepare(source: source, target: target)
         await self.waitUntilMailboxReady()
 
-        if kind == .live, self.mailbox.hasQueuedOrInFlightCommit {
-            throw TranslationEngineError(message: "Commit is in flight.")
-        }
+        // Live may wait behind a commit. The mailbox already refuses to let
+        // prefetch preempt a queued or running commit.
         switch Self.sessionChoice(mailboxReady: self.mailbox.isReady) {
         case .warmMailbox:
             return try await self.mailbox.submit(trimmed, kind: kind)
@@ -116,6 +119,8 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
     /// running, so this must await the serve loop directly rather than detaching it — a
     /// detached Task lets the closure return immediately and the session becomes invalid
     /// while `serve` is still calling `translate` on it, which eventually traps.
+    /// A new attach (pack sheet, configuration invalidate, extra host) claims the
+    /// mailbox so the previous serve loop exits instead of overwriting its waiter.
     func attachSession(_ session: TranslationSession) async {
         do {
             try await session.prepareTranslation()
@@ -127,7 +132,8 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
                 source: "AppleTranslationEngine"
             )
         }
-        await self.serve(session: session, mailbox: self.mailbox)
+        let generation = self.mailbox.claimServe()
+        await self.serve(session: session, mailbox: self.mailbox, generation: generation)
     }
 
     private func tearDownSession(reason: String) {
@@ -230,13 +236,25 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
         return TranslationSession(installedSource: source, target: target)
     }
 
-    private func serve(session: TranslationSession, mailbox: TranslationRequestMailbox) async {
-        while let request = await mailbox.next() {
-            if Task.isCancelled { break }
+    private func serve(
+        session: TranslationSession,
+        mailbox: TranslationRequestMailbox,
+        generation: UInt64
+    ) async {
+        while let request = await mailbox.next(generation: generation) {
+            if Task.isCancelled {
+                request.resume(.failure(TranslationEngineError(message: "Apple Translation stopped.")))
+                break
+            }
             if request.isCancelled { continue }
             let started = ProcessInfo.processInfo.systemUptime
             do {
-                let text = try await Self.translate(request.text, session: session)
+                let text = try await Self.translate(
+                    request.text,
+                    session: session,
+                    kind: request.kind,
+                    isCancelled: { request.isCancelled }
+                )
                 self.recordLatency(since: started)
                 if request.isCancelled { continue }
                 request.resume(.success(text))
@@ -244,6 +262,10 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
                 self.lastError = error.localizedDescription
                 if request.isCancelled { continue }
                 request.resume(.failure(error))
+                if (error as? TranslationEngineError)?.isTimeout == true {
+                    self.remintSession()
+                    break
+                }
             }
         }
     }
@@ -255,18 +277,37 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
     /// abandons its wait, it does not stop this shared loop. Racing the call
     /// against the same deadline the caller uses keeps the queue moving so a
     /// slow first sentence cannot starve every sentence that follows it.
-    private static func translate(_ text: String, session: TranslationSession) async throws -> String {
+    private static func translate(
+        _ text: String,
+        session: TranslationSession,
+        kind: TranslationRequestKind = .commit,
+        isCancelled: @escaping () -> Bool = { false }
+    ) async throws -> String {
         try await withThrowingTaskGroup(of: String.self) { group in
             group.addTask {
                 try await session.translate(text).targetText
             }
             group.addTask {
-                try await Task.sleep(nanoseconds: LiveTranslationTiming.translateClauseTimeoutNanoseconds)
-                throw TranslationEngineError(message: "Apple Translation timed out.")
+                try await Task.sleep(nanoseconds: LiveTranslationTiming.mailboxTimeoutNanoseconds(for: kind))
+                throw TranslationEngineError.timeout
+            }
+            group.addTask {
+                while !isCancelled() {
+                    try await Task.sleep(nanoseconds: 20_000_000)
+                }
+                throw TranslationEngineError.superseded
             }
             defer { group.cancelAll() }
             return try await group.next()!
         }
+    }
+
+    /// Timeout or closing the pack sheet can leave the hidden host without a
+    /// serve loop. Invalidate so `.translationTask` attaches again.
+    func remintSession() {
+        guard var configuration = self.configuration else { return }
+        configuration.invalidate()
+        self.configuration = configuration
     }
 
     private func recordLatency(since started: TimeInterval) {
@@ -290,6 +331,34 @@ struct TranslationSessionHost: View {
             .translationTask(self.engine.configuration) { session in
                 await self.engine.attachSession(session)
             }
+    }
+}
+
+enum TheaterPackListenGate {
+    enum Decision: Equatable {
+        case allow
+        case needDownload
+        case unsupported
+        case notReady
+    }
+
+    /// Cold `LanguageAvailability` can report `.unknown`. A warm mailbox
+    /// means this pair can already translate. Otherwise wait — do not open
+    /// the pack sheet on a first-query unknown.
+    static func decision(
+        availability: TranslationPackAvailability,
+        mailboxReady: Bool
+    ) -> Decision {
+        switch availability {
+        case .installed:
+            return .allow
+        case .supported:
+            return .needDownload
+        case .unsupported:
+            return .unsupported
+        case .unknown:
+            return mailboxReady ? .allow : .notReady
+        }
     }
 }
 
@@ -345,10 +414,18 @@ enum TheaterPairPacks {
     }
 }
 
+@MainActor
+private final class TranslationPackDownloadPanelDelegate: NSObject, NSWindowDelegate {
+    func windowWillClose(_ notification: Notification) {
+        TranslationPackDownloadController.dismiss()
+    }
+}
+
 /// Visible window so Apple’s language-pack sheet is not attached to a 1×1 hidden panel.
 @MainActor
 enum TranslationPackDownloadController {
     private static var panel: NSPanel?
+    private static let panelDelegate = TranslationPackDownloadPanelDelegate()
 
     static func present() {
         if self.panel == nil {
@@ -364,6 +441,7 @@ enum TranslationPackDownloadController {
             panel.hidesOnDeactivate = false
             panel.isReleasedWhenClosed = false
             panel.level = .floating
+            panel.delegate = self.panelDelegate
             panel.contentViewController = hosting
             if let screen = NSScreen.main ?? NSScreen.screens.first {
                 let frame = screen.visibleFrame
@@ -378,7 +456,13 @@ enum TranslationPackDownloadController {
     }
 
     static func dismiss() {
-        self.panel?.orderOut(nil)
+        if let panel = self.panel {
+            self.panel = nil
+            panel.delegate = nil
+            panel.contentViewController = nil
+            panel.orderOut(nil)
+        }
+        AppleTranslationEngine.shared.remintSession()
     }
 }
 
@@ -455,6 +539,7 @@ final class TranslationRequestMailbox: @unchecked Sendable {
     private var inFlight: Request?
     private var waiter: CheckedContinuation<Request?, Never>?
     private var isServing = false
+    private var serveGeneration: UInt64 = 0
 
     var isReady: Bool {
         self.lock.lock()
@@ -462,21 +547,56 @@ final class TranslationRequestMailbox: @unchecked Sendable {
         return self.isServing || self.waiter != nil
     }
 
-    /// Live prefetch must not start while a commit is waiting or running.
+    /// Ends any previous serve loop, then returns the generation the new host owns.
+    func claimServe() -> UInt64 {
+        self.lock.lock()
+        self.serveGeneration += 1
+        let generation = self.serveGeneration
+        self.isServing = true
+        let previous = self.waiter
+        self.waiter = nil
+        self.lock.unlock()
+        previous?.resume(returning: nil)
+        return generation
+    }
+
+    /// True while a commit is waiting or running. Live may queue behind it.
     var hasQueuedOrInFlightCommit: Bool {
         self.lock.lock()
         defer { self.lock.unlock() }
-        return !self.commits.isEmpty || self.inFlight?.kind == .commit
+        return !self.commits.isEmpty || self.inFlight?.kind.occupiesCommitSlot == true
     }
 
     func next() async -> Request? {
+        let generation: UInt64 = self.lock.withLock {
+            if self.serveGeneration == 0 {
+                self.serveGeneration = 1
+            }
+            self.isServing = true
+            return self.serveGeneration
+        }
+        return await self.next(generation: generation)
+    }
+
+    func next(generation: UInt64) async -> Request? {
         await withCheckedContinuation { continuation in
             self.lock.lock()
+            guard generation == self.serveGeneration else {
+                self.lock.unlock()
+                continuation.resume(returning: nil)
+                return
+            }
             self.isServing = true
             if let request = self.dequeueLocked() {
                 self.inFlight = request
                 self.lock.unlock()
                 continuation.resume(returning: request)
+                return
+            }
+            if let previous = self.waiter {
+                self.waiter = continuation
+                self.lock.unlock()
+                previous.resume(returning: nil)
                 return
             }
             self.waiter = continuation
@@ -485,41 +605,79 @@ final class TranslationRequestMailbox: @unchecked Sendable {
     }
 
     func submit(_ text: String, kind: TranslationRequestKind = .commit) async throws -> String {
-        try await withCheckedThrowingContinuation { continuation in
-            let box = ResumeBox(continuation)
-            let request = Request(text: text, kind: kind, box: box)
-            var superseded: ResumeBox?
-            var waiter: CheckedContinuation<Request?, Never>?
-            var dequeued: Request?
+        let box = ResumeBox()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                box.attach(continuation)
+                let request = Request(text: text, kind: kind, box: box)
+                var superseded: ResumeBox?
+                var preempted: ResumeBox?
+                var waiter: CheckedContinuation<Request?, Never>?
+                var dequeued: Request?
 
-            self.lock.lock()
-            if !self.isServing, self.waiter == nil {
+                self.lock.lock()
+                if !self.isServing, self.waiter == nil {
+                    self.lock.unlock()
+                    box.resume(.failure(TranslationEngineError(
+                        message: "Apple Translation is not ready yet. Open Theater so the language pack can install."
+                    )))
+                    return
+                }
+                if kind == .live {
+                    superseded = self.live?.box
+                    self.live = request
+                } else {
+                    if self.inFlight?.kind == .live {
+                        preempted = self.inFlight?.box
+                    }
+                    if let live = self.live {
+                        superseded = live.box
+                        self.live = nil
+                    }
+                    self.commits.append(request)
+                }
+                if let waiting = self.waiter {
+                    dequeued = self.dequeueLocked()
+                    if dequeued != nil {
+                        self.inFlight = dequeued
+                        self.waiter = nil
+                        waiter = waiting
+                    }
+                }
                 self.lock.unlock()
-                box.resume(.failure(TranslationEngineError(
-                    message: "Apple Translation is not ready yet. Open Theater so the language pack can install."
-                )))
-                return
-            }
-            if kind == .live {
-                superseded = self.live?.box
-                self.live = request
-            } else {
-                self.commits.append(request)
-            }
-            if let waiting = self.waiter {
-                dequeued = self.dequeueLocked()
-                if dequeued != nil {
-                    self.inFlight = dequeued
-                    self.waiter = nil
-                    waiter = waiting
+                superseded?.resume(.failure(TranslationEngineError.superseded))
+                preempted?.resume(.failure(TranslationEngineError.superseded))
+                if let waiter, let dequeued {
+                    waiter.resume(returning: dequeued)
                 }
             }
-            self.lock.unlock()
-            superseded?.resume(.failure(TranslationEngineError.superseded))
-            if let waiter, let dequeued {
-                waiter.resume(returning: dequeued)
-            }
+        } onCancel: {
+            self.cancelBox(box, error: TranslationEngineError.superseded)
         }
+    }
+
+    func cancelQueued(_ error: Error) {
+        self.lock.lock()
+        let live = self.live
+        self.live = nil
+        let commits = self.commits
+        self.commits.removeAll()
+        let inFlight = self.inFlight
+        self.inFlight = nil
+        self.lock.unlock()
+        live?.box.resume(.failure(error))
+        inFlight?.box.resume(.failure(error))
+        for commit in commits {
+            commit.box.resume(.failure(error))
+        }
+    }
+
+    private func cancelBox(_ box: ResumeBox, error: Error) {
+        self.lock.lock()
+        if self.live?.box === box { self.live = nil }
+        self.commits.removeAll { $0.box === box }
+        self.lock.unlock()
+        box.resume(.failure(error))
     }
 
     func cancelAll(_ error: Error) {
@@ -533,6 +691,7 @@ final class TranslationRequestMailbox: @unchecked Sendable {
         let waiter = self.waiter
         self.waiter = nil
         self.isServing = false
+        self.serveGeneration += 1
         self.lock.unlock()
         live?.box.resume(.failure(error))
         inFlight?.box.resume(.failure(error))
@@ -557,11 +716,7 @@ final class TranslationRequestMailbox: @unchecked Sendable {
 private final class ResumeBox: @unchecked Sendable {
     private let lock = NSLock()
     private var finished = false
-    private let continuation: CheckedContinuation<String, Error>
-
-    init(_ continuation: CheckedContinuation<String, Error>) {
-        self.continuation = continuation
-    }
+    private var continuation: CheckedContinuation<String, Error>?
 
     var isFinished: Bool {
         self.lock.lock()
@@ -569,11 +724,18 @@ private final class ResumeBox: @unchecked Sendable {
         return self.finished
     }
 
+    func attach(_ continuation: CheckedContinuation<String, Error>) {
+        self.lock.lock()
+        self.continuation = continuation
+        self.lock.unlock()
+    }
+
     func resume(_ result: Result<String, Error>) {
         self.lock.lock()
         defer { self.lock.unlock() }
-        guard !self.finished else { return }
+        guard !self.finished, let continuation else { return }
         self.finished = true
-        self.continuation.resume(with: result)
+        self.continuation = nil
+        continuation.resume(with: result)
     }
 }
