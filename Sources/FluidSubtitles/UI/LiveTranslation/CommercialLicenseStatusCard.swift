@@ -3,6 +3,7 @@ import SwiftUI
 /// Honor-system work notice, or Licensed to {org} after a signed key.
 struct CommercialLicenseStatusCard: View {
     var showsKeyField = false
+    var compact = false
     var style: ThemedCardStyle = .standard
 
     @Environment(\.theme) private var theme
@@ -11,6 +12,30 @@ struct CommercialLicenseStatusCard: View {
     @State private var message: String?
 
     var body: some View {
+        if self.compact {
+            self.compactBody
+        } else {
+            self.fullBody
+        }
+    }
+
+    private var compactBody: some View {
+        HStack(spacing: 8) {
+            Text(self.settings.isCommerciallyLicensed ? self.title : "Personal use is free.")
+                .font(self.theme.typography.bodySmall)
+                .foregroundStyle(self.theme.palette.secondaryText)
+            if !self.settings.isCommerciallyLicensed {
+                Link("Request a commercial license", destination: FluidProduct.commercialLicenseMailURL)
+                    .textLinkPointer()
+                    .font(self.theme.typography.bodySmall)
+                    .accessibilityIdentifier("commercial.license.request")
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityIdentifier("commercial.license")
+    }
+
+    private var fullBody: some View {
         ThemedCard(style: self.style, hoverEffect: false) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .top, spacing: 12) {

@@ -87,6 +87,21 @@ final class LiveTranslationQualityTests: XCTestCase {
         XCTAssertEqual(TranslationLanguageCatalog.language(id: "zh-TW")?.id, "zh")
         XCTAssertEqual(TranslationLanguageCatalog.language(id: "pt-PT")?.id, "pt")
         XCTAssertNil(TranslationLanguageCatalog.language(id: "el"))
+        XCTAssertEqual(TranslationLanguageCatalog.menuOrder.map(\.id).count, TranslationLanguageCatalog.all.count)
+        XCTAssertEqual(
+            Set(TranslationLanguageCatalog.menuOrder.map(\.id)),
+            TranslationLanguageCatalog.supportedIDs
+        )
+        let models = Array(SettingsStore.SpeechModel.allCases)
+        for language in TranslationLanguageCatalog.menuOrder {
+            XCTAssertFalse(
+                VoiceEngineLanguageCatalog.routes(
+                    forLanguageID: language.id,
+                    availableModels: models
+                ).isEmpty,
+                "\(language.displayName) needs a Voice Engine route so the menu can select it."
+            )
+        }
     }
 
     func testEnglishRoutesIncludeParakeetAndThaiPreferredRouteDoesNot() {
@@ -143,7 +158,7 @@ final class LiveTranslationQualityTests: XCTestCase {
         XCTAssertTrue(VoiceEngineLanguageCatalog.supports(settings.selectedSpeechModel, languageID: "th"))
     }
 
-    func testBilingualWrapPutsSpokenThaiBeforeEnglish() {
+    func testBilingualWrapPutsEnglishTitleAboveSpokenThai() {
         let font = NSFont.systemFont(ofSize: 24, weight: .semibold)
         let rows = TheaterBilingualWrap.rows(
             spoken: "สวัสดี",
@@ -152,13 +167,13 @@ final class LiveTranslationQualityTests: XCTestCase {
             width: 800
         )
         XCTAssertGreaterThanOrEqual(rows.count, 2)
-        XCTAssertEqual(rows[0].text, "สวัสดี")
-        XCTAssertTrue(rows[0].isSpoken)
-        XCTAssertEqual(rows[1].text, "Hello")
-        XCTAssertFalse(rows[1].isSpoken)
+        XCTAssertEqual(rows[0].text, "Hello")
+        XCTAssertFalse(rows[0].isSpoken)
+        XCTAssertEqual(rows[1].text, "สวัสดี")
+        XCTAssertTrue(rows[1].isSpoken)
     }
 
-    func testBilingualWrapPutsSpokenJapaneseBeforeEnglish() {
+    func testBilingualWrapPutsEnglishTitleAboveSpokenJapanese() {
         let font = NSFont.systemFont(ofSize: 24, weight: .semibold)
         let rows = TheaterBilingualWrap.rows(
             spoken: "こんにちは",
@@ -167,10 +182,10 @@ final class LiveTranslationQualityTests: XCTestCase {
             width: 800
         )
         XCTAssertGreaterThanOrEqual(rows.count, 2)
-        XCTAssertEqual(rows[0].text, "こんにちは")
-        XCTAssertTrue(rows[0].isSpoken)
-        XCTAssertEqual(rows[1].text, "Hello")
-        XCTAssertFalse(rows[1].isSpoken)
+        XCTAssertEqual(rows[0].text, "Hello")
+        XCTAssertFalse(rows[0].isSpoken)
+        XCTAssertEqual(rows[1].text, "こんにちは")
+        XCTAssertTrue(rows[1].isSpoken)
     }
 
 
@@ -187,7 +202,7 @@ final class LiveTranslationQualityTests: XCTestCase {
     }
 
 
-    func testBilingualWrapPutsSpokenKoreanBeforeEnglish() {
+    func testBilingualWrapPutsEnglishTitleAboveSpokenKorean() {
         let font = NSFont.systemFont(ofSize: 24, weight: .semibold)
         let rows = TheaterBilingualWrap.rows(
             spoken: "안녕하세요",
@@ -196,10 +211,10 @@ final class LiveTranslationQualityTests: XCTestCase {
             width: 800
         )
         XCTAssertGreaterThanOrEqual(rows.count, 2)
-        XCTAssertEqual(rows[0].text, "안녕하세요")
-        XCTAssertTrue(rows[0].isSpoken)
-        XCTAssertEqual(rows[1].text, "Hello")
-        XCTAssertFalse(rows[1].isSpoken)
+        XCTAssertEqual(rows[0].text, "Hello")
+        XCTAssertFalse(rows[0].isSpoken)
+        XCTAssertEqual(rows[1].text, "안녕하세요")
+        XCTAssertTrue(rows[1].isSpoken)
     }
 
     func testBilingualWrapFillsAWideBoardInsteadOfTwelveWords() {

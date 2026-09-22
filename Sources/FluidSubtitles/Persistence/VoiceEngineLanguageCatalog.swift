@@ -132,6 +132,22 @@ enum VoiceEngineLanguageCatalog {
         }
     }
 
+    /// The onboarding card: this Mac's default Voice Engine, then Apple Speech.
+    static func preferredOnboardingRoute(among routes: [VoiceEngineLanguageRoute]) -> VoiceEngineLanguageRoute? {
+        let preferredModel = SettingsStore.SpeechModel.defaultModel
+        if let route = routes.first(where: { $0.model == preferredModel }) {
+            return route
+        }
+        if let speech = routes.first(where: { $0.model == .appleSpeech }) {
+            return speech
+        }
+        return routes.first
+    }
+
+    static func preferredOnboardingRoute(forLanguageID languageID: String) -> VoiceEngineLanguageRoute? {
+        self.preferredOnboardingRoute(among: self.routes(forLanguageID: languageID))
+    }
+
     static func routes(
         forLanguageID languageID: String,
         availableModels: [SettingsStore.SpeechModel] = SettingsStore.SpeechModel.availableModels

@@ -42,6 +42,10 @@ final class InsertIMEGuardTests: XCTestCase {
         XCTAssertTrue(InsertIMEGuard.isIMEInputSource("com.apple.inputmethod.Kotoeri.RomajiTyping"))
         XCTAssertTrue(InsertIMEGuard.isIMEInputSource("com.apple.inputmethod.Thai"))
         XCTAssertTrue(InsertIMEGuard.isIMEInputSource("com.apple.keylayout.Thai"))
+        XCTAssertTrue(InsertIMEGuard.isIMEInputSource("com.apple.inputmethod.SCIM.ITABC"))
+        XCTAssertTrue(InsertIMEGuard.isIMEInputSource("com.apple.inputmethod.TCIM.Pinyin"))
+        XCTAssertTrue(InsertIMEGuard.isIMEInputSource("com.apple.keylayout.Arabic"))
+        XCTAssertTrue(InsertIMEGuard.isIMEInputSource("com.apple.keylayout.Hebrew"))
         XCTAssertFalse(InsertIMEGuard.isIMEInputSource("com.apple.keylayout.US"))
         XCTAssertFalse(InsertIMEGuard.isIMEInputSource("com.apple.keylayout.ABC"))
     }
@@ -52,7 +56,13 @@ final class InsertIMEGuardTests: XCTestCase {
         XCTAssertTrue(InsertIMEGuard.isIMELanguage("ja"))
         XCTAssertTrue(InsertIMEGuard.isIMELanguage("ja-JP"))
         XCTAssertTrue(InsertIMEGuard.isIMELanguage("th-TH"))
+        XCTAssertTrue(InsertIMEGuard.isIMELanguage("zh"))
+        XCTAssertTrue(InsertIMEGuard.isIMELanguage("zh-TW"))
+        XCTAssertTrue(InsertIMEGuard.isIMELanguage("ar"))
+        XCTAssertTrue(InsertIMEGuard.isIMELanguage("he"))
+        XCTAssertTrue(InsertIMEGuard.isIMELanguage("hi-IN"))
         XCTAssertFalse(InsertIMEGuard.isIMELanguage("en"))
+        XCTAssertFalse(InsertIMEGuard.isIMELanguage("fr"))
         XCTAssertFalse(InsertIMEGuard.isIMELanguage("en-US"))
     }
 

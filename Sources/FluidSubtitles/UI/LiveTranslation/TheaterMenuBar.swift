@@ -212,10 +212,10 @@ final class TheaterMenuBarController: NSObject {
         minimize.toolTip = TheaterChromeHelp.minimize
         add(minimize, symbol: "arrow.down.right.and.arrow.up.left")
 
-        let copy = NSMenuItem(
+        let copy = TheaterPresenterHotkey.menuItem(
             title: "Copy All",
             action: #selector(copyAll),
-            keyEquivalent: ""
+            shortcut: .copy
         )
         copy.tag = ItemTag.copy.rawValue
         copy.toolTip = TheaterChromeHelp.copyAll
@@ -231,10 +231,10 @@ final class TheaterMenuBarController: NSObject {
         insert.toolTip = TheaterChromeHelp.insert
         add(insert, symbol: "text.cursor")
 
-        let undo = NSMenuItem(
+        let undo = TheaterPresenterHotkey.menuItem(
             title: "Undo Last Caption",
             action: #selector(undoLast),
-            keyEquivalent: ""
+            shortcut: .undo
         )
         undo.tag = ItemTag.undo.rawValue
         undo.toolTip = TheaterChromeHelp.undo

@@ -25,6 +25,7 @@ extension SettingsStore {
         static let overlayCoachSeen = "TheaterOverlayCoachSeen"
         static let setupWizardCompleted = "TheaterSetupWizardCompleted"
         static let setupWizardStep = "TheaterSetupWizardStep"
+        static let setupWizardOpened = "TheaterSetupWizardOpened"
     }
 
     var theaterSessionMode: TheaterSessionMode {
@@ -165,8 +166,8 @@ extension SettingsStore {
         }
     }
 
-    /// Existing installs already finished first-run onboarding; they skip the
-    /// new wizard until they open it. Fresh installs see it after onboarding.
+    /// First run does not open this wizard. A missing flag counts as done once
+    /// onboarding is done, so an older install is not dropped into setup again.
     var theaterSetupWizardCompleted: Bool {
         get {
             if self.defaults.object(forKey: TheaterDefaults.setupWizardCompleted) == nil {
@@ -193,19 +194,41 @@ extension SettingsStore {
         }
     }
 
+    /// True only after the user opens Setup Wizard. First run does not set this.
+    var theaterSetupWizardOpened: Bool {
+        get { self.defaults.bool(forKey: TheaterDefaults.setupWizardOpened) }
+        set {
+            objectWillChange.send()
+            self.defaults.set(newValue, forKey: TheaterDefaults.setupWizardOpened)
+        }
+    }
+
     var shouldShowSetupWizard: Bool {
-        !self.shouldShowOnboarding && !self.theaterSetupWizardCompleted
+        !self.shouldShowOnboarding
+            && self.theaterSetupWizardOpened
+            && !self.theaterSetupWizardCompleted
     }
 
     func bootstrapSetupWizardState() {
-        guard self.defaults.object(forKey: TheaterDefaults.setupWizardCompleted) == nil else { return }
-        objectWillChange.send()
-        self.defaults.set(self.onboardingCompleted, forKey: TheaterDefaults.setupWizardCompleted)
-        self.defaults.set(0, forKey: TheaterDefaults.setupWizardStep)
+        if self.defaults.object(forKey: TheaterDefaults.setupWizardCompleted) == nil {
+            objectWillChange.send()
+            self.defaults.set(true, forKey: TheaterDefaults.setupWizardCompleted)
+            self.defaults.set(false, forKey: TheaterDefaults.setupWizardOpened)
+            self.defaults.set(0, forKey: TheaterDefaults.setupWizardStep)
+            return
+        }
+        // An incomplete wizard the user never opened was the old first-run handoff.
+        if self.defaults.bool(forKey: TheaterDefaults.setupWizardCompleted) == false,
+           self.defaults.bool(forKey: TheaterDefaults.setupWizardOpened) == false
+        {
+            objectWillChange.send()
+            self.defaults.set(true, forKey: TheaterDefaults.setupWizardCompleted)
+        }
     }
 
     func startSetupWizard() {
         objectWillChange.send()
+        self.defaults.set(true, forKey: TheaterDefaults.setupWizardOpened)
         self.defaults.set(false, forKey: TheaterDefaults.setupWizardCompleted)
         self.defaults.set(0, forKey: TheaterDefaults.setupWizardStep)
     }

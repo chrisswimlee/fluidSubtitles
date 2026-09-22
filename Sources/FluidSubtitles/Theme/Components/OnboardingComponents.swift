@@ -44,27 +44,36 @@ struct FluidOnboardingLandingHero<Actions: View>: View {
                     .font(.system(size: 40, weight: .regular))
                     .foregroundStyle(self.theme.palette.primaryText)
                     .multilineTextAlignment(.center)
+                    .lineLimit(3)
                     .minimumScaleFactor(0.82)
 
-                Text(self.accentTitle)
-                    .font(.system(size: 40, weight: .regular))
-                    .foregroundStyle(self.theme.palette.accent)
-                    .multilineTextAlignment(.center)
-                    .minimumScaleFactor(0.76)
+                if !self.accentTitle.isEmpty {
+                    Text(self.accentTitle)
+                        .font(.system(size: 40, weight: .regular))
+                        .foregroundStyle(self.theme.palette.accent)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.76)
+                }
             }
-            .lineLimit(1)
             .padding(.bottom, 28)
 
-            VStack(spacing: 8) {
-                Text(self.firstDetail)
-                Text(self.secondDetail)
+            if !self.firstDetail.isEmpty || !self.secondDetail.isEmpty {
+                VStack(spacing: 8) {
+                    if !self.firstDetail.isEmpty {
+                        Text(self.firstDetail)
+                    }
+                    if !self.secondDetail.isEmpty {
+                        Text(self.secondDetail)
+                    }
+                }
+                .font(.system(size: 18, weight: .regular))
+                .foregroundStyle(self.theme.palette.secondaryText)
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+                .minimumScaleFactor(0.82)
+                .padding(.bottom, 42)
             }
-            .font(.system(size: 18, weight: .regular))
-            .foregroundStyle(self.theme.palette.secondaryText)
-            .multilineTextAlignment(.center)
-            .lineLimit(3)
-            .minimumScaleFactor(0.82)
-            .padding(.bottom, 42)
 
             self.actions
         }
@@ -83,9 +92,20 @@ struct FluidOnboardingLandingBackdrop: View {
     }
 
     var body: some View {
-        self.theme.palette.windowBackground
-            .ignoresSafeArea()
-            .onAppear { _ = self.glowCenter }
+        ZStack {
+            self.theme.palette.windowBackground
+            RadialGradient(
+                colors: [
+                    self.theme.palette.accent.opacity(0.28),
+                    self.theme.palette.accent.opacity(0.08),
+                    self.theme.palette.accent.opacity(0),
+                ],
+                center: self.glowCenter,
+                startRadius: 12,
+                endRadius: 460
+            )
+        }
+        .ignoresSafeArea()
     }
 }
 

@@ -1,6 +1,6 @@
 # Contributing to fluidSubtitles
 
-This repo is Theater captions and dictation insert among **Korean, English, Thai, and Japanese**. Speech recognition engines come from [FluidVoice](https://github.com/altic-dev/FluidVoice). Theater Listen, captions, History, and the app identity are owned here. See [CREDITS.md](CREDITS.md). Please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Report security issues only through [SECURITY.md](SECURITY.md). Commercial and procurement questions go to [docs/COMMERCIAL.md](docs/COMMERCIAL.md) or [chrisswimlee.com/fluidSubtitles/license](https://chrisswimlee.com/fluidSubtitles/license/), not GitHub Issues.
+This repo is Theater captions and dictation insert for the setup languages: every language both Apple Translation and a Voice Engine can use. Translate follows I speak into Show as. Speech recognition engines come from [FluidVoice](https://github.com/altic-dev/FluidVoice). Theater Listen, captions, History, and the app identity are owned here. See [CREDITS.md](CREDITS.md). Please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Report security issues only through [SECURITY.md](SECURITY.md). Commercial and procurement questions go to [docs/COMMERCIAL.md](docs/COMMERCIAL.md) or [chrisswimlee.com/fluidSubtitles/license](https://chrisswimlee.com/fluidSubtitles/license/), not GitHub Issues.
 
 ## Who this repo is for
 
@@ -9,7 +9,7 @@ This repo is Theater captions and dictation insert among **Korean, English, Thai
 | Theater window, Voice / Translate, captions, Apple Translation, latency HUD | Yes | No |
 | Theater Listen start/stop, partial bus, History, fluidSubtitles identity | Yes | No |
 | Dictation insert of **this Listen** into another app | Yes | Only if the typing engine itself is wrong |
-| Voice Engine picker limited to KO/EN/TH/JA | Yes | No |
+| Voice Engine picker for the setup languages | Yes | No |
 | ASR decode, microphone graph, Parakeet / Whisper / Nemotron internals | Ask first | Usually [FluidVoice](https://github.com/altic-dev/FluidVoice) |
 | Command Mode, rewrite, file transcription, local HTTP API, PostHog | No — those were removed | FluidVoice if they still exist there |
 
@@ -42,9 +42,9 @@ cp xcconfig/Local.xcconfig.example xcconfig/Local.xcconfig
 
 Launch `DerivedData/Build/Products/Debug/fluidSubtitles Debug.app`. Keep using that product so macOS can keep Accessibility and Microphone. An unsigned or ad-hoc rebuild can drop those grants; allow **fluidSubtitles Debug** again in System Settings → Privacy & Security.
 
-3. Open **Theater**. First run selects **Apple Speech Analyzer** on macOS 26, or **Apple Speech** on macOS 15. Use **Parakeet Flash** only for faster English lectern (Show other models). Do not start with Nemotron Thai.
+3. First run selects **Apple Speech** on this Mac (Analyzer on macOS 26, otherwise Apple Speech) and ends when a sentence appears. **Setup Wizard** opens only from the sidebar. Use **Parakeet Flash** only for faster English (Show other models). Do not start with Nemotron Thai.
 
-4. Allow the microphone. Pick **Voice** for Theater transcription or **Translate** for captions. Press **Listen** and speak one sentence. Download an Apple Translation pack only for Translate with two languages. Theater Listen does not ask for Screen Recording.
+4. Allow the microphone. Pick **Voice** for the language you speak or **Translate** for captions. Press **Listen** and speak one sentence. A language pack downloads only when I speak and Show as differ. Theater Listen does not ask for Screen Recording.
 
 5. Format, lint, and test. `./scripts/format-and-lint.sh` is required before you open a PR (SwiftFormat, SwiftLint strict, and the PR-policy unit tests when those tools are installed):
 

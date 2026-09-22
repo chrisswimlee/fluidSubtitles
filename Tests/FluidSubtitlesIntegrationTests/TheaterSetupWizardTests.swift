@@ -35,10 +35,12 @@ final class TheaterSetupWizardTests: XCTestCase {
     func testExistingOnboardingUsersSkipTheWizardUntilTheyOpenIt() {
         let settings = SettingsStore.shared
         let previousWizard = settings.theaterSetupWizardCompleted
+        let previousOpened = settings.theaterSetupWizardOpened
         let previousStep = settings.theaterSetupWizardStep
         let previousOnboarding = settings.onboardingCompleted
         defer {
             settings.theaterSetupWizardCompleted = previousWizard
+            settings.theaterSetupWizardOpened = previousOpened
             settings.theaterSetupWizardStep = previousStep
             settings.onboardingCompleted = previousOnboarding
         }
@@ -51,13 +53,15 @@ final class TheaterSetupWizardTests: XCTestCase {
         XCTAssertFalse(settings.shouldShowSetupWizard)
     }
 
-    func testFreshInstallShowsTheWizardAfterOnboarding() {
+    func testFreshInstallSkipsTheWizardUntilOpened() {
         let settings = SettingsStore.shared
         let previousWizard = settings.theaterSetupWizardCompleted
+        let previousOpened = settings.theaterSetupWizardOpened
         let previousStep = settings.theaterSetupWizardStep
         let previousOnboarding = settings.onboardingCompleted
         defer {
             settings.theaterSetupWizardCompleted = previousWizard
+            settings.theaterSetupWizardOpened = previousOpened
             settings.theaterSetupWizardStep = previousStep
             settings.onboardingCompleted = previousOnboarding
         }
@@ -66,21 +70,72 @@ final class TheaterSetupWizardTests: XCTestCase {
         settings.defaults.removeObject(forKey: "TheaterSetupWizardCompleted")
         settings.bootstrapSetupWizardState()
 
-        XCTAssertFalse(settings.theaterSetupWizardCompleted)
+        XCTAssertTrue(settings.theaterSetupWizardCompleted)
         XCTAssertFalse(settings.shouldShowSetupWizard)
 
         settings.onboardingCompleted = true
+        XCTAssertFalse(settings.shouldShowSetupWizard)
+
+        settings.startSetupWizard()
         XCTAssertTrue(settings.shouldShowSetupWizard)
+        XCTAssertEqual(settings.theaterSetupWizardStep, 0)
 
         settings.theaterSetupWizardStep = 3
         XCTAssertEqual(settings.theaterSetupWizardStep, TheaterSetupWizard.Step.audience.rawValue)
         settings.completeSetupWizard()
         XCTAssertFalse(settings.shouldShowSetupWizard)
         XCTAssertEqual(settings.theaterSetupWizardStep, 0)
+    }
+
+    func testWelcomeHandoffDoesNotReopenTheWizard() {
+        let settings = SettingsStore.shared
+        let previousWizard = settings.theaterSetupWizardCompleted
+        let previousOpened = settings.theaterSetupWizardOpened
+        let previousStep = settings.theaterSetupWizardStep
+        defer {
+            settings.theaterSetupWizardCompleted = previousWizard
+            settings.theaterSetupWizardOpened = previousOpened
+            settings.theaterSetupWizardStep = previousStep
+        }
+
+        settings.defaults.set(false, forKey: "TheaterSetupWizardCompleted")
+        settings.defaults.set(0, forKey: "TheaterSetupWizardStep")
+        settings.bootstrapSetupWizardState()
+        XCTAssertTrue(settings.theaterSetupWizardCompleted)
+        XCTAssertFalse(settings.shouldShowSetupWizard)
 
         settings.startSetupWizard()
-        XCTAssertTrue(settings.shouldShowSetupWizard)
-        XCTAssertEqual(settings.theaterSetupWizardStep, 0)
+        settings.theaterSetupWizardStep = TheaterSetupWizard.Step.captions.rawValue
+        settings.defaults.set(false, forKey: "TheaterSetupWizardCompleted")
+        settings.bootstrapSetupWizardState()
+        XCTAssertTrue(settings.theaterSetupWizardOpened)
+        XCTAssertFalse(settings.theaterSetupWizardCompleted)
+        XCTAssertEqual(settings.theaterSetupWizardStep, TheaterSetupWizard.Step.captions.rawValue)
+    }
+
+    func testUnopenedWizardClosesEvenPastWelcome() {
+        let settings = SettingsStore.shared
+        let previousWizard = settings.theaterSetupWizardCompleted
+        let previousOpened = settings.theaterSetupWizardOpened
+        let previousStep = settings.theaterSetupWizardStep
+        defer {
+            settings.theaterSetupWizardCompleted = previousWizard
+            settings.theaterSetupWizardOpened = previousOpened
+            settings.theaterSetupWizardStep = previousStep
+        }
+
+        settings.defaults.set(false, forKey: "TheaterSetupWizardCompleted")
+        settings.defaults.set(false, forKey: "TheaterSetupWizardOpened")
+        settings.defaults.set(TheaterSetupWizard.Step.captions.rawValue, forKey: "TheaterSetupWizardStep")
+        settings.bootstrapSetupWizardState()
+        XCTAssertTrue(settings.theaterSetupWizardCompleted)
+        XCTAssertFalse(settings.shouldShowSetupWizard)
+    }
+
+    func testPreferredOnboardingRouteMatchesTheMacDefault() {
+        let route = VoiceEngineLanguageCatalog.preferredOnboardingRoute(forLanguageID: "en")
+        XCTAssertEqual(route?.model, SettingsStore.SpeechModel.defaultModel)
+        XCTAssertEqual(route?.language.id, "en")
     }
 
     func testSpokenLineModeMigratesTheOldToggle() {

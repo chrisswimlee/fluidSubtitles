@@ -1,9 +1,9 @@
 import Carbon.HIToolbox
 import Foundation
 
-/// Korean, Japanese, and Thai IMEs treat `virtualKey 0` unicode CGEvents as composition.
-/// Infer IME kind from the selected input source; another app’s composing state
-/// is not a public AX attribute.
+/// Composing keyboards treat unicode keystrokes as input-method composition.
+/// Infer the keyboard from the selected input source; another app’s composing
+/// state is not a public accessibility attribute.
 enum InsertIMEGuard {
     struct Snapshot: Equatable {
         var identifier: String
@@ -27,16 +27,16 @@ enum InsertIMEGuard {
         return self.isIMEInputSource(snapshot.identifier)
     }
 
-    /// Korean, Japanese, and Thai captions paste instead of keystrokes.
     /// Main actor: read it at the caption insert call site, not in the worker.
     @MainActor
     static func shouldPreferPasteForTheaterCaption() -> Bool {
         self.isIMELanguage(SpokenLanguageResolver.targetLanguage().id)
     }
 
+    /// Captions in a composing script paste instead of sending keystrokes.
     static func isIMELanguage(_ languageID: String) -> Bool {
         switch TranslationClauseSegmenter.languageCode(from: languageID) {
-        case "ko", "ja", "th":
+        case "ko", "ja", "th", "zh", "ar", "he", "hi":
             return true
         default:
             return false
@@ -52,6 +52,17 @@ enum InsertIMEGuard {
             return true
         }
         if id.contains("thai") { return true }
+        if id.contains("chinese") || id.contains("pinyin") || id.contains("scim")
+            || id.contains("tcim") || id.contains("wubi") || id.contains("cangjie")
+            || id.contains("zhuyin") || id.contains("bopomofo")
+        {
+            return true
+        }
+        if id.contains("arabic") || id.contains("hebrew") || id.contains("hindi")
+            || id.contains("devanagari")
+        {
+            return true
+        }
         return false
     }
 

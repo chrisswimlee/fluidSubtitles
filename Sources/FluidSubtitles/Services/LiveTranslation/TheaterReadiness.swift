@@ -4,22 +4,22 @@ import Foundation
 /// First-run and stage-call checks. Listen still gates on engine + pack.
 enum TheaterReadiness {
     static let captionsPrintAfterSentence =
-        "A real clause appears once when it is accepted. Caption Pause and Stop drop a leftover fragment; Listen and type Stop still types one."
+        "Each sentence appears when it is ready. Pause and Stop drop a leftover. Listen and type still types that leftover."
 
     static let listeningStatus =
-        "Listening. A finished sentence plus more speech starts the next pair. Spoken and Show-as stay paired."
+        "Listening. Each sentence appears when it is ready."
 
     static let listeningEmpty =
-        "Listening… each sentence prints as soon as it ends. Spoken and Show-as stay paired."
+        "Listening. Each sentence appears when it is ready."
 
     static let pressListen =
-        "Press Listen. Each sentence prints as soon as it ends. Spoken and Show-as stay paired."
+        "Press Listen. Each sentence appears when it is ready."
 
     static let boardIdle =
-        "Press Listen. A sentence prints when it ends."
+        "Press Listen. Each sentence appears when it is ready."
 
     static let boardListening =
-        "Listening… the next sentence prints here."
+        "Listening. The next sentence appears here."
 
     static let talkPackCarryOver = "These names stay for the next talk until you Remove."
 
@@ -43,13 +43,13 @@ enum TheaterReadiness {
         "Slides stay clickable. Use the Theater item in the menu bar to show tools or Listen."
 
     static let stopHelp =
-        "Stop. A real leftover clause appears once; a fragment does not. Printed lines stay."
+        "Stop. A real leftover sentence appears once. Printed lines stay."
 
     static let pauseHelp =
-        "Pause. Drops a leftover fragment. Printed lines stay; an in-flight translation may still land."
+        "Pause. Drops a leftover. Printed lines stay. A translation already on its way may still land."
 
     static let resumeHelp =
-        "Resume. Printed lines stay. A dropped fragment does not come back."
+        "Resume. Printed lines stay. A dropped leftover does not come back."
 
     static let pausedStatus = "Paused."
 
@@ -106,7 +106,7 @@ enum TheaterReadiness {
         "The microphone is allowed. Voice and Translate both use it."
 
     static let printedLinesStay =
-        "A line already on screen stays. A real clause appears once; caption Pause and Stop drop a fragment. Listen and type Stop still types a trailing fragment into the other app."
+        "A line already on screen stays. Each sentence appears when it is ready. Pause and Stop drop a leftover. Listen and type still types that leftover into the other app."
 
     static let clearCaptions =
         "Clear removes every caption. Talk notes stay. Listen can keep going."
@@ -118,7 +118,7 @@ enum TheaterReadiness {
         "Lock names from notes, a PDF, or a JSON list. They stay on this Mac."
 
     static let paceCue =
-        "Behind means keep talking slower. Caught up means the last clause is on screen."
+        "Behind means keep talking slower. Caught up means the last sentence is on screen."
 
     static let oneSpeakerCloseMic =
         "Best with one speaker and a close mic. Halls, PA bleed, and Q&A will miss words."
@@ -127,19 +127,19 @@ enum TheaterReadiness {
         "Voice Engine sharpens speech into text. Voice writes that text in the language you speak. Switch to Translate for a supported language."
 
     static let insertIMECaveat =
-        "Type into app needs Accessibility. A Korean, Japanese, or Thai IME uses paste instead of keystrokes."
+        "some keyboards paste it instead of typing each letter"
 
     static let insertHelp =
-        "Types the current caption into the frontmost app. Copy takes every caption. \(insertIMECaveat)"
+        "Types this caption into the frontmost app, and \(insertIMECaveat)."
 
     static let typeIntoAppLocked =
         "Listen and type unlocks after your first Theater caption."
 
     static let typeIntoAppBody =
-        "Click into an app, press this shortcut, and speak. It starts its own Listen and types the translation of what you say there, including a trailing fragment. Theater's Type into app button is different: it types captions already on the board. \(insertIMECaveat)"
+        "Press this shortcut in another app and it types what you say next."
 
     static let typeIntoAppShortcutDetail =
-        "Starts its own Listen. Types what you say next, translated, including a trailing fragment."
+        "Starts Listen and types what you say next."
 
     static let typeIntoAppNeedsAccessibility =
         "This shortcut is saved, but macOS is blocking it. Allow Accessibility, click into another app, then press it."
@@ -169,10 +169,10 @@ enum TheaterReadiness {
         "Same-language captions already show the spoken line."
 
     static let spokenLineTranslate =
-        "Off is translation only. Any other choice prints the original language under each delivered sentence."
+        "Off is translation only. After a pause prints the original language under the sentence. While talking grows it under the title."
 
     static let spokenLineSetupNote =
-        "The original language can sit under each sentence after it appears. Off keeps the translation only."
+        "Off keeps the translation only. The other choices put the original language under the title."
 
     static let captionsOnlyWindow =
         "On the Theater window, show captions only. Listen stays. Move the pointer to show languages and the rest."

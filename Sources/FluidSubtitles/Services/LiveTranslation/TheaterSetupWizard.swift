@@ -1,7 +1,7 @@
 import Foundation
 
-/// First-run and re-runnable Theater setup. Voice Engine download stays in
-/// onboarding; this wizard is languages, captions, and who sees the board.
+/// Optional Theater setup from the sidebar. First run ends on a caption.
+/// Voice Engine download stays in onboarding.
 enum TheaterSetupWizard {
     enum Step: Int, CaseIterable, Identifiable {
         case welcome = 0
@@ -25,15 +25,15 @@ enum TheaterSetupWizard {
         var subtitle: String {
             switch self {
             case .welcome:
-                return "Set how Theater captions look before the first Listen."
+                return "Choose how captions look."
             case .languages:
-                return "I speak is what you say. Show as is the title. Both lists are languages Apple Translation and a Voice Engine share."
+                return "I speak is what you say. Show as is the caption."
             case .captions:
-                return "Choose whether the original language sits under each delivered sentence."
+                return "Choose whether the original language sits under each sentence."
             case .audience:
                 return TheaterReadiness.audienceTitle
             case .ready:
-                return "Open Theater and press Listen. A real clause appears once when it is accepted."
+                return "Open Theater and press Listen."
             }
         }
 
@@ -69,10 +69,10 @@ enum TheaterSetupWizard {
     static let welcomeTitle = "Set up Theater"
 
     static let welcomeBody =
-        "A real clause appears once when it is accepted."
+        "Each sentence appears when it is ready."
 
     static let welcomeDetail =
-        "A real clause appears once when it is accepted. Caption Pause and Stop drop a leftover fragment. The original language can sit under that sentence."
+        "The original language can sit under each sentence. Choose that here, then who sees the board."
 
     static let readyPrimary = "Open Theater"
 

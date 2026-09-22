@@ -47,25 +47,14 @@ struct WelcomeView: View {
                             .foregroundStyle(self.theme.palette.accent)
 
                         Button {
-                            self.settings.startSetupWizard()
+                            self.selectedSidebarItem = .liveTranslation
+                            PresenterCaptionController.shared.setVisible(true)
                         } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(TheaterSetupWizard.title)
-                                        .font(self.theme.typography.bodyStrong)
-                                    Text(TheaterReadiness.spokenLineSetupNote)
-                                        .font(self.theme.typography.bodySmall)
-                                        .foregroundStyle(.secondary)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                                Spacer()
-                                Text("Open")
-                                    .font(self.theme.typography.captionStrong)
-                                    .foregroundStyle(self.theme.palette.accent)
-                            }
+                            Text(TheaterReadiness.gettingStartedOpen)
+                                .font(self.theme.typography.bodyStrong)
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("getting-started-setup-wizard")
+                        .buttonStyle(.theaterTextProminent)
+                        .accessibilityIdentifier("getting-started-open-theater")
 
                         VStack(alignment: .leading, spacing: 8) {
                             SetupStepView(
@@ -165,6 +154,12 @@ struct WelcomeView: View {
                             .font(self.theme.typography.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+
+                        Button(TheaterSetupWizard.title) {
+                            self.settings.startSetupWizard()
+                        }
+                        .buttonStyle(.theaterText)
+                        .accessibilityIdentifier("getting-started-setup-wizard")
                     }
                 }
 

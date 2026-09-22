@@ -57,6 +57,7 @@ struct OnboardingFlowView: View {
     @State var lastLandingGlowLocation = CGPoint(x: -1000, y: -1000)
     @State var languagePackAvailability = ""
     @State var languagePackIsInstalled = false
+    @State var isFinishingOnboarding = false
     let landingGlowMovementThreshold: CGFloat = 24
 
     enum OnboardingFooterButton {
@@ -108,11 +109,11 @@ struct OnboardingFlowView: View {
         var subtitle: String {
             switch self {
             case .landing:
-                return "Theater captions on your screen, or typed translation into an app."
+                return FluidProduct.tagline
             case .language:
                 return "Pick the language you speak, then the one you want."
             case .voiceModel:
-                return "Download a speech engine that can hear the language you speak."
+                return "Apple Speech is ready on this Mac. Other engines stay under Show other models."
             case .permissions:
                 return "Microphone is required. Accessibility is only if you want a translation typed into other apps."
             case .playground:
@@ -141,6 +142,15 @@ struct OnboardingFlowView: View {
 
     var selectedLanguageRoutes: [VoiceEngineLanguageRoute] {
         VoiceEngineLanguageCatalog.routes(for: self.selectedOnboardingLanguage)
+            .filter { SettingsStore.SpeechModel.availableModels.contains($0.model) }
+    }
+
+    func preferredRoute(in routes: [VoiceEngineLanguageRoute]) -> VoiceEngineLanguageRoute? {
+        VoiceEngineLanguageCatalog.preferredOnboardingRoute(among: routes)
+    }
+
+    var preferredOnboardingRoute: VoiceEngineLanguageRoute? {
+        self.preferredRoute(in: self.selectedLanguageRoutes)
     }
 
     var selectedOnboardingRoute: VoiceEngineLanguageRoute? {
@@ -154,39 +164,14 @@ struct OnboardingFlowView: View {
             return selectedRoute
         }
 
-        return self.selectedLanguageRoutes.first
-    }
-
-    var primaryDisplayedModelRoute: VoiceEngineLanguageRoute? {
-        self.selectedLanguageRoutes.first
+        return self.preferredOnboardingRoute
     }
 
     var defaultDisplayedModelRoutes: [VoiceEngineLanguageRoute] {
-        var routes: [VoiceEngineLanguageRoute] = []
-        if let primaryDisplayedModelRoute {
-            routes.append(primaryDisplayedModelRoute)
+        if let selectedOnboardingRoute {
+            return [selectedOnboardingRoute]
         }
-        if let builtInRoute = self.defaultBuiltInModelRoute,
-           !routes.contains(where: { $0.id == builtInRoute.id })
-        {
-            routes.append(builtInRoute)
-        }
-        return routes
-    }
-
-    var defaultBuiltInModelRoute: VoiceEngineLanguageRoute? {
-        guard self.selectedOnboardingLanguage.id == "en" else {
-            return nil
-        }
-
-        return self.selectedLanguageRoutes.first { route in
-            switch route.model {
-            case .appleSpeech, .appleSpeechAnalyzer:
-                return true
-            default:
-                return false
-            }
-        }
+        return []
     }
 
     var otherModelRoutes: [VoiceEngineLanguageRoute] {
@@ -199,10 +184,41 @@ struct OnboardingFlowView: View {
     }
 
     var recommendedModelReasonText: String {
-        if self.selectedOnboardingLanguage.id == "en" {
-            return "Apple Speech is enough to try. Faster English engines are under Show other models."
+        let model = self.preferredOnboardingRoute?.model ?? .appleSpeech
+        let name = self.onboardingModelTitle(for: model)
+        switch model {
+        case .appleSpeech, .appleSpeechAnalyzer:
+            return "\(name) is ready on this Mac. Other engines are under Show other models."
+        default:
+            return "\(name) hears the language you speak. Other engines are under Show other models."
         }
-        return "Apple Speech is enough to try \(self.selectedOnboardingLanguage.displayName). Other Voice Engines are under Show other models."
+    }
+
+    var playgroundContinueTitle: String {
+        if self.isPlaygroundReady {
+            return "Done"
+        }
+        if self.playgroundListenIsActive {
+            return "Listening"
+        }
+        return "Continue"
+    }
+
+    var playgroundContinueEnabled: Bool {
+        if self.playgroundListenIsActive, !self.isPlaygroundReady {
+            return false
+        }
+        return self.canContinue
+    }
+
+    var showsSetupBlock: Bool {
+        self.asr.errorTitle == "Setup isn't complete" && !self.asr.errorMessage.isEmpty
+    }
+
+    var playgroundListenIsActive: Bool {
+        self.asr.isRunning || self.asr.isStarting || (
+            self.translationController.isSessionActive && self.translationController.listenKind == .captions
+        )
     }
 
     var isOnboardingTranslationPackReady: Bool {
@@ -218,9 +234,15 @@ struct OnboardingFlowView: View {
             return TheaterAvailability.unsupportedCopy
         }
         if !self.isOnboardingTranslationPackReady {
-            return "Download the language pack, then Open Theater."
+            return "Download the language pack, then press Listen."
         }
-        return "\(TheaterReadiness.pressListen) Continue after a line appears."
+        if self.isPlaygroundReady {
+            return "That sentence is on screen. Press Done."
+        }
+        if self.playgroundListenIsActive {
+            return "Say a sentence."
+        }
+        return TheaterReadiness.pressListen
     }
 
     var isRecommendedModelDownloaded: Bool {
@@ -298,7 +320,7 @@ struct OnboardingFlowView: View {
         case .permissions:
             return self.isPermissionsReady
         case .playground:
-            return self.isPlaygroundReady && !self.asr.isRunning && !self.isRecordingAnyShortcut
+            return self.isPlaygroundReady && !self.isFinishingOnboarding && !self.isRecordingAnyShortcut
         }
     }
 
@@ -527,7 +549,7 @@ struct OnboardingFlowView: View {
         }
 
         if self.step == .playground {
-            guard self.isPlaygroundReady, !self.asr.isRunning else { return }
+            guard self.isPlaygroundReady, !self.isFinishingOnboarding else { return }
             self.finishSetupFromPlayground()
             return
         }
@@ -535,8 +557,34 @@ struct OnboardingFlowView: View {
     }
 
     func finishSetupFromPlayground() {
-        PresenterCaptionController.shared.setVisible(true)
-        self.finishOnboardingAtTranslate()
+        guard !self.isFinishingOnboarding else { return }
+        if !self.isVoiceModelReady || !self.isMicrophoneReady || !self.isPlaygroundReady {
+            var missing: [String] = []
+            if !self.isVoiceModelReady { missing.append("Voice Engine") }
+            if !self.isMicrophoneReady { missing.append("microphone") }
+            if !self.isPlaygroundReady { missing.append("Try Theater") }
+            self.asr.errorTitle = "Setup isn't complete"
+            self.asr.errorMessage = "Finish \(missing.joined(separator: ", ")) to continue."
+            self.asr.showError = false
+            return
+        }
+        self.asr.showError = false
+        self.isFinishingOnboarding = true
+        Task { @MainActor in
+            if self.asr.isRunning || self.asr.isStarting || self.translationController.isSessionActive {
+                await self.stopAndProcessTranscription()
+            }
+            self.finishOnboardingAtTranslate()
+            self.isFinishingOnboarding = false
+        }
+    }
+
+    func refreshOnboardingLanguagePack() async {
+        let differs = SpokenLanguageResolver.sourceLanguage().id != SpokenLanguageResolver.targetLanguage().id
+        await self.refreshLanguagePackAvailability()
+        if differs, !self.languagePackIsInstalled {
+            await self.refreshLanguagePackAvailability(requestDownload: true)
+        }
     }
 
     func refreshLanguagePackAvailability(requestDownload: Bool = false) async {

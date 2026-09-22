@@ -1,6 +1,6 @@
 # Architecture
 
-fluidSubtitles keeps FluidVoice for the Voice Engines only. Theater owns Listen, the partial bus, History, and the app identity. See [CREDITS.md](../CREDITS.md). This document is the map of **this product**: Theater captions and dictation insert among Korean, English, Thai, and Japanese.
+fluidSubtitles keeps FluidVoice for the Voice Engines only. Theater owns Listen, the partial bus, History, and the app identity. See [CREDITS.md](../CREDITS.md). This document is the map of **this product**: Theater captions and dictation insert. I speak and Show as are every language both Apple Translation and a Voice Engine can use. Translate follows I speak into Show as.
 
 ```mermaid
 flowchart LR

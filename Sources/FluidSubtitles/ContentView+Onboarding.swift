@@ -198,6 +198,8 @@ extension ContentView {
 
     func completeOnboarding(selecting target: SidebarItem? = nil) {
         self.settings.onboardingCompleted = true
+        // First run ends on the Theater board. The setup wizard stays in the sidebar.
+        self.settings.completeSetupWizard()
         self.navigateToApp(target ?? .liveTranslation)
     }
 
@@ -225,7 +227,7 @@ extension ContentView {
         )
         self.asr.errorTitle = "Setup isn't complete"
         self.asr.errorMessage = "Finish \(missingText) to continue."
-        self.asr.showError = true
+        self.asr.showError = false
     }
 
     func checkAccessibilityPermissions() -> Bool {

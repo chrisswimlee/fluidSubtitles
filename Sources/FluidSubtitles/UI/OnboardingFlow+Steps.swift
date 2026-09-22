@@ -16,13 +16,13 @@ extension OnboardingFlowView {
             ZStack {
                 VStack(alignment: .center, spacing: self.theme.metrics.onboardingSurface.landing.sectionSpacing) {
                     FluidOnboardingLandingHero(
-                        eyebrow: FluidProduct.displayName,
-                        title: "Each sentence appears when it is ready.",
-                        accentTitle: "Languages both engines share.",
-                        firstDetail: FluidProduct.manifesto,
-                        secondDetail: "Theater runs on macOS 15 and later. Swap I speak and Show as, then press Listen."
+                        eyebrow: "Theater",
+                        title: FluidProduct.tagline,
+                        accentTitle: "",
+                        firstDetail: "",
+                        secondDetail: ""
                     ) {
-                        FluidOnboardingLandingPrimaryButton(title: "Next") {
+                        FluidOnboardingLandingPrimaryButton(title: "Get started") {
                             self.goNext()
                         }
                         .frame(
@@ -34,7 +34,7 @@ extension OnboardingFlowView {
                 .frame(width: landing.contentWidth, alignment: .center)
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: proxy.size.height, alignment: .center)
-                .offset(y: -78)
+                .offset(y: 0)
                 .padding(.horizontal, 24)
                 .padding(.vertical, 24)
 
@@ -141,7 +141,7 @@ extension OnboardingFlowView {
                             }
                             .frame(width: 320)
 
-                            Text("Same language needs no download. Pick a second language only if you need translation.")
+                            Text("Translate follows I speak into Show as. Same language needs no download.")
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(Color.primary.opacity(0.44))
                                 .padding(.top, 18)
@@ -149,19 +149,26 @@ extension OnboardingFlowView {
                             if SpokenLanguageResolver.sourceLanguage().id
                                 != SpokenLanguageResolver.targetLanguage().id
                             {
-                                if !self.languagePackAvailability.isEmpty {
-                                    Text(self.languagePackAvailability)
+                                if self.languagePackIsInstalled {
+                                    Text("Language pack ready")
                                         .font(.system(size: 12, weight: .medium))
                                         .foregroundStyle(Color.primary.opacity(0.56))
                                         .padding(.top, 10)
-                                }
-                                Button("Download language pack") {
-                                    Task {
-                                        await self.refreshLanguagePackAvailability(requestDownload: true)
+                                } else {
+                                    if !self.languagePackAvailability.isEmpty {
+                                        Text(self.languagePackAvailability)
+                                            .font(.system(size: 12, weight: .medium))
+                                            .foregroundStyle(Color.primary.opacity(0.56))
+                                            .padding(.top, 10)
                                     }
+                                    Button("Download language pack") {
+                                        Task {
+                                            await self.refreshLanguagePackAvailability(requestDownload: true)
+                                        }
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .padding(.top, self.languagePackAvailability.isEmpty ? 10 : 6)
                                 }
-                                .buttonStyle(.bordered)
-                                .padding(.top, self.languagePackAvailability.isEmpty ? 10 : 6)
                             }
                         }
                         .frame(maxWidth: .infinity)
@@ -190,13 +197,13 @@ extension OnboardingFlowView {
                 .accessibilityHidden(true)
             }
             .task {
-                await self.refreshLanguagePackAvailability()
+                await self.refreshOnboardingLanguagePack()
             }
             .onChange(of: self.settings.translationSourceLanguageID) { _, _ in
-                Task { await self.refreshLanguagePackAvailability() }
+                Task { await self.refreshOnboardingLanguagePack() }
             }
             .onChange(of: self.settings.translationTargetLanguageID) { _, _ in
-                Task { await self.refreshLanguagePackAvailability() }
+                Task { await self.refreshOnboardingLanguagePack() }
             }
         }
     }
@@ -206,15 +213,10 @@ extension OnboardingFlowView {
             Text(title)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color.primary.opacity(0.7))
-            Picker(title, selection: selection) {
-                ForEach(TranslationLanguageCatalog.menuOrder) { language in
-                    Text(language.displayName).tag(language.id)
-                }
-            }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityLabel(title)
+            TheaterLanguageMenu(
+                title: title,
+                selection: selection
+            )
         }
     }
 
@@ -316,7 +318,7 @@ extension OnboardingFlowView {
                     self.settings.translationTargetLanguageID = translationLanguage.id
                 }
             }
-            self.selectedModelRouteID = VoiceEngineLanguageCatalog.routes(for: language).first?.id
+            self.selectedModelRouteID = self.preferredOnboardingRoute?.id
             self.isShowingOtherModelRoutes = false
             self.resetTryoutValidationForSetupChange()
         }
@@ -328,15 +330,17 @@ extension OnboardingFlowView {
 
         let storedLanguageID = self.settings.onboardingSelectedLanguageID
         let storedLanguageRoutes = VoiceEngineLanguageCatalog.routes(forLanguageID: storedLanguageID)
+            .filter { SettingsStore.SpeechModel.availableModels.contains($0.model) }
         let route = storedLanguageRoutes.first { route in
             self.isRouteModelAndLanguageSettingsSelected(route)
-        } ?? storedLanguageRoutes.first ?? allRoutes.first { route in
+        } ?? self.preferredRoute(in: storedLanguageRoutes) ?? allRoutes.first { route in
             self.isRouteModelAndLanguageSettingsSelected(route)
+                && SettingsStore.SpeechModel.availableModels.contains(route.model)
         }
 
         guard let route else {
             if self.selectedModelRouteID == nil {
-                self.selectedModelRouteID = self.selectedLanguageRoutes.first?.id
+                self.selectedModelRouteID = self.preferredOnboardingRoute?.id
             }
             return
         }
@@ -432,7 +436,7 @@ extension OnboardingFlowView {
                             .frame(width: 608)
 
                             if self.isModelPreparationInProgress {
-                                Label("Initial preparation can take a while to get your Mac ready for near-instant transcription.", systemImage: "clock.arrow.circlepath")
+                                Label("Getting this Mac ready to caption. This can take a minute.", systemImage: "clock.arrow.circlepath")
                                     .font(self.theme.typography.captionStrong)
                                     .foregroundStyle(Color.primary.opacity(0.58))
                                     .labelStyle(.titleAndIcon)
@@ -478,6 +482,17 @@ extension OnboardingFlowView {
                 .accessibilityHidden(true)
             }
         }
+        .task {
+            self.prepareBuiltInVoiceEngineIfNeeded()
+        }
+    }
+
+    func prepareBuiltInVoiceEngineIfNeeded() {
+        guard self.step == .voiceModel else { return }
+        guard let route = self.selectedOnboardingRoute else { return }
+        guard route.model == .appleSpeech || route.model == .appleSpeechAnalyzer else { return }
+        guard !self.isOnboardingRouteReady(route), !self.isModelPreparationInProgress else { return }
+        self.prepareOnboardingRoute(route)
     }
 
     var permissionsStep: some View {
@@ -642,26 +657,40 @@ extension OnboardingFlowView {
                                 }
                             }
 
+                            if self.showsSetupBlock {
+                                Text(self.asr.errorMessage)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(Color.orange)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.bottom, 12)
+                            }
+
                             if TheaterAvailability.isSupported {
                             Button {
-                                guard self.canOpenOnboardingTheater else { return }
+                                if self.playgroundListenIsActive {
+                                    Task { await self.stopAndProcessTranscription() }
+                                    return
+                                }
+                                guard self.canOpenOnboardingTheater, !self.isFinishingOnboarding else { return }
                                 PresenterCaptionController.shared.setVisible(true)
                                 LiveTranslationController.shared.startCaptionListening()
                             } label: {
                                 HStack(spacing: 8) {
-                                    Image(systemName: "rectangle.on.rectangle")
-                                    Text("Listen")
+                                    Image(systemName: self.playgroundListenIsActive ? "stop.fill" : "rectangle.on.rectangle")
+                                    Text(self.playgroundListenIsActive ? "Stop" : "Listen")
                                 }
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(Color.primary)
                                 .frame(width: 200, height: 40)
                                 .background(
-                                    FluidOnboardingLandingColors.blue.opacity(self.canOpenOnboardingTheater ? 0.92 : 0.38),
+                                    FluidOnboardingLandingColors.blue.opacity(
+                                        self.playgroundListenIsActive || self.canOpenOnboardingTheater ? 0.92 : 0.38
+                                    ),
                                     in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 )
                             }
                             .buttonStyle(.plain)
-                            .disabled(!self.canOpenOnboardingTheater)
+                            .disabled(!self.playgroundListenIsActive && !self.canOpenOnboardingTheater)
                             .onChange(of: self.translationController.subscriber.committedLines) { _, lines in
                                 guard !lines.isEmpty else { return }
                                 self.settings.theaterListenUsed = true
@@ -675,13 +704,13 @@ extension OnboardingFlowView {
                     }
 
                     self.cinematicFooter(
-                        continueTitle: "Continue",
-                        canContinue: self.canContinue,
+                        continueTitle: self.playgroundContinueTitle,
+                        canContinue: self.playgroundContinueEnabled,
                         continueAction: {
                             self.handlePrimaryAction()
                         },
                         skipTitle: "Skip",
-                        canSkip: !self.asr.isRunning && !self.isRecordingAnyShortcut,
+                        canSkip: !self.isFinishingOnboarding && !self.isRecordingAnyShortcut,
                         skipAction: {
                             self.settings.onboardingPlaygroundSkipped = true
                             self.finishSetupFromPlayground()
@@ -936,7 +965,7 @@ extension OnboardingFlowView {
                     .foregroundStyle(Color.primary.opacity(0.62))
                     .frame(width: 22)
 
-                Text("Download size")
+                Text(model.downloadSize == "Built-in" ? "On this Mac" : "Download size")
                     .font(self.theme.typography.bodySmallStrong)
                     .foregroundStyle(Color.primary.opacity(0.62))
 
@@ -1266,11 +1295,26 @@ extension OnboardingFlowView {
 
     func onboardingModelTooltip(for route: VoiceEngineLanguageRoute) -> String {
         let model = route.model
-        return "\(self.onboardingModelSubtitle(for: model)) - \(model.downloadSize)\n\(model.cardDescription)"
+        if model == .appleSpeech || model == .appleSpeechAnalyzer {
+            return "Built in on this Mac. No download."
+        }
+        return "\(self.onboardingModelSubtitle(for: model)). \(model.downloadSize)."
     }
 
     func onboardingModelTitle(for model: SettingsStore.SpeechModel) -> String {
-        model.humanReadableName
+        switch model {
+        case .appleSpeech, .appleSpeechAnalyzer:
+            return model == SettingsStore.SpeechModel.defaultModel ? "Apple Speech" : "Apple Speech Analyzer"
+        case .parakeetRealtime:
+            return "Parakeet Flash"
+        default:
+            return model.humanReadableName
+                .replacingOccurrences(of: "Dictation", with: "")
+                .replacingOccurrences(of: "dictation", with: "")
+                .replacingOccurrences(of: "transcription", with: "")
+                .replacingOccurrences(of: "Transcription", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
     }
 
     func onboardingModelSubtitle(for model: SettingsStore.SpeechModel) -> String {

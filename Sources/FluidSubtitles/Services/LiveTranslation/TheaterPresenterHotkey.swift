@@ -7,6 +7,8 @@ enum TheaterPresenterHotkey {
         case toggleVisible
         case togglePause
         case clear
+        case copy
+        case undo
         case fontLarger
         case fontSmaller
         case toggleTools
@@ -26,6 +28,8 @@ enum TheaterPresenterHotkey {
         case .toggleVisible: return "h"
         case .togglePause: return "p"
         case .clear: return "k"
+        case .copy: return "c"
+        case .undo: return "z"
         case .fontLarger: return "="
         case .fontSmaller: return "-"
         case .toggleTools: return "t"
@@ -46,6 +50,8 @@ enum TheaterPresenterHotkey {
         case kVK_ANSI_H: return .toggleVisible
         case kVK_ANSI_P: return .togglePause
         case kVK_ANSI_K: return .clear
+        case kVK_ANSI_C: return .copy
+        case kVK_ANSI_Z: return .undo
         case kVK_ANSI_Equal: return .fontLarger
         case kVK_ANSI_Minus: return .fontSmaller
         case kVK_ANSI_T: return .toggleTools
@@ -73,6 +79,10 @@ enum TheaterPresenterHotkey {
             }
         case .clear:
             controller.clearBoard()
+        case .copy:
+            controller.copyCaptionText()
+        case .undo:
+            controller.undoLastCaption()
         case .fontLarger:
             settings.presenterFontSize += Self.fontStep
         case .fontSmaller:

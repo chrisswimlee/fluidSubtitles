@@ -69,11 +69,13 @@ struct TheaterAppCommands: Commands {
             Button("Copy All") {
                 self.controller.copyCaptionText()
             }
+            .keyboardShortcut(self.shortcut(.copy), modifiers: self.presenterModifiers)
             .disabled(!PresenterCaptionController.shared.hasDeliverableText)
 
             Button("Undo Last Caption") {
                 self.controller.undoLastCaption()
             }
+            .keyboardShortcut(self.shortcut(.undo), modifiers: self.presenterModifiers)
             .disabled(!self.controller.hasUndoableCaption)
 
             Button("Clear Captions") {

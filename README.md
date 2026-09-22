@@ -4,13 +4,13 @@
   <img src="docs/screenshots/app-icon.png" width="96" alt="fluidSubtitles icon">
 </p>
 
-**Each sentence appears when it is ready. Korean, English, Thai, and Japanese.**
+**Each sentence appears when it is ready.**
 
-fluidSubtitles is a live translation and captioning app for macOS. It works among **Korean, English, Thai, and Japanese** in either direction, including same-language captions (English → English, Korean → Korean, Thai → Thai, Japanese → Japanese). Speak one of those languages. A finished sentence plus more speech starts the next pair. A pause commits leftover speech. See a translation or a caption on screen, or type it into the app you are using. Best with one speaker and a close mic.
+fluidSubtitles is live captions for macOS. Set **I speak** and **Show as** to any language in the setup list, the languages both Apple Translation and a Voice Engine can use. Translate follows I speak into Show as. The same language needs no download. A sentence appears when it is ready. Best with one speaker and a close mic.
 
 ![Translate home](docs/screenshots/translate-home.png)
 
-Open **Theater** in the sidebar, pick Korean, English, Thai, or Japanese on each side, then press **Open Theater** and **Listen**. I speak and Show as can also be changed on that window. A new Listen starts with an empty board. Closing Theater hides the window; it does not keep the last talk for the next Listen. A separate shortcut types the current translation into another app. Translation uses Apple’s on-device Translation framework.
+Open **Theater**, set **I speak** and **Show as**, then press **Open Theater** and **Listen**. A new Listen starts with an empty board. Closing Theater hides the window; it does not keep the last talk for the next Listen. A separate shortcut types the current translation into another app. Translation uses Apple’s on-device Translation framework.
 
 ![Theater captions](docs/screenshots/theater.png)
 
@@ -23,7 +23,7 @@ Open **Theater** in the sidebar, pick Korean, English, Thai, or Japanese on each
 ## Theater captions
 
 1. Use **macOS 15** or later on Apple Silicon. First run uses Apple Speech (Analyzer on macOS 26). Same-language captions need no translation pack.
-2. Open **Theater** and pick **Voice** or **Translate**. First run finishes with **Setup Wizard**: languages, how captions appear, and who sees the board. **Spoken line** is Off, After a pause, or While talking. **Voice Engine** and **Translation Engine** are Setup tabs. Voice Engine sharpens speech into text. Translation Engine is Apple Translation on this Mac (not a chat model). An experimental local LLM can sharpen the first print. Download the Apple pack only for Translate with two languages.
+2. First run is Welcome, your languages, one Voice Engine, the microphone, then **Listen**. It ends when a sentence appears. **Setup Wizard** stays in the sidebar until you open it. **Spoken line** is Off, After a pause, or While talking. **Voice Engine** and **Translation Engine** are Setup tabs. Voice Engine sharpens speech into text. Translation Engine is Apple Translation on this Mac (not a chat model). An experimental local LLM can sharpen the first print. A language pack downloads only when I speak and Show as differ.
 3. Allow the microphone. **Listen** stays off until Voice Engine and (for Translate) the pack are green.
 4. Optional: import notes or a deck on Theater Home for this talk. Names stay on this Mac. Speak one sentence. **Type into app** unlocks after that first caption. **Copy** always takes everything on screen. **Clear** wipes the board. Talk notes stay. Listen can keep going.
 
@@ -48,9 +48,9 @@ The systems write-up is [docs/APPLE_SILICON_STREAMING.md](docs/APPLE_SILICON_STR
 
 ## Features
 
-- **Korean, English, Thai, and Japanese** — any pair, either direction, including same-language captions without a translation pack. Listen uses a Voice Engine that can hear I speak (Apple Speech, Cohere, or Whisper for Korean and Japanese; Apple Speech or Whisper for Thai; Parakeet Flash is English-only)
-- **Theater captions** — a floating window you turn on, edit, and close. Use **Pop-up** for a solid board or **Overlay** so only caption text sits on slides. Change Overlay font, size, and plate from the menu-bar Theater menu. On-screen `mic · e2e · ASR · MT` clock. Hide it from screen share. Pause holds capture, drops a leftover fragment, and lets an in-flight accepted translation finish; Resume does not bring the fragment back. Minimize hides Theater; Listen stays. Clear wipes the board. Talk notes stay. Off-screen captions are already gone. Translate shows Behind or Caught up so you do not outrun the caption. A real clause appears once when it is accepted.
-- **Voice / Translate** — Voice Engine sharpens speech into text. Translate uses Apple Translation on this Mac for Korean, English, Thai, and Japanese captions. A Setup tab can add an experimental local LLM for first-print sharpening. Press the mode control to switch. Both use the microphone.
+- **Languages** — I speak and Show as are the setup list. Translate follows I speak into Show as. The same language needs no pack. Apple Speech hears that list. Other engines hear a subset: Parakeet Flash is English, and the Voice Engine card says what each model hears.
+- **Theater captions** — a floating window you turn on, edit, and close. Use **Pop-up** for a solid board or **Overlay** so only caption text sits on slides. Change Overlay font, size, and plate from the menu-bar Theater menu. On-screen `mic · e2e · ASR · MT` clock. Hide it from screen share. Pause holds capture and drops a leftover; Resume does not bring that leftover back. Minimize hides Theater; Listen stays. Clear wipes the board. Talk notes stay. Off-screen captions are already gone. Translate shows Behind or Caught up so you do not outrun the caption. A sentence appears once when it is accepted.
+- **Voice / Translate** — Voice Engine sharpens speech into text. Translate uses Apple Translation on this Mac for the pair you set. A Setup tab can add an experimental local LLM for first-print sharpening. Press the mode control to switch. Both use the microphone.
 - **Translate into an app** — a separate shortcut from dictation; types this listen’s translation into the app you clicked, including a trailing fragment. Korean, Japanese, and Thai depend on that app’s input method. Accessibility is required.
 - **On-device translation** — Apple Translation language packs, processed locally
 - **Multiple speech models** — Nemotron, Parakeet, Cohere, Apple Speech, and Whisper
@@ -61,7 +61,7 @@ The systems write-up is [docs/APPLE_SILICON_STREAMING.md](docs/APPLE_SILICON_STR
 
 ## Supported Models
 
-fluidSubtitles only hears and captions **Korean, English, Thai, and Japanese**. The Voice Engine picker matches that. Upstream weights may have been trained on more languages; this app does not expose them.
+I speak and Show as are the setup list: every language both Apple Translation and a Voice Engine can use. Apple Speech hears that list with no download. Other engines hear a subset, and the card says which. Upstream weights may include more languages; this app does not expose those.
 
 | Model | Best for | Hears here | Download size | Hardware |
 | --- | --- | --- | --- | --- |
@@ -71,8 +71,8 @@ fluidSubtitles only hears and captions **Korean, English, Thai, and Japanese**. 
 | Parakeet TDT v3 | Fast English. Korean, Japanese, and Thai Listen need another Voice Engine. | English | ~500 MB | Apple Silicon |
 | Parakeet TDT v2 | Fastest English-only | English | ~500 MB | Apple Silicon |
 | Cohere Transcribe | High-accuracy English, Korean, and Japanese | English, Korean, Japanese | ~1.4 GB | Apple Silicon |
-| Apple Speech | Zero-download native macOS speech | Korean, English, Thai, Japanese | Built-in | Apple Silicon + Intel |
-| Whisper Tiny / Base / Small / Medium / Large | Broad compatibility, including Intel Macs | Korean, English, Thai, Japanese | ~75 MB to ~2.9 GB | Apple Silicon + Intel |
+| Apple Speech | Zero-download native macOS speech | Setup languages | Built-in | Apple Silicon + Intel |
+| Whisper Tiny / Base / Small / Medium / Large | Broad compatibility, including Intel Macs | Setup languages | ~75 MB to ~2.9 GB | Apple Silicon + Intel |
 
 ---
 

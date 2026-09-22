@@ -10,7 +10,7 @@ body:
     id: idea
     attributes:
       label: Idea
-      description: What should Theater or dictation insert do among Korean, English, Thai, and Japanese?
+      description: What should Theater or dictation insert do?
     validations:
       required: true
   - type: textarea

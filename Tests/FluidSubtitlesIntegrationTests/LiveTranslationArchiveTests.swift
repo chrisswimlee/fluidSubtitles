@@ -343,14 +343,16 @@ final class TheaterLanguagePairTests: XCTestCase {
         XCTAssertTrue(failures.isEmpty, failures.joined(separator: "\n"))
     }
 
-    func testBoardPutsSpokenLineFirstForEveryPair() {
+    func testBoardPutsShowAsAboveTheSpokenLineForEveryPair() {
         let font = NSFont.systemFont(ofSize: 40, weight: .semibold)
         for (spoken, target) in self.pairs() {
             let translated = self.speech.first { $0.id == target }?.talk[0] ?? ""
             let rows = TheaterBilingualWrap.rows(spoken: spoken.talk[1], translated: translated, font: font, width: 420)
-            XCTAssertTrue(rows.first?.isSpoken ?? false, "\(spoken.id)→\(target)")
+            XCTAssertFalse(rows.first?.isSpoken ?? true, "\(spoken.id)→\(target)")
+            let titleIndexes = rows.indices.filter { !rows[$0].isSpoken }
             let spokenIndexes = rows.indices.filter { rows[$0].isSpoken }
-            XCTAssertEqual(spokenIndexes, Array(0..<spokenIndexes.count), "\(spoken.id)→\(target)")
+            XCTAssertEqual(titleIndexes, Array(0..<titleIndexes.count), "\(spoken.id)→\(target)")
+            XCTAssertEqual(spokenIndexes.first, titleIndexes.count, "\(spoken.id)→\(target)")
             XCTAssertFalse(rows.map(\.text).joined().isEmpty)
         }
     }

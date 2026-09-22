@@ -93,7 +93,7 @@ enum TranslationLanguageCatalog {
 
     static let supportedIDs: Set<String> = Set(Self.all.map(\.id))
 
-    /// Dropdown order. Display names, not the original four-language lead.
+    /// Alphabetical names for the language menus.
     static var menuOrder: [TranslationLanguage] {
         self.all.sorted {
             $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending

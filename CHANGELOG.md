@@ -4,6 +4,7 @@ All notable changes to fluidSubtitles are documented in this file.
 
 ## [Unreleased]
 
+- The Show-as title prints above the spoken line, with a fixed gap, so a wrap does not move the line the audience is reading.
 - One unfinished-clause rule: a real clause appears once when finished or confirmed by silence or Stop; caption Pause and Stop drop a leftover fragment; only Listen and type Stop still types a trailing fragment. Pause holds capture, cancels delayed unaccepted flushes, and does not resurrect the drop on Resume.
 - Theater Listen leaves spoken words like "period" and "um" on the board. It does not pause the presenter's media, play a stop chime, or switch Parakeet to Faster Long Dictation's incremental window.
 - Listen and type asks for Accessibility when the shortcut cannot run. Until macOS allows this app, Left Option and any other Listen and type shortcut never start a Listen.
@@ -21,7 +22,7 @@ All notable changes to fluidSubtitles are documented in this file.
 - Theater buttons show a hover label that names them and what they do. Size buttons change spoken and Show-as, not only the spoken line.
 - Spoken line is Off, After a pause, or While talking. After a pause is the default: it waits, then translates the whole leftover with context and prints spoken under it. While talking translates word by word and grows spoken under the live title. Setup Wizard, Settings → Theater, and the Theater menu set it.
 - The Theater board control is a gear labeled Settings.
-- Setup Wizard walks languages, captions, and who sees the board. After first-run onboarding it opens once. Open it again from Setup, Theater Home, Getting Started, or Settings → Theater.
+- First arrival is Listen. Setup Wizard opens only when you choose it. Home starts with the caption preview, and the language menus stay the full catalog.
 - Voice stays on this caption until a finished sentence has more speech after it, or until a pause. A comma or “and” no longer jumps to the next line mid-thought, and a lone Apple Speech period does not print “talk.” then hop to “talk about it.”
 - Theater types one incoming caption at a time. Extra finished sentences stay queued while their translations start, so a restitch does not dump several lines at once.
 - Theater commits every finished sentence in a fast restitch and starts each translation immediately, so Show-as does not wait until you stop talking.

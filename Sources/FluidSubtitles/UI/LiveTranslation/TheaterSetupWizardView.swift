@@ -133,8 +133,6 @@ struct TheaterSetupWizardView: View {
                     .foregroundStyle(self.theme.palette.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
 
-                self.accentColorRow(identifier: "theater.setupWizard.accentColor")
-
                 if self.settings.theaterSessionMode == .translation {
                     HStack(alignment: .center) {
                         VStack(alignment: .leading, spacing: 2) {
@@ -150,25 +148,8 @@ struct TheaterSetupWizardView: View {
                             .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer()
-                        Picker(TheaterReadiness.spokenLineTitle, selection: Binding(
-                            get: { self.settings.theaterSpokenLineMode },
-                            set: { self.settings.theaterSpokenLineMode = $0 }
-                        )) {
-                            ForEach(TheaterSpokenLineMode.allCases) { mode in
-                                Text(mode.displayName).tag(mode)
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.menu)
-                        .disabled(SpokenLanguageResolver.isSameLanguagePair())
-                        .accessibilityLabel(TheaterReadiness.spokenLineTitle)
-                        .accessibilityIdentifier("theater.setupWizard.spokenLine")
+                        TheaterSpokenLinePicker(accessibilityIdentifier: "theater.setupWizard.spokenLine")
                     }
-                    Text(TheaterReadiness.spokenLineSetupNote)
-                        .font(self.theme.typography.bodySmall)
-                        .foregroundStyle(self.theme.palette.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("theater.setupWizard.spokenNote")
                     TheaterCaptionStackPreview(
                         message: SpokenLanguageResolver.isSameLanguagePair()
                             ? TheaterReadiness.spokenLineSameLanguage
@@ -180,6 +161,8 @@ struct TheaterSetupWizardView: View {
                         accessibilityIdentifier: "theater.setupWizard.captionPreview"
                     )
                 }
+
+                self.accentColorRow(identifier: "theater.setupWizard.accentColor")
             }
         }
     }
@@ -225,12 +208,6 @@ struct TheaterSetupWizardView: View {
                         ? TheaterReadiness.audienceSlides
                         : TheaterReadiness.audienceZoom
                 )
-                Text(TheaterReadiness.spokenLineSetupNote)
-                    .font(self.theme.typography.bodySmall)
-                    .foregroundStyle(self.theme.palette.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 6)
-                    .accessibilityIdentifier("theater.setupWizard.spokenNote")
             }
         }
     }
@@ -272,24 +249,34 @@ struct TheaterSetupWizardView: View {
                 .buttonStyle(.theaterText)
                 .accessibilityIdentifier("theater.setupWizard.back")
             }
-            Button(TheaterSetupWizard.skipTitle) {
-                self.finish()
+            if self.step != .ready {
+                Button(TheaterSetupWizard.skipTitle) {
+                    self.finish()
+                }
+                .buttonStyle(.theaterText)
+                .accessibilityIdentifier("theater.setupWizard.skip")
             }
-            .buttonStyle(.theaterText)
-            .accessibilityIdentifier("theater.setupWizard.skip")
             Spacer()
             if self.step == .ready {
+                Button(self.step.continueTitle) {
+                    self.goNext()
+                }
+                .buttonStyle(.theaterText)
+                .accessibilityIdentifier("theater.setupWizard.continue")
                 Button(TheaterSetupWizard.readyPrimary) {
                     self.finishAndOpenTheater()
                 }
                 .buttonStyle(.theaterTextProminent)
+                .keyboardShortcut(.defaultAction)
                 .accessibilityIdentifier("theater.setupWizard.openTheater")
+            } else {
+                Button(self.step.continueTitle) {
+                    self.goNext()
+                }
+                .buttonStyle(.theaterTextProminent)
+                .keyboardShortcut(.defaultAction)
+                .accessibilityIdentifier("theater.setupWizard.continue")
             }
-            Button(self.step.continueTitle) {
-                self.goNext()
-            }
-            .buttonStyle(.theaterTextProminent)
-            .accessibilityIdentifier("theater.setupWizard.continue")
         }
         .padding(.horizontal, 28)
         .padding(.vertical, 16)

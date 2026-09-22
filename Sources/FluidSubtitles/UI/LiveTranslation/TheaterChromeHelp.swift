@@ -12,22 +12,22 @@ enum TheaterChromeHelp {
 
     static let listen = tag(
         "Listen",
-        does: "Start the microphone. A finished sentence starts the next caption.",
+        does: "Start the microphone. Each sentence appears when it is ready.",
         shortcut: "Control-Option-L"
     )
     static let stop = tag(
         "Stop",
-        does: "Stop Listen. A real leftover clause appears once; a fragment does not. Printed lines stay.",
+        does: "Stop Listen. A real leftover sentence appears once. Printed lines stay.",
         shortcut: "Control-Option-L"
     )
     static let pause = tag(
         "Pause",
-        does: "Hold capture and drop a leftover fragment. Printed lines stay; an in-flight translation may still land.",
+        does: "Hold capture and drop a leftover. Printed lines stay. A translation already on its way may still land.",
         shortcut: "Control-Option-P"
     )
     static let resume = tag(
         "Resume",
-        does: "Continue Listen. Printed lines stay. A dropped fragment does not come back.",
+        does: "Continue Listen. Printed lines stay. A dropped leftover does not come back.",
         shortcut: "Control-Option-P"
     )
     static let iSpeak = tag(
@@ -40,7 +40,7 @@ enum TheaterChromeHelp {
     )
     static let swapLanguages = tag(
         "Swap languages",
-        does: "Swap spoken and translated languages. Stops Listen."
+        does: "Swap I speak and Show as. Stops Listen."
     )
     static let mode = tag(
         "Theater mode",
@@ -74,11 +74,11 @@ enum TheaterChromeHelp {
     )
     static let paceCue = tag(
         "Pace cue",
-        does: "Behind means talk slower. Caught up means the last clause is on screen."
+        does: "Behind means talk slower. Caught up means the last sentence is on screen."
     )
     static let latency = tag(
         "Latency",
-        does: "mic is Listen to first audio. e2e is speech-start to the printed caption. ASR is the speech engine. MT is Apple Translation."
+        does: "Time until the caption. mic is Listen to first audio. e2e is speech-start to the printed caption. ASR is the speech engine. MT is Apple Translation."
     )
     static let theme = tag(
         "Theater theme",
@@ -100,15 +100,17 @@ enum TheaterChromeHelp {
     )
     static let copyAll = tag(
         "Copy all",
-        does: "Copy every caption on the board."
+        does: "Copy every caption on the board.",
+        shortcut: "Control-Option-C"
     )
     static let insert = tag(
         "Type into app",
-        does: "Type this Listen into the frontmost app. Copy takes the whole board. Needs Accessibility. Korean, Japanese, or Thai may paste."
+        does: "Type this Listen into the frontmost app. Copy takes the whole board. Needs Accessibility. Some languages paste instead of typing each letter."
     )
     static let undo = tag(
         "Undo last caption",
-        does: "Remove the last printed line. Listen can keep going."
+        does: "Remove the last printed line. Listen can keep going.",
+        shortcut: "Control-Option-Z"
     )
     static let clear = tag(
         "Clear captions",
@@ -146,7 +148,7 @@ enum TheaterChromeHelp {
     )
     static let spokenLine = tag(
         "Spoken line",
-        does: "Off hides the original language. Any other choice prints it under each delivered sentence."
+        does: "Off hides the original language. After a pause prints it under the sentence. While talking grows it under the title."
     )
     static let editCaptions = tag(
         "Edit captions",

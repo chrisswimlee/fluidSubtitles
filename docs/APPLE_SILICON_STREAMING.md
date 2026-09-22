@@ -1,6 +1,6 @@
 # Optimizing Local Streaming Translation on Apple Silicon: Speech Edges, Context Windows, and CoreAudio Latency
 
-fluidSubtitles is a local Theater caption app for Korean, English, Thai, and Japanese. Theater runs on macOS 15 and later. Apple Speech Analyzer stays macOS 26+. Speech recognition and the macOS shell come from [FluidVoice](https://github.com/altic-dev/FluidVoice). This branch adds clause-level Apple Translation, a measured latency clock, and a bounded 3-hour caption budget.
+fluidSubtitles is a local Theater caption app. I speak and Show as are every language both Apple Translation and a Voice Engine can use. Theater runs on macOS 15 and later. Apple Speech Analyzer stays macOS 26+. Speech recognition and the macOS shell come from [FluidVoice](https://github.com/altic-dev/FluidVoice). This branch adds clause-level Apple Translation, a measured latency clock, and a bounded 3-hour caption budget.
 
 This note is the systems story, not a pitch. Numbers in the Theater HUD are measured. Numbers in tables below are budgets until you fill them from a recording.
 
@@ -89,6 +89,6 @@ Fill the HUD numbers from that recording into this note before you publish the r
 
 ## What this is not
 
-- Not a general translator. Product languages are Korean, English, Thai, and Japanese.
+- Not every language a model was trained on. Product languages are the setup list: Apple Translation paired with a Voice Engine.
 - Not TestFlight or the Mac App Store. Distribution is a Developer ID zip on GitHub Releases. See the README.
 - Not a claim that classic VAD, CoreAudio p99 jitter, or thermal throttling are solved.

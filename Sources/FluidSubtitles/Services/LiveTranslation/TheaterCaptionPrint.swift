@@ -20,11 +20,11 @@ enum TheaterSpokenLineMode: String, CaseIterable, Identifiable {
     var help: String {
         switch self {
         case .off:
-            return "Translation only. The original language does not print."
+            return "Translation only. The original language stays off the board."
         case .afterPause:
-            return "The original language prints under each sentence when it appears."
+            return "The original language prints under the sentence after you pause."
         case .whileTalking:
-            return "The original language prints under each sentence when it appears."
+            return "The original language grows under the title while you talk."
         }
     }
 

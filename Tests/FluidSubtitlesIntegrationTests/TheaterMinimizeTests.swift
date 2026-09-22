@@ -480,14 +480,14 @@ final class TheaterMenuBarTests: XCTestCase {
             (.smallerText, .fontSmaller),
             (.minimize, .toggleVisible),
             (.clear, .clear),
+            (.copy, .copy),
+            (.undo, .undo),
         ]
         for pair in pairs {
             let item = TheaterMenuBarController.item(pair.0, in: menu)
             XCTAssertEqual(item?.keyEquivalent, TheaterPresenterHotkey.keyEquivalent(for: pair.1), pair.1.rawValue)
             XCTAssertEqual(item?.keyEquivalentModifierMask, TheaterPresenterHotkey.modifiers, pair.1.rawValue)
         }
-        XCTAssertEqual(TheaterMenuBarController.item(.copy, in: menu)?.keyEquivalent, "")
-        XCTAssertEqual(TheaterMenuBarController.item(.undo, in: menu)?.keyEquivalent, "")
     }
 
     private func overlayMenu() -> NSMenu {
@@ -504,6 +504,8 @@ final class TheaterChromeHelpTests: XCTestCase {
             (TheaterChromeHelp.pause, "P", kVK_ANSI_P, .togglePause),
             (TheaterChromeHelp.minimize, "H", kVK_ANSI_H, .toggleVisible),
             (TheaterChromeHelp.clear, "K", kVK_ANSI_K, .clear),
+            (TheaterChromeHelp.copyAll, "C", kVK_ANSI_C, .copy),
+            (TheaterChromeHelp.undo, "Z", kVK_ANSI_Z, .undo),
             (TheaterChromeHelp.larger, "Equals", kVK_ANSI_Equal, .fontLarger),
             (TheaterChromeHelp.smaller, "Minus", kVK_ANSI_Minus, .fontSmaller),
             (TheaterChromeHelp.overlayTools, "T", kVK_ANSI_T, .toggleTools),

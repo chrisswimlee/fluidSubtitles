@@ -733,12 +733,30 @@ final class LiveTranslationClauseTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(rows.count, 4)
         XCTAssertEqual(rows.filter(\.isSpoken).map(\.text).joined(), spoken)
         XCTAssertEqual(rows.filter { !$0.isSpoken }.map(\.text).joined(), translated)
-        XCTAssertTrue(rows[0].isSpoken)
+        XCTAssertFalse(rows[0].isSpoken)
         let spokenIndexes = rows.enumerated().compactMap { $0.element.isSpoken ? $0.offset : nil }
         let translatedIndexes = rows.enumerated().compactMap { $0.element.isSpoken ? nil : $0.offset }
-        // Spoken keeps a fixed slot on top; a growing translation never moves it.
-        XCTAssertEqual(spokenIndexes, Array(0..<spokenIndexes.count))
-        XCTAssertEqual(translatedIndexes.first, spokenIndexes.count)
+        // Show-as stays on top. The spoken line keeps one block underneath it.
+        XCTAssertEqual(translatedIndexes, Array(0..<translatedIndexes.count))
+        XCTAssertEqual(spokenIndexes.first, translatedIndexes.count)
+        let frames = TheaterBilingualWrap.lineFrames(
+            rows: rows,
+            spokenFont: font,
+            translatedFont: font,
+            width: 140
+        )
+        XCTAssertEqual(frames.count, rows.count)
+        for index in frames.indices.dropFirst() {
+            let gap = frames[index].minY - frames[index - 1].maxY
+            let crossesPair = rows[index].isSpoken != rows[index - 1].isSpoken
+            let expected = TheaterBilingualWrap.rowSpacing
+                + (crossesPair ? TheaterBilingualWrap.spokenPairGap : 0)
+            XCTAssertEqual(gap, expected)
+        }
+        XCTAssertEqual(
+            TheaterBilingualWrap.boardHeight(rows: rows, spokenFont: font, translatedFont: font),
+            (frames.last?.maxY ?? 0) + TheaterBilingualWrap.boardTopClearance
+        )
     }
 
     func testBilingualWrapPutsSpokenKoreanAboveEnglishTitle() {
@@ -750,7 +768,7 @@ final class LiveTranslationClauseTests: XCTestCase {
             width: 140
         )
         XCTAssertGreaterThanOrEqual(rows.count, 4)
-        XCTAssertTrue(rows[0].isSpoken)
+        XCTAssertFalse(rows[0].isSpoken)
         XCTAssertTrue(rows.contains(where: \.isSpoken))
         XCTAssertEqual(rows.filter(\.isSpoken).map(\.text).joined(), "안녕하세요 여러분 오늘도 반갑습니다")
         XCTAssertEqual(rows.filter { !$0.isSpoken }.map(\.text).joined(), "Hello world today friends")
@@ -765,7 +783,7 @@ final class LiveTranslationClauseTests: XCTestCase {
             width: 140
         )
         XCTAssertGreaterThanOrEqual(rows.count, 4)
-        XCTAssertTrue(rows[0].isSpoken)
+        XCTAssertFalse(rows[0].isSpoken)
         XCTAssertTrue(rows.contains(where: \.isSpoken))
         XCTAssertEqual(rows.filter(\.isSpoken).map(\.text).joined(), "สวัสดีครับทุกคน วันนี้ก็ยินดีที่ได้พบกัน")
         XCTAssertEqual(rows.filter { !$0.isSpoken }.map(\.text).joined(), "Hello world today friends")
@@ -782,7 +800,7 @@ final class LiveTranslationClauseTests: XCTestCase {
             width: 140
         )
         XCTAssertGreaterThanOrEqual(rows.count, 4)
-        XCTAssertTrue(rows[0].isSpoken)
+        XCTAssertFalse(rows[0].isSpoken)
         XCTAssertTrue(rows.contains(where: \.isSpoken))
         XCTAssertEqual(rows.filter(\.isSpoken).map(\.text).joined(), spoken)
         XCTAssertEqual(rows.filter { !$0.isSpoken }.map(\.text).joined(), translated)
@@ -1997,7 +2015,7 @@ final class LiveTranslationClauseTests: XCTestCase {
             0.8,
             accuracy: 0.01
         )
-        XCTAssertEqual(TheaterReadiness.spokenLineTranslate.contains("under the translation"), true)
+        XCTAssertEqual(TheaterReadiness.spokenLineTranslate.contains("original language"), true)
     }
 
     func testQueuedPendingRowsWaitWhileAnotherTitleIsCurrent() {
@@ -2139,6 +2157,8 @@ final class TheaterPresenterAidTests: XCTestCase {
         XCTAssertEqual(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_H), modifiers: chord), .toggleVisible)
         XCTAssertEqual(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_P), modifiers: chord), .togglePause)
         XCTAssertEqual(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_K), modifiers: chord), .clear)
+        XCTAssertEqual(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_C), modifiers: chord), .copy)
+        XCTAssertEqual(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_Z), modifiers: chord), .undo)
         XCTAssertEqual(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_Equal), modifiers: chord), .fontLarger)
         XCTAssertEqual(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_Minus), modifiers: chord), .fontSmaller)
         XCTAssertEqual(TheaterPresenterHotkey.action(keyCode: UInt16(kVK_ANSI_T), modifiers: chord), .toggleTools)

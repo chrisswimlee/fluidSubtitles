@@ -384,33 +384,13 @@ struct PresenterCaptionView: View {
         selection: Binding<String>,
         languages: [TranslationLanguage]
     ) -> some View {
-        let selectedName = languages.first(where: { $0.id == selection.wrappedValue })?.displayName
-            ?? TranslationLanguageCatalog.language(id: selection.wrappedValue)?.displayName
-            ?? selection.wrappedValue
-        return Menu {
-            ForEach(languages) { language in
-                Button {
-                    PresenterCaptionController.shared.performChromeAction {
-                        selection.wrappedValue = language.id
-                    }
-                } label: {
-                    HStack {
-                        Image(systemName: "checkmark")
-                            .opacity(language.id == selection.wrappedValue ? 1 : 0)
-                        Text(language.displayName)
-                    }
-                }
-            }
-        } label: {
-            Text(selectedName)
-                .theaterButtonFace(compact: true)
-                .fixedSize()
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        TheaterLanguageMenu(
+            title: title,
+            selection: selection,
+            languages: languages,
+            compactChrome: true
+        )
         .theaterTag(title == "I speak" ? TheaterChromeHelp.iSpeak : TheaterChromeHelp.showAs)
-        .accessibilityLabel(title)
-        .accessibilityValue(selectedName)
     }
 
     private var sourceLanguageID: Binding<String> {
@@ -439,21 +419,10 @@ struct PresenterCaptionView: View {
         TranslationLanguageCatalog.menuOrder
     }
 
-    /// Languages stay on one line at 640pt. Mode drops first if the row is still tight.
-    @ViewBuilder
+    /// Languages and Listen stay on the first row. Mode and appearance sit below.
     private var persistentChrome: some View {
-        ViewThatFits(in: .horizontal) {
-            self.persistentChromeRow(showsMode: true)
-            self.persistentChromeRow(showsMode: false)
-        }
-    }
-
-    private func persistentChromeRow(showsMode: Bool) -> some View {
         HStack(alignment: .center, spacing: self.theme.metrics.spacing.md) {
             self.languagePairControls
-            if showsMode {
-                self.windowModePicker
-            }
             Spacer(minLength: self.theme.metrics.spacing.sm)
             self.retryActions
             TheaterListenButton(
@@ -463,9 +432,6 @@ struct PresenterCaptionView: View {
                 pauseIdentifier: "theater.pause"
             )
             .layoutPriority(1)
-            if self.presentationStyle == .popup {
-                self.captionsOnlyButton
-            }
             self.minimizeButton
         }
     }
@@ -475,7 +441,6 @@ struct PresenterCaptionView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 8) {
                 self.languagePairControls
-                self.windowModePicker
                 Spacer(minLength: 8)
                 self.retryActions
             }
@@ -598,21 +563,31 @@ struct PresenterCaptionView: View {
     }
 
     private var windowModePicker: some View {
-        TheaterWordPicker(
-            accessibilityLabel: "Theater mode",
-            accessibilityIdentifier: "theater.window.mode",
-            options: Array(TheaterSessionMode.allCases),
-            title: { $0.displayName },
-            selection: Binding(
+        Menu {
+            Picker("Theater mode", selection: Binding(
                 get: { self.settings.theaterSessionMode },
                 set: { newMode in
                     PresenterCaptionController.shared.performChromeAction {
                         self.controller.applyTheaterSessionMode(newMode)
                     }
                 }
-            )
-        )
+            )) {
+                ForEach(TheaterSessionMode.allCases) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            Text(self.settings.theaterSessionMode.displayName)
+                .theaterButtonFace(compact: true)
+                .fixedSize()
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.visible)
         .theaterTag(TheaterChromeHelp.mode)
+        .accessibilityLabel("Theater mode")
+        .accessibilityIdentifier("theater.window.mode")
     }
 
     @ViewBuilder
@@ -626,6 +601,10 @@ struct PresenterCaptionView: View {
 
     private func extendedChromeRow(showsTheme: Bool, showsLatency: Bool) -> some View {
         HStack(spacing: self.theme.metrics.spacing.sm) {
+            self.windowModePicker
+            if self.presentationStyle == .popup {
+                self.captionsOnlyButton
+            }
             self.paceCueReadout
             self.talkPackChip
             self.hiddenFromZoomBadge
@@ -1410,6 +1389,7 @@ private final class TheaterCaptionLineNSView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         self.wantsLayer = true
+        self.layer?.isGeometryFlipped = true
         self.clipsToBounds = false
     }
 
@@ -1424,10 +1404,16 @@ private final class TheaterCaptionLineNSView: NSView {
     }
 
     func prepare(forWidth width: CGFloat) {
-        guard let wrap = TheaterBilingualWrap.layoutWrapWidth(proposed: width, locked: self.wrapWidth) else {
+        let stage = self.wrapWidth
+        let wrap: CGFloat
+        if stage >= TheaterBilingualWrap.minimumWrapWidth {
+            wrap = stage
+        } else if let resolved = TheaterBilingualWrap.layoutWrapWidth(proposed: width, locked: stage) {
+            wrap = resolved
+        } else {
             return
         }
-        if abs(wrap - self.wrapWidth) > 1 || self.displayRows.isEmpty {
+        if self.displayRows.isEmpty {
             self.syncRows(width: wrap)
         }
     }
@@ -1565,22 +1551,21 @@ private final class TheaterCaptionLineNSView: NSView {
 
     override func layout() {
         super.layout()
-        let width = max(self.bounds.width, 1)
-        if let wrap = TheaterBilingualWrap.layoutWrapWidth(proposed: width, locked: self.wrapWidth),
-           abs(wrap - self.wrapWidth) > 1 || self.displayRows.isEmpty
-        {
-            self.syncRows(width: wrap)
+        self.layer?.isGeometryFlipped = true
+        if self.displayRows.isEmpty, self.wrapWidth >= TheaterBilingualWrap.minimumWrapWidth {
+            self.syncRows(width: self.wrapWidth)
         }
-        var y: CGFloat = TheaterBilingualWrap.boardTopClearance
+        let width = max(self.bounds.width, 1)
+        let frames = TheaterBilingualWrap.lineFrames(
+            rows: self.displayRows,
+            spokenFont: self.spokenFont,
+            translatedFont: self.translatedFont,
+            width: width
+        )
         var targets: [(view: NSTextField, frame: NSRect)] = []
-        targets.reserveCapacity(self.lineViews.count)
-        for (index, view) in self.lineViews.enumerated() {
-            let spoken = index < self.displayRows.count ? self.displayRows[index].isSpoken : false
-            let lineHeight = TheaterBilingualWrap.lineHeight(
-                for: spoken ? self.spokenFont : self.translatedFont
-            )
-            targets.append((view, NSRect(x: 0, y: y, width: width, height: lineHeight)))
-            y += lineHeight + TheaterBilingualWrap.rowSpacing
+        targets.reserveCapacity(min(self.lineViews.count, frames.count))
+        for (index, frame) in frames.enumerated() where index < self.lineViews.count {
+            targets.append((self.lineViews[index], frame))
         }
         self.syncCaptionPlates(rowFrames: targets)
         for target in targets {
@@ -1649,7 +1634,8 @@ private final class TheaterCaptionLineNSView: NSView {
         label.textColor = .white
         label.lineBreakMode = .byClipping
         label.maximumNumberOfLines = 1
-        label.usesSingleLineMode = false
+        label.usesSingleLineMode = true
+        label.cell?.isScrollable = true
         label.cell?.truncatesLastVisibleLine = false
         label.clipsToBounds = false
         label.setContentHuggingPriority(.defaultLow, for: .horizontal)

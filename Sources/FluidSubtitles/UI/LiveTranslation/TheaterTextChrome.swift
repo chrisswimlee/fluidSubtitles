@@ -193,6 +193,89 @@ struct TheaterWordPicker<Option: Hashable>: View {
     }
 }
 
+/// Language menu for I speak and Show as.
+struct TheaterLanguageMenu: View {
+    var title: String
+    @Binding var selection: String
+    var languages: [TranslationLanguage] = TranslationLanguageCatalog.menuOrder
+    var compactChrome = false
+
+    private var selectedName: String {
+        self.languages.first(where: { $0.id == self.selection })?.displayName
+            ?? TranslationLanguageCatalog.language(id: self.selection)?.displayName
+            ?? self.selection
+    }
+
+    var body: some View {
+        self.styledMenu
+            .accessibilityLabel(self.title)
+            .accessibilityValue(self.selectedName)
+    }
+
+    private var menu: some View {
+        Menu {
+            Picker(self.title, selection: self.$selection) {
+                ForEach(self.languages) { language in
+                    Text(language.displayName).tag(language.id)
+                }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            self.label
+        }
+    }
+
+    @ViewBuilder
+    private var styledMenu: some View {
+        if self.compactChrome {
+            self.menu
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.visible)
+        } else {
+            self.menu
+                .menuStyle(.borderedButton)
+                .fixedSize(horizontal: true, vertical: false)
+                .help("Languages Apple Translation and the Voice Engine both support.")
+        }
+    }
+
+    @ViewBuilder
+    private var label: some View {
+        if self.compactChrome {
+            Text(self.selectedName)
+                .theaterButtonFace(compact: true)
+                .fixedSize()
+        } else {
+            Text(self.selectedName)
+                .frame(minWidth: 140, alignment: .leading)
+        }
+    }
+}
+
+/// Spoken line is the same menu on Home, Settings, and Setup.
+struct TheaterSpokenLinePicker: View {
+    var accessibilityIdentifier: String
+
+    @ObservedObject private var settings = SettingsStore.shared
+
+    var body: some View {
+        Picker(TheaterReadiness.spokenLineTitle, selection: Binding(
+            get: { self.settings.theaterSpokenLineMode },
+            set: { self.settings.theaterSpokenLineMode = $0 }
+        )) {
+            ForEach(TheaterSpokenLineMode.allCases) { mode in
+                Text(mode.displayName).tag(mode)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .disabled(SpokenLanguageResolver.isSameLanguagePair())
+        .accessibilityLabel(TheaterReadiness.spokenLineTitle)
+        .accessibilityIdentifier(self.accessibilityIdentifier)
+    }
+}
+
 private struct TheaterOptionalIdentifier: ViewModifier {
     let identifier: String?
 

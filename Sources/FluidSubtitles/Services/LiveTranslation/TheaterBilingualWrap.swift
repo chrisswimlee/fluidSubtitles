@@ -2,13 +2,11 @@ import AppKit
 import Foundation
 
 /// Splits a bilingual caption into visual lines and stacks them:
-/// spoken undertone first (fixed slot), translation title grows below.
+/// Show-as title first, spoken undertone underneath.
 ///
-/// Spoken goes first so its row position never moves as the translation
-/// streams in — only rows below it are added or resized. Reordering this
-/// (translation before spoken) makes the spoken line's index, and thus its
-/// on-screen position, shift every time the translation's line count
-/// changes, which reads as a jump rather than smooth growth.
+/// The title is the line the audience reads. It stays the top of the pair,
+/// matching the empty-board preview. The spoken line sits under that title
+/// with a fixed gap, so a wrap does not move the title to a new slot.
 ///
 /// Wrap fills left to right until the next token does not fit. A narrower
 /// board or a larger caption wraps earlier so the line still stays on the
@@ -42,10 +40,15 @@ enum TheaterBilingualWrap {
     /// the board grows a little. A narrower board always rewraps.
     static let wrapWidthHysteresis: CGFloat = 24
 
-    static let rowSpacing: CGFloat = 2
+    /// Gap between wrap lines of the same role. Kept outside the text field
+    /// so the glyph cannot float inside a taller box and land on the next line.
+    static let rowSpacing: CGFloat = 8
 
-    /// Extra height so NSTextField can draw ascenders and the slide halo.
-    static let lineVerticalInset: CGFloat = 10
+    /// Extra gap between the Show-as block and the spoken line under it.
+    static let spokenPairGap: CGFloat = 6
+
+    /// Room inside the line box so a descender is not clipped by the field edge.
+    static let linePad: CGFloat = 2
 
     /// First-line halo / shadow sits above the ink. Keep it in the board height
     /// so ScrollView does not clip the opening title.
@@ -159,7 +162,33 @@ enum TheaterBilingualWrap {
     static func lineHeight(for font: NSFont) -> CGFloat {
         let typographic = ceil(font.ascender - font.descender + max(0, font.leading))
         let ink = ceil(font.boundingRectForFont.height)
-        return max(typographic, ink) + Self.lineVerticalInset
+        return max(typographic, ink) + Self.linePad
+    }
+
+    /// Frames in the caption view's top-down space. Height uses the same walk,
+    /// so the SwiftUI slot and the drawn lines cannot disagree.
+    static func lineFrames(
+        rows: [Row],
+        spokenFont: NSFont,
+        translatedFont: NSFont,
+        width: CGFloat
+    ) -> [CGRect] {
+        var frames: [CGRect] = []
+        frames.reserveCapacity(rows.count)
+        var y = Self.boardTopClearance
+        let rowWidth = max(width, 1)
+        for (index, row) in rows.enumerated() {
+            if index > 0 {
+                y += Self.rowSpacing
+                if rows[index - 1].isSpoken != row.isSpoken {
+                    y += Self.spokenPairGap
+                }
+            }
+            let height = Self.lineHeight(for: row.isSpoken ? spokenFont : translatedFont)
+            frames.append(CGRect(x: 0, y: y, width: rowWidth, height: height))
+            y += height
+        }
+        return frames
     }
 
     static func boardHeight(
@@ -167,15 +196,14 @@ enum TheaterBilingualWrap {
         spokenFont: NSFont,
         translatedFont: NSFont
     ) -> CGFloat {
-        guard !rows.isEmpty else { return 0 }
-        var height: CGFloat = Self.boardTopClearance
-        for (index, row) in rows.enumerated() {
-            if index > 0 {
-                height += Self.rowSpacing
-            }
-            height += Self.lineHeight(for: row.isSpoken ? spokenFont : translatedFont)
-        }
-        return height
+        let frames = Self.lineFrames(
+            rows: rows,
+            spokenFont: spokenFont,
+            translatedFont: translatedFont,
+            width: 1
+        )
+        guard let last = frames.last else { return 0 }
+        return last.maxY + Self.boardTopClearance
     }
 
     static func rows(
@@ -205,11 +233,11 @@ enum TheaterBilingualWrap {
         let translatedLines = self.visualLines(translated, font: translatedFont, width: usable)
         var rows: [Row] = []
         rows.reserveCapacity(spokenLines.count + translatedLines.count)
-        for line in spokenLines {
-            self.append(line, isSpoken: true, onto: &rows)
-        }
         for line in translatedLines {
             self.append(line, isSpoken: false, onto: &rows)
+        }
+        for line in spokenLines {
+            self.append(line, isSpoken: true, onto: &rows)
         }
         return rows
     }

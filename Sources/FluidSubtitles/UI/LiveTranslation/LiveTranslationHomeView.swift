@@ -24,22 +24,26 @@ struct LiveTranslationHomeView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("theater.needsMacOS26")
                 }
-                self.statusRow
+                if self.theaterStatusText != nil {
+                    self.statusRow
+                }
                 if TheaterAvailability.isSupported {
                     self.stageCard
-                    TheaterEngineCards(
-                        openVoiceEngine: self.openVoiceEngine,
-                        openTranslationEngine: self.openTranslationEngine,
-                        showsPurpose: false
-                    )
-                    if self.settings.theaterSessionMode.showsTranslation {
-                        TheaterTalkPackCard()
+                    if self.settings.theaterListenUsed {
+                        TheaterEngineCards(
+                            openVoiceEngine: self.openVoiceEngine,
+                            openTranslationEngine: self.openTranslationEngine,
+                            showsPurpose: false
+                        )
+                        if self.settings.theaterSessionMode.showsTranslation {
+                            TheaterTalkPackCard()
+                        }
                     }
                     if !self.readySnapshot.canListen || !self.readySnapshot.microphoneAllowed {
                         self.readinessCard
                     }
                 }
-                CommercialLicenseStatusCard()
+                CommercialLicenseStatusCard(compact: true)
             }
             .fluidPageContent()
             .accessibilityIdentifier("theater.home")
@@ -88,15 +92,33 @@ struct LiveTranslationHomeView: View {
                     titleSize: 32,
                     spokenSize: 16
                 )
-                self.modePicker
-                TranslationLanguagePairCard(showsCard: false)
-                if self.settings.theaterSessionMode.showsTranslation {
-                    self.spokenLineRow
-                    TheaterAudienceCard(showsCard: false)
+                Text(self.arrivalSummary)
+                    .font(self.theme.typography.body)
+                    .foregroundStyle(self.theme.palette.primaryText)
+                DisclosureGroup("Adjust") {
+                    VStack(alignment: .leading, spacing: 16) {
+                        self.modePicker
+                        TranslationLanguagePairCard(showsCard: false)
+                        if self.settings.theaterSessionMode.showsTranslation {
+                            self.spokenLineRow
+                            TheaterAudienceCard(showsCard: false)
+                        }
+                    }
+                    .padding(.top, 8)
                 }
             }
         }
         .accessibilityIdentifier("theater.stage")
+    }
+
+    private var arrivalSummary: String {
+        let mode = self.settings.theaterSessionMode.displayName
+        let spoken = SpokenLanguageResolver.sourceLanguage().displayName
+        guard self.settings.theaterSessionMode.showsTranslation else {
+            return "\(mode) · \(spoken)"
+        }
+        let shown = SpokenLanguageResolver.targetLanguage().displayName
+        return "\(mode) · \(spoken) → \(shown)"
     }
 
     @ViewBuilder
@@ -117,35 +139,19 @@ struct LiveTranslationHomeView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
-                TheaterWordPicker(
-                    accessibilityLabel: TheaterReadiness.spokenLineTitle,
-                    accessibilityIdentifier: "theater.home.spokenLine",
-                    options: Array(TheaterSpokenLineMode.allCases),
-                    title: { $0.displayName },
-                    selection: Binding(
-                        get: { self.settings.theaterSpokenLineMode },
-                        set: { self.settings.theaterSpokenLineMode = $0 }
-                    )
-                )
+                TheaterSpokenLinePicker(accessibilityIdentifier: "theater.home.spokenLine")
             }
         }
     }
 
     private var statusRow: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
+        Group {
             if let status = self.theaterStatusText {
                 Text(status)
                     .font(self.theme.typography.caption)
                     .foregroundStyle(self.theaterStatusColor)
                     .accessibilityIdentifier("theater.status")
             }
-            Button("Setup Wizard") {
-                self.settings.startSetupWizard()
-            }
-            .buttonStyle(.theaterText)
-            .help(TheaterSetupWizard.welcomeDetail)
-            .accessibilityIdentifier("theater.home.setupWizard")
-            Spacer(minLength: 0)
         }
     }
 
@@ -371,7 +377,7 @@ struct LiveTranslationSettingsView: View {
                         Text("Each sentence appears when it is ready.")
                             .font(self.theme.typography.bodyStrong)
                             .foregroundStyle(self.settingsTitleText)
-                        Text("The board stays quiet until that sentence is accepted.")
+                        Text("Nothing shows while it is still being heard.")
                             .font(self.theme.typography.bodySmall)
                             .foregroundStyle(self.settingsSecondaryText)
                     }
@@ -394,19 +400,7 @@ struct LiveTranslationSettingsView: View {
                             .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer()
-                        Picker(TheaterReadiness.spokenLineTitle, selection: Binding(
-                            get: { self.settings.theaterSpokenLineMode },
-                            set: { self.settings.theaterSpokenLineMode = $0 }
-                        )) {
-                            ForEach(TheaterSpokenLineMode.allCases) { mode in
-                                Text(mode.displayName).tag(mode)
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.menu)
-                        .disabled(SpokenLanguageResolver.isSameLanguagePair())
-                        .accessibilityLabel(TheaterReadiness.spokenLineTitle)
-                        .accessibilityIdentifier("theater.settings.spokenLine")
+                        TheaterSpokenLinePicker(accessibilityIdentifier: "theater.settings.spokenLine")
                     }
                     Text(TheaterReadiness.spokenLineSetupNote)
                         .font(self.theme.typography.bodySmall)
@@ -877,7 +871,6 @@ struct TranslationLanguagePairCard: View {
         HStack(alignment: .bottom, spacing: 16) {
             self.languagePicker(
                 title: "I speak",
-                pickerTitle: "Source",
                 selection: self.sourceLanguageID,
                 languages: TranslationLanguageCatalog.menuOrder
             )
@@ -885,7 +878,6 @@ struct TranslationLanguagePairCard: View {
                 self.swapButton
                 self.languagePicker(
                     title: "Show as",
-                    pickerTitle: "Target",
                     selection: self.targetLanguageID,
                     languages: self.targetLanguages
                 )
@@ -895,7 +887,6 @@ struct TranslationLanguagePairCard: View {
 
     private func languagePicker(
         title: String,
-        pickerTitle: String,
         selection: Binding<String>,
         languages: [TranslationLanguage]
     ) -> some View {
@@ -903,15 +894,11 @@ struct TranslationLanguagePairCard: View {
             Text(title)
                 .font(self.theme.typography.caption)
                 .foregroundStyle(self.theme.palette.secondaryText)
-            Picker(pickerTitle, selection: selection) {
-                ForEach(languages) { language in
-                    Text(language.displayName).tag(language.id)
-                }
-            }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .frame(minWidth: 168, alignment: .leading)
-            .accessibilityLabel(title)
+            TheaterLanguageMenu(
+                title: title,
+                selection: selection,
+                languages: languages
+            )
         }
     }
 
@@ -920,7 +907,8 @@ struct TranslationLanguagePairCard: View {
             self.controller.swapDirection()
         }
         .buttonStyle(.theaterText)
-        .help("Swap spoken and translated languages")
+        .disabled(SpokenLanguageResolver.isSameLanguagePair())
+        .help("Swap I speak and Show as.")
         .accessibilityLabel("Swap languages")
     }
 
