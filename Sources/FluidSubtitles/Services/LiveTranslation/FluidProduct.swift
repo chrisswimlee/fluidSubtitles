@@ -69,7 +69,7 @@ nonisolated enum FluidProduct {
         "fluidSubtitles is by Chris Swim Lee (chrisswimlee.com). Speech recognition comes from FluidVoice by altic-dev. Theater captions and insert are ours. Licensed under GPLv3."
 
     static let creditShort =
-        "By Chris Swim Lee. Speech recognition from FluidVoice by altic-dev. GPLv3."
+        "By Chris Swim Lee. GPLv3."
 
     static var updateRepository: (owner: String, repo: String)? {
         guard let owner = self.githubOwner, let repo = self.githubRepo,

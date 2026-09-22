@@ -14,7 +14,7 @@ Open **Theater**, set **I speak** and **Show as**, then press **Open Theater** a
 
 ![Theater captions](docs/screenshots/theater.png)
 
-**fluidSubtitles is by [Chris Swim Lee](https://chrisswimlee.com), a branch of [FluidVoice](https://github.com/altic-dev/FluidVoice) by altic-dev.** Speech recognition, live engines, and the core macOS app are theirs. This branch adds live translation and Theater captions. Licensed under GPLv3 — please star and support the original project.
+By [Chris Swim Lee](https://chrisswimlee.com). Licensed under GPLv3.
 
 **For work:** if IT or legal need a named commercial license or an SLA, [request one](https://chrisswimlee.com/fluidSubtitles/license/). Personal and evaluation use stays free.
 
@@ -86,7 +86,7 @@ I speak and Show as are the setup list: every language both Apple Translation an
 
 The app is unsandboxed (Hardened Runtime on). Theater needs microphone access. Insert-into-another-app needs Accessibility. Voice models and Apple Translation packs download on first use; they are not inside the zip.
 
-Maintainers: a `v*` tag runs `.github/workflows/release.yml` (Developer ID + notarization). A `preview-<version>-<n>` tag publishes an unsigned pre-release. Hosted CI cannot prove a live Theater listen.
+Maintainers: push a tag like `preview-1.6.11-1` (`git tag preview-1.6.11-1 && git push origin preview-1.6.11-1`) and the Preview workflow publishes that commit as a pre-release (`./build.sh preview`). A signed release needs a Developer ID: `./build.sh release` with `APPLE_ID`, `APPLE_TEAM_ID`, and `APPLE_APP_SPECIFIC_PASSWORD`, then a `v*` tag runs `.github/workflows/release.yml`. Hosted CI cannot prove a live Theater listen.
 
 ---
 
@@ -165,7 +165,7 @@ xcodebuild test -project fluidSubtitles.xcodeproj -scheme fluidSubtitles -destin
 
 fluidSubtitles is **local-first**. Your voice, audio, and transcribed text never leave your machine unless you explicitly opt in to a cloud AI provider.
 
-This release does not send analytics, feedback, or update checks to FluidVoice or to a third-party analytics host.
+This release does not send analytics, feedback, or update checks to a third-party analytics host.
 
 **Not collected:**
 
@@ -187,6 +187,10 @@ Firms that need a vendor they can sanction — a named license, a security conta
 A paid key is air-gapped. It replaces the in-app work notice with **Licensed to** your organization. It does not phone home. See [docs/COMMERCIAL.md](docs/COMMERCIAL.md).
 
 This is not consulting. Consulting is [Engage](https://chrisswimlee.com/engage/).
+
+## Credits
+
+fluidSubtitles is built on [FluidVoice](https://github.com/altic-dev/FluidVoice) by altic-dev, which provides speech recognition, the live engines, and the core macOS app. Live translation and Theater captions are added here. If you find it useful, consider starring FluidVoice too.
 
 ---
 

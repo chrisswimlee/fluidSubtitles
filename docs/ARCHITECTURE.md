@@ -42,7 +42,7 @@ Printed Theater lines stay put for this Listen. The board only slides up when a 
 
 ## What this product does not include
 
-These FluidVoice surfaces were removed from this branch. Do not add them back without a product decision:
+These FluidVoice surfaces were removed. Do not add them back without a product decision:
 
 - Command Mode, terminal agent, and command chat history
 - Rewrite / Edit Mode

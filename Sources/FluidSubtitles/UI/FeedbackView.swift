@@ -64,7 +64,7 @@ struct FeedbackView: View {
                                     .font(.system(size: 16, weight: .semibold))
                                     .foregroundStyle(self.theme.palette.primaryText)
 
-                                Text("\(FluidProduct.displayName) is by \(FluidProduct.authorName). The speech engine comes from FluidVoice. Star or sponsor that project if you want to support the upstream work.")
+                                Text("\(FluidProduct.displayName) is by \(FluidProduct.authorName).")
                                     .font(.system(size: 13))
                                     .foregroundStyle(self.theme.palette.secondaryText)
                                     .fixedSize(horizontal: false, vertical: true)
@@ -77,19 +77,6 @@ struct FeedbackView: View {
                                     HStack(spacing: 8) {
                                         Image(systemName: "globe")
                                         Text(FluidProduct.authorSiteHost)
-                                            .fontWeight(.semibold)
-                                    }
-                                    .font(.system(size: 14))
-                                    .padding(.horizontal, 20)
-                                    .padding(.vertical, 10)
-                                }
-                                .fluidButton(.glass, size: .medium)
-                                .buttonHoverEffect()
-
-                                Link(destination: FluidProduct.upstreamURL) {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: "star.fill")
-                                        Text("FluidVoice on GitHub")
                                             .fontWeight(.semibold)
                                     }
                                     .font(.system(size: 14))
