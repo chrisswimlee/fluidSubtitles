@@ -13,39 +13,15 @@ struct TheaterTalkPackCard: View {
     var body: some View {
         ThemedCard(style: .standard, hoverEffect: false) {
             VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Talk notes")
-                            .font(self.theme.typography.bodyStrong)
-                        Text(self.statusLine)
-                            .font(self.theme.typography.bodySmall)
-                            .foregroundStyle(self.theme.palette.secondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                        if let preview = self.termPreview {
-                            Text(preview)
-                                .font(self.theme.typography.caption)
-                                .foregroundStyle(self.theme.palette.secondaryText)
-                                .lineLimit(1)
-                                .accessibilityIdentifier("theater.talkPack.preview")
-                        }
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 12) {
+                        self.talkCopy
+                        Spacer(minLength: 12)
+                        self.talkActions
                     }
-                    Spacer(minLength: 8)
-                    HStack(spacing: 8) {
-                        Button(self.settings.hasTheaterTalkPack ? "Replace" : "Import") {
-                            self.importNotes()
-                        }
-                        .buttonStyle(.theaterText)
-                        .controlSize(.regular)
-                        .accessibilityIdentifier("theater.talkPack.import")
-                        if self.settings.hasTheaterTalkPack {
-                            Button("Remove") {
-                                self.settings.clearTheaterTalkPack()
-                                self.loadError = nil
-                            }
-                            .buttonStyle(.theaterText)
-                            .controlSize(.regular)
-                            .accessibilityIdentifier("theater.talkPack.remove")
-                        }
+                    VStack(alignment: .leading, spacing: 10) {
+                        self.talkCopy
+                        self.talkActions
                     }
                 }
                 self.termInspector
@@ -60,6 +36,43 @@ struct TheaterTalkPackCard: View {
         }
         .help(TheaterReadiness.talkPack)
         .accessibilityIdentifier("theater.talkPack")
+    }
+
+    private var talkCopy: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Talk notes")
+                .font(self.theme.typography.bodyStrong)
+            Text(self.statusLine)
+                .font(self.theme.typography.bodySmall)
+                .foregroundStyle(self.theme.palette.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            if let preview = self.termPreview {
+                Text(preview)
+                    .font(self.theme.typography.caption)
+                    .foregroundStyle(self.theme.palette.secondaryText)
+                    .lineLimit(1)
+                    .accessibilityIdentifier("theater.talkPack.preview")
+            }
+        }
+    }
+
+    private var talkActions: some View {
+        HStack(spacing: 8) {
+            Button(self.settings.hasTheaterTalkPack ? "Replace" : "Import") {
+                self.importNotes()
+            }
+            .buttonStyle(.theaterText)
+            .accessibilityIdentifier("theater.talkPack.import")
+            if self.settings.hasTheaterTalkPack {
+                Button("Remove") {
+                    self.settings.clearTheaterTalkPack()
+                    self.loadError = nil
+                }
+                .buttonStyle(.theaterTextDestructive)
+                .accessibilityIdentifier("theater.talkPack.remove")
+            }
+        }
+        .fixedSize(horizontal: true, vertical: true)
     }
 
     /// Every name, one-by-one delete, and a field to add a name the file missed.
@@ -81,9 +94,13 @@ struct TheaterTalkPackCard: View {
                                     Button {
                                         self.settings.removeTheaterTalkPackTerm(term)
                                     } label: {
-                                        Image(systemName: "minus.circle")
+                                        Image(systemName: "minus.circle.fill")
+                                            .font(.system(size: 14, weight: .semibold))
+                                            .frame(width: 28, height: 28)
+                                            .contentShape(Rectangle())
                                     }
-                                    .buttonStyle(.borderless)
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(Color(nsColor: .systemRed))
                                     .accessibilityLabel("Remove \(term)")
                                 }
                             }

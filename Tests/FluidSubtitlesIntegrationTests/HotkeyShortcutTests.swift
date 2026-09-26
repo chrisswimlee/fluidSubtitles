@@ -843,8 +843,8 @@ final class HotkeyShortcutTests: XCTestCase {
         }
     }
 
-    func testInputSelectionPersistsAppPreference() throws {
-        try self.withRestoredDefaults(keys: [
+    func testInputSelectionPersistsAppPreference() {
+        self.withRestoredDefaults(keys: [
             self.preferredInputDeviceUIDKey,
         ]) {
             SettingsStore.shared.recordInputDeviceSelection("studio-mic")
@@ -1211,8 +1211,8 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     @MainActor
-    func testLegacySystemModeSeedsPriorityFromCurrentDefault() throws {
-        try self.withRestoredDefaults(keys: [
+    func testLegacySystemModeSeedsPriorityFromCurrentDefault() {
+        self.withRestoredDefaults(keys: [
             self.microphoneSelectionModeKey,
             self.preferredInputDeviceUIDKey,
             self.microphoneSelectionMigrationVersionKey,
@@ -1254,8 +1254,8 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     @MainActor
-    func testLegacyStoredMicrophoneWithoutModeKeyKeepsUserSelection() throws {
-        try self.withRestoredDefaults(keys: [
+    func testLegacyStoredMicrophoneWithoutModeKeyKeepsUserSelection() {
+        self.withRestoredDefaults(keys: [
             self.microphoneSelectionModeKey,
             self.preferredInputDeviceUIDKey,
             self.microphoneSelectionMigrationVersionKey,
@@ -1282,8 +1282,8 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     @MainActor
-    func testFreshInstallKeepsPriorityUsableWhileWaitingForMacOSDefault() throws {
-        try self.withRestoredDefaults(keys: [
+    func testFreshInstallKeepsPriorityUsableWhileWaitingForMacOSDefault() {
+        self.withRestoredDefaults(keys: [
             self.microphoneSelectionModeKey,
             self.preferredInputDeviceUIDKey,
             self.microphoneSelectionMigrationVersionKey,
@@ -1330,8 +1330,8 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     @MainActor
-    func testFreshInstallPrioritizesMacOSDefaultWhileTemporarilyUnusable() throws {
-        try self.withRestoredDefaults(keys: [
+    func testFreshInstallPrioritizesMacOSDefaultWhileTemporarilyUnusable() {
+        self.withRestoredDefaults(keys: [
             self.microphoneSelectionModeKey,
             self.preferredInputDeviceUIDKey,
             self.microphoneSelectionMigrationVersionKey,
@@ -1364,8 +1364,8 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     @MainActor
-    func testMicrophoneMigrationWaitsForAUsableDeviceList() throws {
-        try self.withRestoredDefaults(keys: [
+    func testMicrophoneMigrationWaitsForAUsableDeviceList() {
+        self.withRestoredDefaults(keys: [
             self.microphoneSelectionModeKey,
             self.preferredInputDeviceUIDKey,
             self.microphoneSelectionMigrationVersionKey,
@@ -1387,8 +1387,8 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     @MainActor
-    func testManualMicrophoneMigrationPreservesAvailableSelection() throws {
-        try self.withRestoredDefaults(keys: [
+    func testManualMicrophoneMigrationPreservesAvailableSelection() {
+        self.withRestoredDefaults(keys: [
             self.microphoneSelectionModeKey,
             self.preferredInputDeviceUIDKey,
             self.microphoneSelectionMigrationVersionKey,
@@ -1417,8 +1417,8 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     @MainActor
-    func testMicrophoneMigrationWithoutBuiltInReplacesMissingSelectionWithDefault() throws {
-        try self.withRestoredDefaults(keys: [
+    func testMicrophoneMigrationWithoutBuiltInReplacesMissingSelectionWithDefault() {
+        self.withRestoredDefaults(keys: [
             self.microphoneSelectionModeKey,
             self.preferredInputDeviceUIDKey,
             self.microphoneSelectionMigrationVersionKey,
@@ -1447,8 +1447,8 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     @MainActor
-    func testVersionOneMigrationRepairsForcedBuiltInSelection() throws {
-        try self.withRestoredDefaults(keys: [
+    func testVersionOneMigrationRepairsForcedBuiltInSelection() {
+        self.withRestoredDefaults(keys: [
             self.preferredInputDeviceUIDKey,
             self.microphoneSelectionMigrationVersionKey,
         ]) {
@@ -1478,8 +1478,8 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     @MainActor
-    func testVersionOneMigrationRepairsUnavailableBuiltInForClamshellUser() throws {
-        try self.withRestoredDefaults(keys: [
+    func testVersionOneMigrationRepairsUnavailableBuiltInForClamshellUser() {
+        self.withRestoredDefaults(keys: [
             self.preferredInputDeviceUIDKey,
             self.microphoneSelectionMigrationVersionKey,
         ]) {
@@ -1504,8 +1504,8 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     @MainActor
-    func testVersionOneMigrationPreservesDisconnectedExternalSelection() throws {
-        try self.withRestoredDefaults(keys: [
+    func testVersionOneMigrationPreservesDisconnectedExternalSelection() {
+        self.withRestoredDefaults(keys: [
             self.preferredInputDeviceUIDKey,
             self.microphoneSelectionMigrationVersionKey,
         ]) {
@@ -1534,8 +1534,8 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     @MainActor
-    func testMicrophoneCoordinatorKeepsAvailableUserSelection() throws {
-        try self.withRestoredDefaults(keys: [
+    func testMicrophoneCoordinatorKeepsAvailableUserSelection() {
+        self.withRestoredDefaults(keys: [
             self.preferredInputDeviceUIDKey,
         ]) {
             SettingsStore.shared.preferredInputDeviceUID = "studio-mic"
@@ -1561,8 +1561,8 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     @MainActor
-    func testMicrophoneCoordinatorUsesDefaultTemporarilyAndRestoresSelection() throws {
-        try self.withRestoredDefaults(keys: [
+    func testMicrophoneCoordinatorUsesDefaultTemporarilyAndRestoresSelection() {
+        self.withRestoredDefaults(keys: [
             self.preferredInputDeviceUIDKey,
             self.microphoneSelectionMigrationVersionKey,
         ]) {
@@ -1604,8 +1604,8 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     @MainActor
-    func testMicrophoneCoordinatorUsesCurrentInputWhenNoBuiltInExists() throws {
-        try self.withRestoredDefaults(keys: [
+    func testMicrophoneCoordinatorUsesCurrentInputWhenNoBuiltInExists() {
+        self.withRestoredDefaults(keys: [
             self.preferredInputDeviceUIDKey,
             self.microphoneSelectionMigrationVersionKey,
         ]) {
@@ -1633,8 +1633,8 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     @MainActor
-    func testMicrophonePriorityWinsOverDefaultAndBuiltIn() throws {
-        try self.withRestoredDefaults(keys: [
+    func testMicrophonePriorityWinsOverDefaultAndBuiltIn() {
+        self.withRestoredDefaults(keys: [
             self.microphoneSelectionModeKey,
             self.preferredInputDeviceUIDKey,
             self.microphonePriorityKey,
@@ -1663,8 +1663,8 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     @MainActor
-    func testResolvedMicrophoneIsNotMarkedActiveUntilFirstPCMConfirmation() throws {
-        try self.withRestoredDefaults(keys: [
+    func testResolvedMicrophoneIsNotMarkedActiveUntilFirstPCMConfirmation() {
+        self.withRestoredDefaults(keys: [
             self.microphoneSelectionModeKey,
             self.preferredInputDeviceUIDKey,
             self.microphonePriorityKey,
@@ -1699,8 +1699,8 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     @MainActor
-    func testDisablingMicrophoneChangeAlertsPreservesMicrophonePriority() throws {
-        try self.withRestoredDefaults(keys: [
+    func testDisablingMicrophoneChangeAlertsPreservesMicrophonePriority() {
+        self.withRestoredDefaults(keys: [
             self.microphonePriorityKey,
             self.showMicrophoneChangeAlertsKey,
         ]) {
@@ -1722,8 +1722,8 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     @MainActor
-    func testFailedPriorityDeviceAdvancesWithoutChangingSavedOrder() throws {
-        try self.withRestoredDefaults(keys: [
+    func testFailedPriorityDeviceAdvancesWithoutChangingSavedOrder() {
+        self.withRestoredDefaults(keys: [
             self.microphoneSelectionModeKey,
             self.preferredInputDeviceUIDKey,
             self.microphonePriorityKey,
@@ -1755,8 +1755,8 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     @MainActor
-    func testLegacySystemModeIsNormalizedWithoutReorderingPriority() throws {
-        try self.withRestoredDefaults(keys: [
+    func testLegacySystemModeIsNormalizedWithoutReorderingPriority() {
+        self.withRestoredDefaults(keys: [
             self.microphoneSelectionModeKey,
             self.preferredInputDeviceUIDKey,
             self.microphonePriorityKey,
@@ -1789,8 +1789,8 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     @MainActor
-    func testPrioritySkipsUnusableEnumeratedDeviceAndRestoresItAfterReconnect() throws {
-        try self.withRestoredDefaults(keys: [
+    func testPrioritySkipsUnusableEnumeratedDeviceAndRestoresItAfterReconnect() {
+        self.withRestoredDefaults(keys: [
             self.microphoneSelectionModeKey,
             self.preferredInputDeviceUIDKey,
             self.microphonePriorityKey,
@@ -1848,8 +1848,8 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     @MainActor
-    func testClamshellSkipsEnumeratedUnusableBuiltInMicrophone() throws {
-        try self.withRestoredDefaults(keys: [
+    func testClamshellSkipsEnumeratedUnusableBuiltInMicrophone() {
+        self.withRestoredDefaults(keys: [
             self.microphoneSelectionModeKey,
             self.preferredInputDeviceUIDKey,
             self.microphonePriorityKey,
@@ -1885,8 +1885,8 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     @MainActor
-    func testClamshellKeepsBuiltInTransportExternalMicrophoneAvailable() throws {
-        try self.withRestoredDefaults(keys: [
+    func testClamshellKeepsBuiltInTransportExternalMicrophoneAvailable() {
+        self.withRestoredDefaults(keys: [
             self.microphoneSelectionModeKey,
             self.preferredInputDeviceUIDKey,
             self.microphonePriorityKey,
@@ -1915,8 +1915,8 @@ final class HotkeyShortcutTests: XCTestCase {
         }
     }
 
-    func testNewMicrophoneEntersSecondAndStaysAfterDisconnecting() throws {
-        try self.withRestoredDefaults(keys: [
+    func testNewMicrophoneEntersSecondAndStaysAfterDisconnecting() {
+        self.withRestoredDefaults(keys: [
             self.preferredInputDeviceUIDKey,
             self.microphonePriorityKey,
         ]) {
@@ -1952,8 +1952,8 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     @MainActor
-    func testRemovedConnectedMicrophoneStaysRemovedAfterReconnect() throws {
-        try self.withRestoredDefaults(keys: [
+    func testRemovedConnectedMicrophoneStaysRemovedAfterReconnect() {
+        self.withRestoredDefaults(keys: [
             self.preferredInputDeviceUIDKey,
             self.microphonePriorityKey,
             self.suppressedMicrophoneUIDsKey,

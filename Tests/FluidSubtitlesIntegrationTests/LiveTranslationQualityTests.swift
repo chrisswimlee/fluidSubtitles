@@ -361,6 +361,14 @@ final class LiveTranslationQualityTests: XCTestCase {
 
     func testEngineCopyKeepsVoiceAndTranslationSeparate() {
         XCTAssertTrue(TheaterEngineCopy.voicePurpose.contains("speech into text"))
+        XCTAssertEqual(TheaterEngineCopy.voiceEngineName(.appleSpeech), "Apple Speech")
+        XCTAssertEqual(TheaterEngineCopy.voiceEngineName(.parakeetTDT), "Parakeet TDT v3")
+        XCTAssertEqual(TheaterEngineCopy.voiceEngineName(.parakeetRealtime), "Parakeet Flash")
+        XCTAssertEqual(
+            TheaterEngineCopy.voiceEngineDetail(.appleSpeech),
+            "Supported languages · Built-in"
+        )
+        XCTAssertTrue(TheaterEngineCopy.voiceEngineDetail(.whisperBase).contains("~81.0 MiB"))
         XCTAssertEqual(TheaterEngineCopy.translationName(), "Apple Translation")
         XCTAssertTrue(TheaterEngineCopy.translationPurpose.lowercased().contains("not a chat model"))
         XCTAssertEqual(TheaterTranslationEngineKind.apple.displayName, "Apple Translation")
@@ -858,13 +866,29 @@ final class LiveTranslationQualityTests: XCTestCase {
         XCTAssertTrue(
             StreamingTranscriptStitcher.confirmedClauseContains(
                 unit: "Today we trained the model.",
-                confirmed: "Today we trained the model."
+                confirmed: "Today we trained the model.",
+                languageID: "en"
             )
         )
         XCTAssertFalse(
             StreamingTranscriptStitcher.confirmedClauseContains(
                 unit: "Today we trained the model.",
-                confirmed: "Today we trained the model then we applied it"
+                confirmed: "Today we trained the model then we applied it",
+                languageID: "en"
+            )
+        )
+        XCTAssertFalse(
+            StreamingTranscriptStitcher.confirmedClauseContains(
+                unit: "Today we trained the model.",
+                confirmed: "Today we trained the model",
+                languageID: "en"
+            )
+        )
+        XCTAssertFalse(
+            StreamingTranscriptStitcher.confirmedClauseContains(
+                unit: "Hello. This is the second sentence.",
+                confirmed: "Hello. This is sen",
+                languageID: "en"
             )
         )
     }
@@ -903,46 +927,14 @@ final class LiveTranslationQualityTests: XCTestCase {
     }
 
     func testUnreadPendingStaysOffTheBoard() {
-        let pending = TheaterCaptionFlow.lines(
-            committed: [],
-            nextCaptionID: 1,
-            draft: "",
-            sourceDraft: "Then we applied it",
-            pendingSources: ["Today we trained the model."],
-            liveRowID: 2,
-            spokenDisplay: .paired
-        )
+        let pending = TheaterCaptionFlow.lines(board: .make(translated: []))
         XCTAssertTrue(pending.isEmpty)
-        let afterFail = TheaterCaptionFlow.lines(
-            committed: [],
-            nextCaptionID: 1,
-            draft: "",
-            sourceDraft: "Then we applied it",
-            pendingSources: [],
-            liveRowID: 2,
-            spokenDisplay: .paired
-        )
+        let afterFail = TheaterCaptionFlow.lines(board: .make(translated: []))
         XCTAssertTrue(afterFail.isEmpty)
-        XCTAssertEqual(
-            TheaterCaptionFlow.liveID(after: [], nextID: 1, pendingCount: 0),
-            "c-1"
-        )
-        XCTAssertEqual(
-            TheaterCaptionFlow.liveID(after: [], nextID: 2, pendingCount: 0),
-            "c-2"
-        )
     }
 
     func testPendingDraftRowsDoNotReserveAShowAsSlotOnTheBoard() {
-        let pending = TheaterCaptionFlow.lines(
-            committed: [],
-            nextCaptionID: 1,
-            draft: "",
-            sourceDraft: "Then we applied it",
-            pendingSources: ["Today we trained the model."],
-            liveRowID: 2,
-            spokenDisplay: .paired
-        )
+        let pending = TheaterCaptionFlow.lines(board: .make(translated: []))
         XCTAssertTrue(pending.isEmpty)
         let spokenFont = NSFont.systemFont(ofSize: 16)
         let titleFont = NSFont.systemFont(ofSize: 36)
@@ -974,17 +966,12 @@ final class LiveTranslationQualityTests: XCTestCase {
         XCTAssertEqual(smallWiden, 900)
     }
 
-    func testTornCommittedIDsDoNotCollideAcrossHistorySlots() {
-        let rows = TheaterCaptionFlow.lines(
-            committed: ["Hello.", "World."],
-            committedIDs: [5],
-            nextCaptionID: 6,
-            draft: "",
-            sourceDraft: "Then we applied it",
-            liveRowID: 6,
-            spokenDisplay: .paired
-        )
-        XCTAssertEqual(rows.map(\.id), ["c-5", "c-h-2"])
+    func testBoardRowIDsStayOnTheirLines() {
+        let rows = TheaterCaptionFlow.lines(board: .make(
+            translated: ["Hello.", "World."],
+            ids: [5, 6]
+        ))
+        XCTAssertEqual(rows.map(\.id), ["c-5", "c-6"])
         XCTAssertFalse(rows.contains { $0.isDraft })
     }
 
@@ -1100,10 +1087,10 @@ final class LiveTranslationQualityTests: XCTestCase {
         subscriber.beginListening()
         subscriber.handlePartial("Today we trained the model. Then we applied it.")
         subscriber.handlePartial("Today we trained the model. Then we applied it.")
-        let before = subscriber.liveCaptionID
+        let before = subscriber.nextCaptionID
         XCTAssertGreaterThan(before, 0)
         await subscriber.waitForIdleForTesting()
-        XCTAssertEqual(subscriber.liveCaptionID, before)
+        XCTAssertEqual(subscriber.nextCaptionID, before)
     }
 
 }

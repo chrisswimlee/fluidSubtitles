@@ -125,6 +125,7 @@ struct SettingsBackupPayload: Codable, Equatable {
     let theaterDynamicPairing: Bool?
     let theaterCaptionPrintStyle: String?
     let theaterSpokenLineMode: String?
+    let theaterCaptionSpacing: Int?
 }
 
 struct AppBackupDocument: Codable, Equatable {

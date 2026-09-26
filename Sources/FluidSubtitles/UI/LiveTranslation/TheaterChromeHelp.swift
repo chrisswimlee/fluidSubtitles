@@ -17,17 +17,17 @@ enum TheaterChromeHelp {
     )
     static let stop = tag(
         "Stop",
-        does: "Stop Listen. A real leftover sentence appears once. Printed lines stay.",
+        does: TheaterReadiness.stopHelp,
         shortcut: "Control-Option-L"
     )
     static let pause = tag(
         "Pause",
-        does: "Hold capture and drop a leftover. Printed lines stay. A translation already on its way may still land.",
+        does: TheaterReadiness.pauseHelp,
         shortcut: "Control-Option-P"
     )
     static let resume = tag(
         "Resume",
-        does: "Continue Listen. Printed lines stay. A dropped leftover does not come back.",
+        does: TheaterReadiness.resumeHelp,
         shortcut: "Control-Option-P"
     )
     static let iSpeak = tag(
@@ -48,7 +48,8 @@ enum TheaterChromeHelp {
     )
     static let retry = tag(
         "Retry",
-        does: "Retry the last failed translation."
+        does: "Retry the last failed translation.",
+        shortcut: "Control-Option-R"
     )
     static let downloadPack = tag(
         "Download pack",
@@ -56,15 +57,15 @@ enum TheaterChromeHelp {
     )
     static let captionsOnly = tag(
         "Captions only",
-        does: "Hide extra tools on Pop-up. Listen stays. Move the pointer to show languages without moving the captions."
+        does: "Hide the tool bar and the window bar. Move the pointer to show Listen and the other controls."
     )
     static let showAllControls = tag(
         "Show all controls",
-        does: "Bring back languages, theme, and board tools."
+        does: "Show the tool bar again."
     )
     static let minimize = tag(
         "Minimize Theater",
-        does: "Hide the board. Listen stays.",
+        does: TheaterReadiness.minimizeHelp,
         shortcut: "Control-Option-H"
     )
     static let expand = tag(
@@ -98,6 +99,10 @@ enum TheaterChromeHelp {
         does: "Grow spoken and Show-as.",
         shortcut: "Control-Option-Equals"
     )
+    static let captionSize = tag(
+        "Size",
+        does: "Caption size. Smaller and larger change spoken and Show-as."
+    )
     static let copyAll = tag(
         "Copy all",
         does: "Copy every caption on the board.",
@@ -114,16 +119,12 @@ enum TheaterChromeHelp {
     )
     static let clear = tag(
         "Clear captions",
-        does: "Remove every caption. Talk notes stay. Listen can keep going.",
+        does: TheaterReadiness.clearCaptions,
         shortcut: "Control-Option-K"
     )
     static let board = tag(
         "Settings",
-        does: "Spoken line, Overlay or Pop-up, plate, position, and screen share."
-    )
-    static let more = tag(
-        "More",
-        does: "Edit captions, export, or close Theater. Close stops Listen."
+        does: "Copy, type, undo, minimize, theme, Overlay or Pop-up, how lines print, position, export, and close. If Listen is on, Close asks before it stops."
     )
     static let popup = tag(
         "Pop-up",
@@ -134,9 +135,9 @@ enum TheaterChromeHelp {
         does: "Only the caption text. Slides stay clickable.",
         shortcut: "Control-Option-T shows tools"
     )
-    static let hideFromScreenShare = tag(
-        "Hide from screen share",
-        does: "Keeps Theater off Zoom and recordings. Turn off so a remote audience sees captions."
+    static let screenShare = tag(
+        TheaterReadiness.screenShareTitle,
+        does: TheaterReadiness.screenShare
     )
     static let captionPlate = tag(
         "Caption plate",
@@ -148,15 +149,7 @@ enum TheaterChromeHelp {
     )
     static let spokenLine = tag(
         "Spoken line",
-        does: "Off hides the original language. After a pause prints it under the sentence. While talking grows it under the title."
-    )
-    static let editCaptions = tag(
-        "Edit captions",
-        does: "Change printed text on this board."
-    )
-    static let doneEditing = tag(
-        "Done",
-        does: "Save caption edits and return to the live board."
+        does: TheaterReadiness.spokenLineTranslate
     )
     static let exportBilingual = tag(
         "Bilingual text",
@@ -172,7 +165,7 @@ enum TheaterChromeHelp {
     )
     static let closeTheater = tag(
         "Close Theater",
-        does: "Hide Theater and stop Listen."
+        does: "Hides Theater. If the microphone is on, this asks before it stops. Printed lines come back when you open it again. Talk notes stay."
     )
     static let talkNotes = tag(
         "Talk notes",
@@ -221,6 +214,15 @@ enum TheaterChromeHelp {
         case .captionBar: return Self.captionBar
         }
     }
+
+    static let linePrint = tag(
+        "Line print",
+        does: "How a finished caption arrives. At once, by word, by letter, or fade."
+    )
+    static let printGap = tag(
+        "Print gap",
+        does: "The pause between each word or letter. Fade uses this as how long the line takes to arrive. At once has no gap."
+    )
 
     static func captionFont(current: String) -> String {
         tag("Caption font", does: "Typeface for spoken and Show-as. Now \(current).")

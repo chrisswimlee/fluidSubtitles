@@ -2,13 +2,14 @@ import Foundation
 
 enum LiveTranslationMTError: Error {
     case timedOut
+    case sharpenBudget
 }
 
 @MainActor
 enum LiveTranslationMT {
     /// Apple Translation is `session.translate(text)` with no prompt. Isolated
     /// Korean/Thai clauses lose zero-subject context, so commit sends the last
-    /// 2–4 source clauses plus the new one, then peels the new caption out.
+    /// 2–4 source clauses with the new one marked, then takes that span.
     static func translateClause(
         _ text: String,
         source: TranslationLanguage,
@@ -66,9 +67,14 @@ enum LiveTranslationMT {
         prior: (sources: [String], translations: [String]),
         translator: TranslationEngine
     ) async throws -> String {
+        // Do not pause the speech tick for this call. A commit used to skip
+        // every recognition update until Apple returned, so a slow or repeated
+        // translation left a hole and the next tick had to catch up. The
+        // Apple mailbox still runs one session call at a time.
         if !prior.sources.isEmpty {
-            let payload = TranslationClauseSegmenter.joinTranslatedLines(
-                prior.sources + [text],
+            let payload = LiveTranslationCommitContext.markedContextPayload(
+                priors: prior.sources,
+                current: text,
                 languageID: source.id
             )
             let contextual = try await self.translateProtected(
@@ -79,15 +85,43 @@ enum LiveTranslationMT {
                 kind: kind,
                 translator: translator
             )
-            if let peeled = LiveTranslationCommitContext.peeledNewTranslation(
-                contextual,
-                priorTranslations: prior.translations,
-                targetID: target.id
-            ), LiveTranslationCommitContext.isSanePeeledCaption(
-                peeled,
-                isolatedSource: text,
-                targetID: target.id
-            ) {
+            if let marked = LiveTranslationCommitContext.markedNewTranslation(contextual),
+               LiveTranslationCommitContext.isSanePeeledCaption(
+                   marked,
+                   isolatedSource: text,
+                   targetID: target.id
+               )
+            {
+                return marked
+            }
+            DebugLogger.shared.debug(
+                "Contextual caption marks did not yield the new clause.",
+                source: "LiveTranslation"
+            )
+            // A blob that still contains a mark has a broken boundary. Prefix
+            // peel would keep that mark in the caption. Peel only when the
+            // model dropped the marks and kept the prior caption in front.
+            if LiveTranslationCommitContext.containsContextClauseMark(contextual) == false,
+               let lined = LiveTranslationCommitContext.lineBoundNewTranslation(
+                   contextual,
+                   priorTranslations: prior.translations,
+                   isolatedSource: text,
+                   targetID: target.id
+               )
+            {
+                return lined
+            }
+            if LiveTranslationCommitContext.containsContextClauseMark(contextual) == false,
+               let peeled = LiveTranslationCommitContext.peeledNewTranslation(
+                   contextual,
+                   priorTranslations: prior.translations,
+                   targetID: target.id
+               ), LiveTranslationCommitContext.isSanePeeledCaption(
+                   peeled,
+                   isolatedSource: text,
+                   targetID: target.id
+               )
+            {
                 return peeled
             }
         }
@@ -101,6 +135,49 @@ enum LiveTranslationMT {
         )
     }
 
+    /// True when an ASR tick is still running after one preview interval.
+    /// A zero wait reports the current tick without sleeping. Skipping polish
+    /// is not a listen failure, and a polish that already started is not cancelled.
+    static func polishYieldsToASRChunk(maxWait: TimeInterval? = nil) async -> Bool {
+        let asr = AppServices.shared.asr
+        guard asr.isProcessingChunk else { return false }
+        let limit = maxWait ?? asr.streamingChunkDurationSeconds
+        guard limit > 0 else { return true }
+        let deadline = ProcessInfo.processInfo.systemUptime + limit
+        while asr.isProcessingChunk, ProcessInfo.processInfo.systemUptime < deadline {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        return asr.isProcessingChunk
+    }
+
+    /// Apple prints if local sharpen is still running when the budget ends.
+    /// A non-throwing group so the budget miss cannot discard a polish that already finished.
+    private static func withinFirstPrintBudget(
+        _ work: @escaping @MainActor () async throws -> String
+    ) async throws -> String {
+        let outcome: Result<String, Error> = await withTaskGroup(of: Result<String, Error>.self) { group in
+            group.addTask { @MainActor in
+                do {
+                    return .success(try await work())
+                } catch {
+                    return .failure(error)
+                }
+            }
+            group.addTask {
+                do {
+                    try await Task.sleep(nanoseconds: LiveTranslationTiming.firstPrintSharpenNanoseconds)
+                } catch {
+                    return .failure(CancellationError())
+                }
+                return .failure(LiveTranslationMTError.sharpenBudget)
+            }
+            let first = await group.next() ?? .failure(LiveTranslationMTError.sharpenBudget)
+            group.cancelAll()
+            return first
+        }
+        return try outcome.get()
+    }
+
     /// Sharpen an Apple draft before it prints. Does not start the runner.
     static func localFirstPrint(
         _ text: String,
@@ -111,16 +188,20 @@ enum LiveTranslationMT {
         terms: [String],
         llmEngine: LLMTranslationEngine
     ) async -> String? {
+        guard TheaterAcceleratorGate.shared.allowsSharpen else { return nil }
         guard llmEngine.isReadyForCommitTranslation() else { return nil }
+        if await Self.polishYieldsToASRChunk() { return nil }
         do {
-            let polished = try await llmEngine.polish(
-                sourceText: text,
-                draft: draft,
-                priorSource: prior.sources,
-                priorCaptions: prior.translations,
-                source: source,
-                target: target
-            )
+            let polished = try await Self.withinFirstPrintBudget {
+                try await llmEngine.polish(
+                    sourceText: text,
+                    draft: draft,
+                    priorSource: prior.sources,
+                    priorCaptions: prior.translations,
+                    source: source,
+                    target: target
+                )
+            }
             let cleaned = polished.trimmingCharacters(in: .whitespacesAndNewlines)
             let draftTrimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
             guard cleaned != draftTrimmed else { return nil }
@@ -144,7 +225,10 @@ enum LiveTranslationMT {
             }
             llmEngine.noteListenEcho(false)
             return accepted
+        } catch LiveTranslationMTError.sharpenBudget {
+            return nil
         } catch {
+            if TheaterSharpenAdmission.isWithdrawal(error) { return nil }
             llmEngine.noteListenFailure()
             DebugLogger.shared.debug(
                 "Local first-print polish skipped: \(error.localizedDescription)",
@@ -162,6 +246,7 @@ enum LiveTranslationMT {
         terms: [String],
         llmEngine: LLMTranslationEngine
     ) async -> String? {
+        guard TheaterAcceleratorGate.shared.allowsSharpen else { return nil }
         guard llmEngine.isReadyForCommitTranslation() else { return nil }
         let protected = TranslationGlossary.protect(text, terms: terms)
         do {
@@ -181,6 +266,7 @@ enum LiveTranslationMT {
             }
             return restored
         } catch {
+            if TheaterSharpenAdmission.isWithdrawal(error) { return nil }
             DebugLogger.shared.debug(
                 "Local commit translation skipped: \(error.localizedDescription)",
                 source: "LiveTranslation"
@@ -215,9 +301,13 @@ enum LiveTranslationMT {
         engine: TranslationEngine,
         kind: TranslationRequestKind
     ) async throws -> String {
+        // The Apple mailbox already runs one session call at a time and lets a
+        // commit supersede a live prefetch. A second queue in front of it held
+        // a grown sentence behind a call that had already been replaced.
         do {
             return try await engine.translate(text, source: source, target: target, kind: kind)
         } catch {
+            if error is CancellationError { throw error }
             if let engineError = error as? TranslationEngineError,
                engineError.isSuperseded || engineError.isTimeout
             {

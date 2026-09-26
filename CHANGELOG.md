@@ -4,6 +4,12 @@ All notable changes to fluidSubtitles are documented in this file.
 
 ## [Unreleased]
 
+- Caption size and the gap between caption lines accept a typed point value. Size stays between 18 and 72. Spacing stays between 0 and 48 and starts at 14.
+- An unpunctuated leftover prints after a shorter quiet once the room is already silent: 1.2 seconds in English, 2.0 in Korean and Japanese, 1.5 in Thai. A local sharpen that is still running after 0.7 seconds loses, and the Apple line prints.
+- Spoken line is Off or On the board. Board and Insert is gone; a saved Board and Insert choice becomes On the board. On the board prints the original when the sentence is ready. A new Listen prints each line at once. Stop, Pause, Minimize, Clear, and Close say whether the microphone, the lines, and the talk notes stay. Screen share is an instruction to share the slides window. A missing Listen policy does not pause the presenter's media.
+- Home, the caption bar, Settings, and Setup use the same Spoken line menu. Home shows the talk on the card: Voice or Translate, languages, Spoken line, and screen share. Line print stays under Adjust. Engine cards say Voice Engine and Translation Engine.
+- Voice Engine is a list of engines with Use and Download. Speed and accuracy bars, filter, sort, and preview-then-activate are gone. Names say Apple Speech and Parakeet TDT v3.
+- Theater buttons darken when pressed. Listen stays filled. Stop is red so it stays easy to find. Remove and Clear are outlined in red. The board control is a gear labeled Settings. The selected accent has a ring around the swatch. Close Theater says it will ask before it stops Listen.
 - The Show-as title prints above the spoken line, with a fixed gap, so a wrap does not move the line the audience is reading.
 - One unfinished-clause rule: a real clause appears once when finished or confirmed by silence or Stop; caption Pause and Stop drop a leftover fragment; only Listen and type Stop still types a trailing fragment. Pause holds capture, cancels delayed unaccepted flushes, and does not resurrect the drop on Resume.
 - Theater Listen leaves spoken words like "period" and "um" on the board. It does not pause the presenter's media, play a stop chime, or switch Parakeet to Faster Long Dictation's incremental window.
@@ -12,33 +18,33 @@ All notable changes to fluidSubtitles are documented in this file.
 - The Dock icon, menu bar, and in-app mark are a caption lower-third, not chat bubbles. Theater Home leads with the board. The accent defaults to caption gold instead of the dictation teal. The sidebar says fluidSubtitles, live captions.
 - Theater Listen is no longer FluidVoice dictation. Captions and Listen and type start as `.theater`, own the ASR partial bus, and skip spoken-send / prompt-mode Stop. Escape stops the mic without dictation Stop. A busy Listen and type start unlocks so the next Listen is not stuck. A sentence stays off the board until it is accepted, then the whole sentence appears once. The first Apple Translation still has a 25 s floor. Leftover peel keeps the Korean, Japanese, or Thai rest of the line. Microphone-change alerts default off and only appear in fluidSubtitles. Settings hide Dictation. A FluidVoice Application Support folder is left alone when FluidVoice is still installed.
 - Settings, Getting Started, Feedback, and Theater Home show a For work notice with a commercial-license page and email. A signed offline key replaces that notice with Licensed to the organization. Personal use stays free; Listen stays unlocked.
-- Theater wrap fills the line until the next word does not fit. A restitch no longer hops leftover words to the next line at twelve words, and words already on the live row stay when recognition rewrites them.
+- Theater wrap fills the line until the next word does not fit. A restitch no longer hops leftover words to the next line at twelve words. A clause that grows in place updates that same printed line.
 - Same-language Voice appends each accepted sentence. A lagged restitch does not rewrite a sentence already on the board.
 - A leftover caption no longer waits for the next sentence when the last ASR tick of a pause lands late. The pause flush stays, and the first spoken words start typing instead of sitting blank.
 - Theater Pop-up always fills this display on Open. Drag a corner to resize; Minimize keeps that size. Overlay stays a caption bar.
-- Leftover peel keeps a similar next sentence in English, Korean, Japanese, and Thai. A one-word swap (영어 / 한국어, 英語 / 韓国語) prints as the next line instead of revising the last caption. A pause-cut fragment no longer stays on the live row. A new Listen can still repeat a short greeting; a printed lecture line stays put.
-- Theater Home puts this talk on one card: Voice / Translate, languages, Spoken line, and who sees captions, plus a caption-stack preview. Listen is the primary action. Setup Wizard sits on the status row.
-- The empty Theater board previews Show-as above spoken using the current pair and Spoken line setting. Hidden from Zoom, talk notes, and the pace cue are chips.
+- Leftover peel keeps a similar next sentence in English, Korean, Japanese, and Thai. A one-word swap (영어 / 한국어, 英語 / 韓国語) prints as the next line instead of revising the last caption. A pause-cut fragment does not appear on the board. A new Listen can still repeat a short greeting; a printed lecture line stays put.
+- Theater Home puts this talk on one card: Voice / Translate, languages, Spoken line, and screen share, plus a caption-stack preview. Listen is the primary action. Setup Wizard sits on the status row. Screenshots and a whole-screen Zoom or Meet share include Theater. Share the slides window when remote viewers should not see captions.
+- The empty Theater board previews Show-as above spoken using the current pair and Spoken line setting. The ghosts are language names. Talk notes and the pace cue are chips.
 - Theater buttons show a hover label that names them and what they do. Size buttons change spoken and Show-as, not only the spoken line.
-- Spoken line is Off, After a pause, or While talking. After a pause is the default: it waits, then translates the whole leftover with context and prints spoken under it. While talking translates word by word and grows spoken under the live title. Setup Wizard, Settings → Theater, and the Theater menu set it.
+- Spoken line is Off, After a pause, or While talking. After a pause and While talking both print the original under Show-as when the sentence is ready. While talking also shows it in the Insert notch. Setup Wizard, Settings → Theater, and the Theater menu set it.
 - The Theater board control is a gear labeled Settings.
 - First arrival is Listen. Setup Wizard opens only when you choose it. Home starts with the caption preview, and the language menus stay the full catalog.
 - Voice stays on this caption until a finished sentence has more speech after it, or until a pause. A comma or “and” no longer jumps to the next line mid-thought, and a lone Apple Speech period does not print “talk.” then hop to “talk about it.”
 - Theater types one incoming caption at a time. Extra finished sentences stay queued while their translations start, so a restitch does not dump several lines at once.
 - Theater commits every finished sentence in a fast restitch and starts each translation immediately, so Show-as does not wait until you stop talking.
-- Theater Flow / Word types the Show-as title before spoken, and a row that leaves current still finishes that title instead of dumping it.
-- Theater treats only a re-decode-confirmed prefix as ground truth, so a restitch cannot rewrite words already on the live row.
-- Theater keeps the live caption's row id when a translation fails or retries, so Flow does not remount and retype the title.
+- The board paints Show-as above the spoken sentence when the clause is accepted. There is no letter-by-letter draft.
+- Theater treats only a re-decode-confirmed prefix as ground truth. A restitch does not add a second copy of a sentence already on the board.
+- A growing clause keeps its line id when the replacement translation lands, so the board updates that line instead of adding a second copy.
 - A first-clause Apple Translation wait uses the 25 s floor; local polish no longer shares that timeout. Stop clears the mailbox in-flight slot so the next Listen is not stuck.
 - An unpunctuated pause-cut no longer peels the rest of the same sentence onto a new caption. Unspaced Korean aligns on a shared character run.
 - Pending rows reserve the Show-as slot, wrap width follows the board lock, and the board scrolls when a new wrap line appears.
 - Theater wrap fills the caption line. A new visual line starts when the next word does not fit.
 - Theater keeps a Show-as title that is already on screen: a late polish or empty draft no longer blanks it and dumps the new wording in one step.
-- Theater Flow types the Show-as title a little slower, and a finished sentence no longer keeps its last words on the next caption.
+- A finished sentence appears whole. Its last words do not stay on the next caption.
 - Theater wrap still fills the board, but a new line now starts on a word: opening quotes, hyphens, and Japanese small kana stay with their token instead of sitting alone.
 - Theater captions fill the Pop-up panel and grow with the board so a full-screen window is not stuck at the setting size.
-- Theater peels a finished sentence off the live row even while its translation is still in flight, and splits an unpunctuated Then / then / And restitch so two sentences do not stay on one caption. "and then" stays on this pair.
-- Theater print-in reserves the Show-as slot and the next wrap line, then types on the display refresh so the title does not jump.
+- Theater peels a finished sentence off the open tail even while its translation is still in flight, and splits an unpunctuated Then / then / And restitch so two sentences do not stay on one caption. "and then" stays on this pair. The open tail stays off the board until the sentence is accepted.
+- A sentence appears whole when it is accepted. There is no print-in animation.
 - Automatic update checks are off until you turn them on. Feedback and transcription examples stay on this Mac as a local draft; they are not POSTed.
 - Dictation history defaults to one year and at most 20,000 rows, with FTS search. Korean, Japanese, and Thai word counts no longer collapse to 1. Quit shuts ASR and Private AI down through terminateLater instead of spinning the main run loop. Update zips are hashed in chunks.
 

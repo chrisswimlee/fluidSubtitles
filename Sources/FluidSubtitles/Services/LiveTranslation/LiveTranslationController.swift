@@ -29,7 +29,7 @@ final class LiveTranslationController: ObservableObject {
     private var didStartFreshThisProcess = false
     private var needsSpokenEngineReload = false
     private var isStartingListen = false
-    private var isFinishingSession = false
+    @Published private(set) var isFinishingSession = false
     private var presenterRefreshPending = false
     private(set) var alignSpokenEngineCallCountForTesting = 0
     private var sessionTrace: LiveTranslationSessionTrace?
@@ -64,16 +64,12 @@ final class LiveTranslationController: ObservableObject {
             .store(in: &self.cancellables)
     }
 
+    /// Insert notch text. The Theater board paints accepted clauses instead.
     var overlayText: String {
         guard self.isSessionActive else { return self.subscriber.sourceDraft }
         let target = self.subscriber.liveCaptionText
         let source = self.subscriber.liveSpokenText
-        let mode = SettingsStore.shared.theaterSpokenLineMode
-        if mode.printsLiveSpoken, !source.isEmpty, target != source {
-            if target.isEmpty { return source }
-            return "\(source)\n\(target)"
-        }
-        if !SpokenLanguageResolver.isSameLanguagePair(), mode != .whileTalking {
+        if !SpokenLanguageResolver.isSameLanguagePair() {
             return target
         }
         return target.isEmpty ? source : target
@@ -106,7 +102,6 @@ final class LiveTranslationController: ObservableObject {
             model: SettingsStore.shared.selectedSpeechModel.rawValue,
             thermal: LiveTranslationThermalReadout.label(ProcessInfo.processInfo.thermalState)
         ))
-        PresenterCaptionController.shared.commitEdits()
         if kind == .captions {
             self.startFreshTheaterBoard()
         }
@@ -167,7 +162,6 @@ final class LiveTranslationController: ObservableObject {
         guard self.isSessionActive else { return }
         self.updateTrace { $0.partials += 1 }
         self.subscriber.handlePartial(text)
-        self.refreshPresenter()
         if self.listenKind == .insert {
             NotchOverlayManager.shared.updateTranscriptionText(self.overlayText)
         }
@@ -457,17 +451,7 @@ final class LiveTranslationController: ObservableObject {
         self.trace("translation warm done pair=\(source.id)>\(target.id) elapsedMs=\(elapsedMs)")
     }
 
-    func applyEditedDocument(_ text: String) {
-        let lines = text
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        self.subscriber.applyEditedLines(lines)
-        self.refreshPresenter()
-    }
-
     func startCaptionListening() {
-        PresenterCaptionController.shared.commitEdits()
         if self.isSessionActive, self.listenKind == .captions {
             self.trace(LiveTranslationTrace.event("listen skip", token: self.sessionToken, "reason=alreadyActive kind=captions"), level: .debug)
             return
@@ -692,6 +676,7 @@ final class LiveTranslationController: ObservableObject {
         self.stopToken = self.sessionToken
         self.isFinishingSession = true
         if stoppingListen {
+            self.isSessionActive = false
             TheaterHaptics.alignment()
         }
     }
@@ -730,13 +715,7 @@ final class LiveTranslationController: ObservableObject {
             self.onAccessibilityNeeded?()
             return
         }
-        let text: String
-        if PresenterCaptionController.shared.isEditing {
-            text = PresenterCaptionController.shared.documentTextForDelivery()
-            self.subscriber.markAllPosted()
-        } else {
-            text = self.subscriber.consumePendingInsertDocument()
-        }
+        let text = self.subscriber.consumePendingInsertDocument()
         guard !text.isEmpty else {
             self.trace("insert skipped reason=empty", level: .debug)
             return
@@ -755,7 +734,6 @@ final class LiveTranslationController: ObservableObject {
     }
 
     var hasClearableBoard: Bool {
-        if self.subscriber.archivedLineCount > 0 { return true }
         if self.subscriber.committedLines.contains(where: {
             !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }) {
@@ -792,7 +770,6 @@ final class LiveTranslationController: ObservableObject {
     /// Empty Theater. A leftover file from an older build must not come back
     /// on launch or a new caption Listen.
     func startFreshTheaterBoard() {
-        PresenterCaptionController.shared.cancelEditing()
         self.subscriber.reset(clearArchive: true)
         self.persistBoard()
         PresenterCaptionController.shared.clearDisplay()
@@ -938,27 +915,17 @@ final class LiveTranslationController: ObservableObject {
         if self.isPaused {
             status = "Paused"
             statusKind = .info
-        } else if status.isEmpty, let window = self.subscriber.lineWindowStatus {
-            status = window
-            statusKind = .info
         }
+        var board = self.subscriber.boardState
+        board.oldestInFlightWaitMs = self.subscriber.oldestInFlightWaitMilliseconds
         PresenterCaptionController.shared.update(
-            source: "",
-            draft: "",
-            committed: self.subscriber.committedLines,
-            committedIDs: self.subscriber.committedLineIDs,
-            nextCaptionID: self.subscriber.nextCaptionID,
-            committedSources: self.subscriber.committedSourceLines,
-            pendingSources: [],
-            inFlightCount: self.subscriber.inFlightCaptionCount,
-            liveRowID: 0,
+            board: board,
             pairLabel: SpokenLanguageResolver.pairLabel(),
             status: status,
             statusKind: statusKind,
             isListening: self.isSessionActive,
             isPaused: self.isPaused,
             canRetryTranslation: self.subscriber.canRetryTranslation,
-            approachingLineLimit: self.subscriber.isApproachingLineLimit,
             latencyReadout: self.subscriber.lastLatencySample.displayText,
             compactLatencyReadout: self.subscriber.lastLatencySample.compactText,
             paceCue: TheaterPaceCue.snapshot(
@@ -968,7 +935,7 @@ final class LiveTranslationController: ObservableObject {
                 isPaused: self.isPaused,
                 liveSpoken: "",
                 lastTranslation: self.subscriber.committedLines.last ?? "",
-                pendingWaitMilliseconds: self.subscriber.oldestInFlightWaitMilliseconds
+                pendingWaitMilliseconds: board.oldestInFlightWaitMs
             )
         )
     }
@@ -1009,10 +976,8 @@ final class LiveTranslationController: ObservableObject {
     }
 }
 
-/// The live row is unfinished by definition. Apple Speech still ends every
-/// partial with a period or "…" and then takes it back on the next tick
-/// ("talk." → "talk about it."), which rewinds one character on screen each
-/// time. The mark arrives with the committed line instead.
+/// Strips a trailing mark so a restitch can grow a clause. The mark arrives
+/// with the accepted sentence.
 enum TheaterLiveRow {
     static func openText(_ text: String) -> String {
         var open = text.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -6,11 +6,13 @@
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 // 64 hardware cycles provides ample scheduling headroom while keeping the
 // realtime producer strictly allocation-free.
 #define FV_RING_CAPACITY 64u
-#define FV_MAX_FRAMES_PER_PACKET 8192u
+#define FV_MAX_FRAMES_PER_PACKET FV_CORE_AUDIO_MAX_FRAMES_PER_PACKET
 
 typedef struct {
     float samples[FV_MAX_FRAMES_PER_PACKET];
@@ -34,6 +36,7 @@ typedef struct {
     _Atomic bool running;
     _Atomic bool formatDirty;
     _Atomic bool packetGateOpen;
+    bool wired;
     FVPacketSlot slots[FV_RING_CAPACITY];
 } FVCapture;
 
@@ -350,9 +353,66 @@ static OSStatus fv_io_proc(
             : -1;
     slot->sequence = writeIndex;
 
+    // A sample-rate or route notification can land while this callback is
+    // still decoding with the frozen ASBD. Drop the packet instead of
+    // publishing a stride that no longer matches the hardware buffer.
+    if (atomic_load_explicit(&capture->formatDirty, memory_order_acquire) ||
+        !atomic_load_explicit(&capture->packetGateOpen, memory_order_acquire) ||
+        !atomic_load_explicit(&capture->running, memory_order_relaxed)) {
+        return noErr;
+    }
+
     atomic_store_explicit(&capture->writeIndex, writeIndex + 1, memory_order_release);
     dispatch_semaphore_signal(capture->packetSemaphore);
     return noErr;
+}
+
+static size_t fv_page_size(void) {
+    long page = sysconf(_SC_PAGESIZE);
+    if (page < 1) {
+        return 4096u;
+    }
+    return (size_t) page;
+}
+
+static size_t fv_wired_span(void) {
+    size_t page = fv_page_size();
+    size_t size = sizeof(FVCapture);
+    return (size + page - 1) & ~(page - 1);
+}
+
+static void fv_prefault_capture(FVCapture *capture) {
+    volatile unsigned char *bytes = (volatile unsigned char *) capture;
+    size_t size = fv_wired_span();
+    size_t page = fv_page_size();
+    for (size_t offset = 0; offset < size; offset += page) {
+        bytes[offset] = bytes[offset];
+    }
+    if (size > 0) {
+        bytes[size - 1] = bytes[size - 1];
+    }
+}
+
+/// Keep the ring resident so the IO proc does not take a swap fault on a slot.
+static void fv_wire_capture(FVCapture *capture) {
+    if (capture == NULL) {
+        return;
+    }
+    fv_prefault_capture(capture);
+    if (capture->wired) {
+        return;
+    }
+    if (mlock(capture, fv_wired_span()) == 0) {
+        capture->wired = true;
+    }
+}
+
+static void fv_unwire_capture(FVCapture *capture) {
+    if (capture == NULL || !capture->wired) {
+        return;
+    }
+    munlock(capture, fv_wired_span());
+    capture->wired = false;
 }
 
 int32_t fv_core_audio_capture_create(
@@ -364,10 +424,13 @@ int32_t fv_core_audio_capture_create(
     }
     *outCapture = NULL;
 
-    FVCapture *capture = (FVCapture *) calloc(1, sizeof(FVCapture));
-    if (capture == NULL) {
+    void *memory = NULL;
+    size_t span = fv_wired_span();
+    if (posix_memalign(&memory, fv_page_size(), span) != 0 || memory == NULL) {
         return kAudioHardwareUnspecifiedError;
     }
+    memset(memory, 0, span);
+    FVCapture *capture = (FVCapture *) memory;
     capture->deviceID = deviceID;
 
     OSStatus status = fv_get_input_stream_format(
@@ -426,6 +489,7 @@ int32_t fv_core_audio_capture_create(
         return status;
     }
 
+    fv_wire_capture(capture);
     *outCapture = (FVCoreAudioCaptureRef) capture;
     return noErr;
 }
@@ -441,6 +505,7 @@ int32_t fv_core_audio_capture_start(FVCoreAudioCaptureRef captureRef) {
 
     atomic_store_explicit(&capture->packetGateOpen, false, memory_order_release);
     atomic_store_explicit(&capture->running, true, memory_order_release);
+    fv_wire_capture(capture);
     OSStatus status = AudioDeviceStart(capture->deviceID, capture->ioProcID);
     if (status != noErr) {
         atomic_store_explicit(&capture->running, false, memory_order_release);
@@ -492,6 +557,7 @@ int32_t fv_core_audio_capture_destroy(FVCoreAudioCaptureRef captureRef) {
 #if !OS_OBJECT_USE_OBJC
     dispatch_release(capture->packetSemaphore);
 #endif
+    fv_unwire_capture(capture);
     free(capture);
     return noErr;
 }
@@ -586,6 +652,19 @@ void fv_core_audio_capture_mark_format_dirty(FVCoreAudioCaptureRef captureRef) {
     }
     atomic_store_explicit(&capture->formatDirty, true, memory_order_release);
     atomic_store_explicit(&capture->packetGateOpen, false, memory_order_release);
+}
+
+void fv_core_audio_capture_abandon(FVCoreAudioCaptureRef captureRef) {
+    FVCapture *capture = (FVCapture *) captureRef;
+    if (capture == NULL) {
+        return;
+    }
+    atomic_store_explicit(&capture->formatDirty, true, memory_order_release);
+    atomic_store_explicit(&capture->packetGateOpen, false, memory_order_release);
+    atomic_store_explicit(&capture->running, false, memory_order_release);
+    if (capture->packetSemaphore != NULL) {
+        dispatch_semaphore_signal(capture->packetSemaphore);
+    }
 }
 
 bool fv_core_audio_capture_open_packet_gate_if_clean(

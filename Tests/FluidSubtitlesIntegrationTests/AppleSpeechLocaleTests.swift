@@ -15,6 +15,24 @@ final class AppleSpeechLocaleTests: XCTestCase {
         XCTAssertEqual(VoiceEngineLanguageCatalog.preferredAppleSpeechAnalyzerLocale(forLanguageID: "no"), "nb-NO")
     }
 
+    func testAnalyzerDropsAPreparedLocaleThatIsNotISpeak() {
+        guard #available(macOS 26.0, *) else { return }
+        let settings = SettingsStore.shared
+        let original = settings.translationSourceLanguageID
+        defer { settings.translationSourceLanguageID = original }
+        settings.translationSourceLanguageID = "ko"
+
+        let provider = AppleSpeechAnalyzerProvider()
+        provider.markPreparedLocaleForTesting("en-US")
+        XCTAssertTrue(provider.isReady)
+        provider.invalidateIfListeningLanguageChanged()
+        XCTAssertFalse(provider.isReady)
+
+        provider.markPreparedLocaleForTesting("ko-KR")
+        provider.invalidateIfListeningLanguageChanged()
+        XCTAssertTrue(provider.isReady)
+    }
+
     func testAnalyzerMatchesLanguagePrefixNotExactMacLocale() {
         let supported = ["en-US", "ko-KR", "th-TH"]
         XCTAssertEqual(

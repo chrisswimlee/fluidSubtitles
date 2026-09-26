@@ -27,6 +27,14 @@ extension ContentView {
             },
             finishAndOpenTheater: {
                 self.finishSetupWizard(openTheater: true)
+            },
+            openVoiceEngine: {
+                self.settings.completeSetupWizard()
+                self.navigateToApp(.voiceEngine)
+            },
+            openTranslationEngine: {
+                self.settings.completeSetupWizard()
+                self.navigateToApp(.translationEngine)
             }
         )
     }

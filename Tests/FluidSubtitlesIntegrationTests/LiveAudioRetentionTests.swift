@@ -183,4 +183,50 @@ final class LiveAudioRetentionTests: XCTestCase {
         XCTAssertFalse(provider.isReady)
     }
     #endif
+
+    func testCaptureHandoffPreservesOrderHostTimeAndWrap() {
+        let handoff = CapturePacketHandoff(frameCapacity: 8, descriptorCapacity: 4)
+        XCTAssertTrue(self.write([1, 2, 3, 4, 5, 6], to: handoff, hostTime: 11, sampleTime: 100))
+        let first = handoff.pop()
+        XCTAssertEqual(first?.frames, [1, 2, 3, 4, 5, 6])
+        XCTAssertEqual(first?.inputHostTime, 11)
+        XCTAssertEqual(first?.inputSampleTime, 100)
+
+        XCTAssertTrue(self.write([7, 8, 9, 10], to: handoff, hostTime: 22, sampleTime: 200))
+        let second = handoff.pop()
+        XCTAssertEqual(second?.frames, [7, 8, 9, 10])
+        XCTAssertEqual(second?.inputHostTime, 22)
+        XCTAssertEqual(second?.inputSampleTime, 200)
+        XCTAssertNil(handoff.pop())
+    }
+
+    func testCaptureHandoffRejectsWhenFullWithoutLosingQueuedPCM() {
+        let handoff = CapturePacketHandoff(frameCapacity: 4, descriptorCapacity: 2)
+        XCTAssertTrue(self.write([1, 2, 3], to: handoff, hostTime: 1, sampleTime: 1))
+        XCTAssertFalse(self.write([4, 5], to: handoff, hostTime: 2, sampleTime: 2))
+        XCTAssertEqual(handoff.droppedPacketCount, 1)
+        XCTAssertTrue(handoff.consumeDropNotice())
+        XCTAssertFalse(handoff.consumeDropNotice())
+        XCTAssertEqual(handoff.pop()?.frames, [1, 2, 3])
+        XCTAssertTrue(self.write([4, 5], to: handoff, hostTime: 3, sampleTime: 3))
+        XCTAssertEqual(handoff.pop()?.frames, [4, 5])
+    }
+
+    private func write(
+        _ samples: [Float],
+        to handoff: CapturePacketHandoff,
+        hostTime: UInt64,
+        sampleTime: Int64
+    ) -> Bool {
+        samples.withUnsafeBufferPointer { buffer in
+            guard let base = buffer.baseAddress else { return false }
+            return handoff.write(
+                samples: base,
+                frameCount: samples.count,
+                sampleRate: 16_000,
+                inputHostTime: hostTime,
+                inputSampleTime: sampleTime
+            )
+        }
+    }
 }

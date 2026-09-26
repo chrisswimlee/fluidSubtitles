@@ -14,17 +14,21 @@ struct AccentColorSwatches: View {
                 Button {
                     self.settings.accentColorOption = option
                 } label: {
-                    Circle()
-                        .fill(Color(hex: option.hex) ?? .gray)
-                        .frame(width: 16, height: 16)
-                        .overlay(
+                    ZStack {
+                        Circle()
+                            .fill(Color(hex: option.hex) ?? .gray)
+                            .frame(width: 18, height: 18)
+                            .overlay {
+                                Circle().strokeBorder(Color.primary.opacity(0.28), lineWidth: 1)
+                            }
+                        if selected {
                             Circle()
-                                .strokeBorder(
-                                    selected ? self.theme.palette.accent : self.theme.palette.separator,
-                                    lineWidth: selected ? 2 : 1
-                                )
-                        )
-                        .padding(4)
+                                .strokeBorder(self.theme.palette.primaryText, lineWidth: 2)
+                                .frame(width: 26, height: 26)
+                        }
+                    }
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(option.rawValue)

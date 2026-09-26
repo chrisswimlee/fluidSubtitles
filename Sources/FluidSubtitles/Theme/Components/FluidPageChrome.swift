@@ -43,27 +43,30 @@ struct FluidPageHeader<Trailing: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: self.theme.metrics.spacing.md) {
-            HStack(alignment: .firstTextBaseline, spacing: self.theme.metrics.spacing.sm) {
-                SettingsIconTile(systemName: self.systemImage, size: 24)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(self.title)
-                        .font(self.theme.typography.title)
-                        .foregroundStyle(self.theme.palette.primaryText)
-                    if let subtitle, !subtitle.isEmpty {
-                        Text(subtitle)
-                            .font(self.theme.typography.bodySmall)
-                            .foregroundStyle(self.theme.palette.secondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            }
-
-            Spacer(minLength: self.theme.metrics.spacing.md)
-
+        TheaterSideBySide(spacing: self.theme.metrics.spacing.md) {
+            self.titleBlock
+        } trailing: {
             self.trailing
         }
         .accessibilityElement(children: .contain)
+    }
+
+    private var titleBlock: some View {
+        HStack(alignment: .center, spacing: self.theme.metrics.spacing.sm) {
+            SettingsIconTile(systemName: self.systemImage, size: 24)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(self.title)
+                    .font(self.theme.typography.title)
+                    .foregroundStyle(self.theme.palette.primaryText)
+                    .lineLimit(1)
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(self.theme.typography.bodySmall)
+                        .foregroundStyle(self.theme.palette.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
     }
 }
 
@@ -91,6 +94,91 @@ struct FluidSectionHeader: View {
                 .font(self.theme.typography.sectionTitle)
                 .foregroundStyle(self.theme.palette.primaryText)
         }
+    }
+}
+
+/// Title on the left, actions on the right. When both do not fit, the
+/// actions move under the title instead of drawing through it.
+struct TheaterSideBySide<Leading: View, Trailing: View>: View {
+    var spacing: CGFloat
+    var leading: Leading
+    var trailing: Trailing
+
+    init(
+        spacing: CGFloat,
+        @ViewBuilder leading: () -> Leading,
+        @ViewBuilder trailing: () -> Trailing
+    ) {
+        self.spacing = spacing
+        self.leading = leading()
+        self.trailing = trailing()
+    }
+
+    var body: some View {
+        TheaterSideBySideLayout(spacing: self.spacing) {
+            self.leading
+            self.trailing
+        }
+    }
+}
+
+private struct TheaterSideBySideLayout: Layout {
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard subviews.count >= 2 else {
+            return subviews.first?.sizeThatFits(proposal) ?? .zero
+        }
+        let lead = subviews[0].sizeThatFits(.unspecified)
+        let trail = subviews[1].sizeThatFits(.unspecified)
+        let sideBySide = lead.width + self.spacing + trail.width
+        if self.stacks(sideBySide, in: proposal.width), let width = proposal.width, width.isFinite {
+            let stackedLead = subviews[0].sizeThatFits(ProposedViewSize(width: width, height: nil))
+            let stackedTrail = subviews[1].sizeThatFits(ProposedViewSize(width: width, height: nil))
+            return CGSize(width: width, height: stackedLead.height + self.spacing + stackedTrail.height)
+        }
+        let width = proposal.width.flatMap { $0.isFinite ? $0 : nil } ?? sideBySide
+        return CGSize(width: width, height: max(lead.height, trail.height))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard subviews.count >= 2 else {
+            subviews.first?.place(at: bounds.origin, proposal: proposal)
+            return
+        }
+        let leadIdeal = subviews[0].sizeThatFits(.unspecified)
+        let trailIdeal = subviews[1].sizeThatFits(.unspecified)
+        let sideBySide = leadIdeal.width + self.spacing + trailIdeal.width
+        if sideBySide > bounds.width + 0.5 {
+            let lead = subviews[0].sizeThatFits(ProposedViewSize(width: bounds.width, height: nil))
+            subviews[0].place(
+                at: bounds.origin,
+                proposal: ProposedViewSize(width: bounds.width, height: lead.height)
+            )
+            subviews[1].place(
+                at: CGPoint(x: bounds.minX, y: bounds.minY + lead.height + self.spacing),
+                proposal: ProposedViewSize(width: bounds.width, height: nil)
+            )
+            return
+        }
+        let leadWidth = max(0, bounds.width - self.spacing - trailIdeal.width)
+        let leadHeight = subviews[0].sizeThatFits(ProposedViewSize(width: leadWidth, height: nil)).height
+        subviews[0].place(
+            at: CGPoint(x: bounds.minX, y: bounds.minY + max(0, (bounds.height - leadHeight) / 2)),
+            proposal: ProposedViewSize(width: leadWidth, height: leadHeight)
+        )
+        subviews[1].place(
+            at: CGPoint(
+                x: bounds.maxX - trailIdeal.width,
+                y: bounds.minY + max(0, (bounds.height - trailIdeal.height) / 2)
+            ),
+            proposal: ProposedViewSize(width: trailIdeal.width, height: trailIdeal.height)
+        )
+    }
+
+    private func stacks(_ sideBySide: CGFloat, in proposed: CGFloat?) -> Bool {
+        guard let proposed, proposed.isFinite else { return false }
+        return sideBySide > proposed + 0.5
     }
 }
 

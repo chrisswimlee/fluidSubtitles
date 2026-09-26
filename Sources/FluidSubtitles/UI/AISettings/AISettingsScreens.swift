@@ -21,9 +21,9 @@ struct VoiceEngineSettingsScreen: View {
             ScrollView(.vertical, showsIndicators: false) {
                 VoiceEngineSettingsView(
                     viewModel: self.viewModel,
-                    settings: self.viewModel.settings,
-                    theme: self.theme
+                    settings: self.viewModel.settings
                 )
+                .appTheme(self.theme)
                 .fluidPageContent()
                 .id(Self.pageTopID)
             }

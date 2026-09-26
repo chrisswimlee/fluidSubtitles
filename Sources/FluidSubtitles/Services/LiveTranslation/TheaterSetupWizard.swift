@@ -25,15 +25,15 @@ enum TheaterSetupWizard {
         var subtitle: String {
             switch self {
             case .welcome:
-                return "Choose how captions look."
+                return "A preview of the caption the room sees."
             case .languages:
                 return "I speak is what you say. Show as is the caption."
             case .captions:
                 return "Choose whether the original language sits under each sentence."
             case .audience:
-                return TheaterReadiness.audienceTitle
+                return "Who sees the caption in a screenshot or a call."
             case .ready:
-                return "Open Theater and press Listen."
+                return "Finish here, or open Theater and press Listen."
             }
         }
 
@@ -72,7 +72,7 @@ enum TheaterSetupWizard {
         "Each sentence appears when it is ready."
 
     static let welcomeDetail =
-        "The original language can sit under each sentence. Choose that here, then who sees the board."
+        "The original language can sit under each sentence. \(TheaterReadiness.screenShare)"
 
     static let readyPrimary = "Open Theater"
 

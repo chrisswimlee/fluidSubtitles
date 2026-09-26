@@ -6,6 +6,15 @@ nonisolated enum LiveAudioRetention {
     static let maximumRetainedSamples = sampleRate * maximumRetainedSeconds
     static let incrementalOverlapSeconds = 1
     static let incrementalOverlapSamples = sampleRate * incrementalOverlapSeconds
+    /// Theater re-decodes this recent slice, not the whole 30 s ring, so a tick
+    /// cannot stall for tens of seconds and then dump a paragraph.
+    static let theaterPreviewSeconds = 8
+    static let theaterPreviewSamples = sampleRate * theaterPreviewSeconds
+    /// Zeros written ahead of the first packet after Resume. Not the real pause.
+    static let resumeSilenceWallSeconds = 1.5
+    static var resumeSilenceWallSamples: Int {
+        Int(Double(sampleRate) * resumeSilenceWallSeconds)
+    }
 }
 
 /// Thread-safe PCM ring. `count` is the logical session length; only the newest

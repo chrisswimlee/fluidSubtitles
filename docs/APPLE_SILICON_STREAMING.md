@@ -17,15 +17,15 @@ flowchart TD
   mt --> hud[Theater HUD]
   thermal[thermalState readout] --> hud
   clause --> window[on-screen captions]
-  window --> drop[drop off-screen]
+  window --> drop[past 48 leave the board]
 ```
 
-1. Direct Core Audio captures one microphone input stream. Packets carry `inputHostTime`. Multi-channel float or int16 buffers are downmixed to mono. Pause drops packets before `handle` and resets the sample-time anchor on resume so a hole does not look like silence. Then the same 16 kHz pipeline. Leftover Watch / `SCStream` app-audio capture is not the product path and is not part of first-hour Theater.
+1. Direct Core Audio captures one microphone input stream. Packets carry `inputHostTime`. Multi-channel float or int16 buffers are downmixed to mono. Pause drops packets before `handle` and resets the sample-time anchor on resume so a hole does not look like silence. The first packet after Resume is written with 1.5 s of zeros ahead of it in the 16 kHz ring. Those zeros are not saved with History audio. Then the same 16 kHz pipeline. Leftover Watch / `SCStream` app-audio capture is not the product path and is not part of first-hour Theater.
 2. PCM is resampled to 16 kHz and kept in a 30-second ring. Hours of audio are not retained.
 3. ASR ticks on a timer (Parakeet Flash: 200 ms). The first tick is not gated. After 400 ms of RMS silence, later ticks are skipped.
 4. The growing transcript is split into finished clauses plus an open tail. Already-committed prefixes are stripped so the whole talk is not re-translated. During Theater, the live stitch is capped to the newest ~2,400 characters so a long listen cannot feed hours of text into every tick. Dictation Stop still stitches the full listen.
 5. The current spoken clause stays off the board until it is accepted. Apple Translation may prefetch it. Same-language pairs print the spoken sentence without a pack.
-6. Each accepted sentence appears whole. A finished sentence that already has more speech after it commits mid-talk. End-of-utterance or RMS silence (~400 ms) commits leftover speech that is a real clause. Stop captions drops an unaccepted fragment. Stop Insert still types the whole listen. The Pause button does not flush unaccepted speech. Thin starters like “It.” do not print. Korean/Japanese/Thai 30-second confirm runs on Stop and silence leftover only. A caption already on the board stays.
+6. Each accepted sentence appears whole. A finished sentence that already has more speech after it commits mid-talk. End-of-utterance or RMS silence commits a finished leftover. An unpunctuated fragment of a few words waits for the open-tail settle. Apple Translation waits for the current speech tick to finish, and the next tick waits while that translation is running. Stop captions drops an unaccepted fragment. Stop Insert still types the whole listen. The Pause button does not flush unaccepted speech. Thin starters like “It.” do not print. Korean/Japanese/Thai 30-second confirm runs on Stop and silence leftover only. A caption already on the board stays.
 
 ## Why first words are not VAD-gated
 
@@ -41,7 +41,7 @@ Word-by-word Apple Translation stays out. The Neural Engine translates one finis
 
 ## Context windows
 
-The live Apple path still has no prompt. On commit, Theater sends the last 4 source clauses from this Listen plus the new one, then peels the new caption. Those four live in a short sliding window; older clauses drop as new ones commit. A clause-boundary approximation may prefetch that same payload so the print is already warm. Pronoun and zero-subject Korean or Japanese can still drift. Do not describe this as a streaming context window on the Neural Engine.
+The live Apple path still has no prompt. On commit, Theater sends the last 4 source clauses from this Listen with the new clause marked, then takes that span. If the marks are gone and the prior caption is still a prefix, it peels. Otherwise it translates the clause alone. Those four live in a short sliding window; older clauses drop as new ones commit. A clause-boundary approximation may prefetch that same payload so the print is already warm. Pronoun and zero-subject Korean or Japanese can still drift. Do not describe this as a streaming context window on the Neural Engine.
 
 ## CoreAudio
 
@@ -59,12 +59,12 @@ The app is **not sandboxed**. Hardened Runtime is on. Language packs and voice w
 | --- | --- |
 | Live PCM | 30 s @ 16 kHz float |
 | Live Theater transcript | newest 2,400 characters |
-| Theater SwiftUI board | 3 on-screen captions |
-| Overflow | dropped |
+| Theater SwiftUI board | latest 48 captions; the window scrolls |
+| Rows past 48 | leave the board; this listen’s session record keeps them |
 | UserDefaults snapshot | visible window only |
 | Dictation history SQLite | 1 year / 20,000 rows default; Forever caps at 50,000 |
 
-Theater is a live subtitle board. Off-screen captions are dropped. Bilingual export is the visible board. SRT/VTT use commit times when every cue has a date; otherwise they fall back to 4-second slots.
+Theater is a live subtitle board. It keeps the latest 48 captions and scrolls through what fits. History and bilingual export use this listen’s session record. SRT/VTT use commit times when every cue has a date; otherwise they fall back to 4-second slots.
 
 ## Quantization and weights
 

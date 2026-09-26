@@ -2,14 +2,25 @@ import SwiftUI
 
 struct TheaterSetupWizardView: View {
     @Environment(\.theme) private var theme
+    @EnvironmentObject private var appServices: AppServices
     @ObservedObject private var settings = SettingsStore.shared
     @ObservedObject private var controller = LiveTranslationController.shared
 
     let finish: () -> Void
     let finishAndOpenTheater: () -> Void
+    var openVoiceEngine: (() -> Void)?
+    var openTranslationEngine: (() -> Void)?
 
     private var step: TheaterSetupWizard.Step {
         TheaterSetupWizard.Step.resolved(self.settings.theaterSetupWizardStep)
+    }
+
+    private var readySnapshot: TheaterReadyGate.Snapshot {
+        TheaterReadyGate.liveSnapshot(
+            pack: self.controller.packAvailability,
+            microphone: self.appServices.asr.micStatus,
+            firstCaptionPrinted: self.settings.theaterListenUsed
+        )
     }
 
     var body: some View {
@@ -103,23 +114,7 @@ struct TheaterSetupWizardView: View {
     private var languagesStep: some View {
         VStack(alignment: .leading, spacing: 16) {
             ThemedCard(style: .standard, hoverEffect: false) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Theater mode")
-                        .font(self.theme.typography.bodyStrong)
-                    TheaterWordPicker(
-                        accessibilityLabel: "Theater mode",
-                        options: Array(TheaterSessionMode.allCases),
-                        title: { $0.displayName },
-                        selection: Binding(
-                            get: { self.settings.theaterSessionMode },
-                            set: { self.controller.applyTheaterSessionMode($0) }
-                        )
-                    )
-                    Text(self.settings.theaterSessionMode.help)
-                        .font(self.theme.typography.bodySmall)
-                        .foregroundStyle(self.theme.palette.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                TheaterModeSection(accessibilityIdentifier: "theater.setupWizard.mode")
             }
             TranslationLanguagePairCard()
         }
@@ -134,22 +129,7 @@ struct TheaterSetupWizardView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 if self.settings.theaterSessionMode == .translation {
-                    HStack(alignment: .center) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(TheaterReadiness.spokenLineTitle)
-                                .font(self.theme.typography.bodyStrong)
-                            Text(
-                                SpokenLanguageResolver.isSameLanguagePair()
-                                    ? TheaterReadiness.spokenLineSameLanguage
-                                    : self.settings.theaterSpokenLineMode.help
-                            )
-                            .font(self.theme.typography.bodySmall)
-                            .foregroundStyle(self.theme.palette.secondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                        }
-                        Spacer()
-                        TheaterSpokenLinePicker(accessibilityIdentifier: "theater.setupWizard.spokenLine")
-                    }
+                    TheaterSpokenLineSection(accessibilityIdentifier: "theater.setupWizard.spokenLine")
                     TheaterCaptionStackPreview(
                         message: SpokenLanguageResolver.isSameLanguagePair()
                             ? TheaterReadiness.spokenLineSameLanguage
@@ -178,6 +158,17 @@ struct TheaterSetupWizardView: View {
                     ),
                     accessibilityIdentifier: "theater.setupWizard.readyPreview"
                 )
+                if self.readySnapshot.needsAttention {
+                    TheaterReadinessChecklist(
+                        openVoiceEngine: self.openVoiceEngine,
+                        openTranslationEngine: self.openTranslationEngine
+                    )
+                    .accessibilityIdentifier("theater.setupWizard.readiness")
+                    Rectangle()
+                        .fill(self.theme.palette.separator)
+                        .frame(height: 1)
+                        .accessibilityHidden(true)
+                }
                 self.readyRow(
                     title: "Mode",
                     detail: self.settings.theaterSessionMode.displayName
@@ -203,26 +194,18 @@ struct TheaterSetupWizardView: View {
                     detail: self.settings.accentColorOption.rawValue
                 )
                 self.readyRow(
-                    title: "Who sees captions",
-                    detail: self.settings.theaterHideFromScreenShare
-                        ? TheaterReadiness.audienceSlides
-                        : TheaterReadiness.audienceZoom
+                    title: "Share slides",
+                    detail: TheaterReadiness.screenShare
                 )
             }
         }
     }
 
     private func accentColorRow(identifier: String) -> some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(TheaterSetupWizard.accentTitle)
-                    .font(self.theme.typography.bodyStrong)
-                Text(TheaterSetupWizard.accentDetail)
-                    .font(self.theme.typography.bodySmall)
-                    .foregroundStyle(self.theme.palette.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 12)
+        TheaterSettingRow(
+            title: TheaterSetupWizard.accentTitle,
+            detail: TheaterSetupWizard.accentDetail
+        ) {
             AccentColorSwatches(accessibilityIdentifier: identifier)
         }
     }
@@ -241,6 +224,26 @@ struct TheaterSetupWizardView: View {
     }
 
     private var footer: some View {
+        ViewThatFits(in: .horizontal) {
+            self.footerRow
+            VStack(alignment: .leading, spacing: 10) {
+                self.footerSecondary
+                self.footerPrimary
+            }
+        }
+        .padding(.horizontal, 28)
+        .padding(.vertical, 16)
+    }
+
+    private var footerRow: some View {
+        HStack(spacing: 12) {
+            self.footerSecondary
+            Spacer(minLength: 12)
+            self.footerPrimary
+        }
+    }
+
+    private var footerSecondary: some View {
         HStack(spacing: 12) {
             if self.step.previous != nil {
                 Button("Back") {
@@ -256,7 +259,11 @@ struct TheaterSetupWizardView: View {
                 .buttonStyle(.theaterText)
                 .accessibilityIdentifier("theater.setupWizard.skip")
             }
-            Spacer()
+        }
+    }
+
+    private var footerPrimary: some View {
+        HStack(spacing: 12) {
             if self.step == .ready {
                 Button(self.step.continueTitle) {
                     self.goNext()
@@ -278,8 +285,6 @@ struct TheaterSetupWizardView: View {
                 .accessibilityIdentifier("theater.setupWizard.continue")
             }
         }
-        .padding(.horizontal, 28)
-        .padding(.vertical, 16)
     }
 
     private func goBack() {

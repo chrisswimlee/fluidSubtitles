@@ -21,13 +21,13 @@ struct TheaterEngineCards: View {
                         title: TheaterEngineCopy.voiceTitle,
                         systemImage: "waveform",
                         purpose: self.showsPurpose ? TheaterEngineCopy.voicePurpose : nil,
-                        engineName: self.settings.selectedSpeechModel.displayName,
+                        engineName: TheaterEngineCopy.voiceEngineName(self.settings.selectedSpeechModel),
                         running: self.voiceRunningLine,
                         runningIsWarning: SpokenLanguageResolver.voiceEngineMismatchMessage() != nil,
                         accessibilityIdentifier: "theater.voiceEngine"
                     ) {
                         if self.showsVoiceCustomize, let openVoiceEngine {
-                            Button("Customize", action: openVoiceEngine)
+                            Button(TheaterEngineCopy.voiceTitle, action: openVoiceEngine)
                                 .buttonStyle(.theaterText)
                                 .accessibilityIdentifier("theater.customizeVoiceEngine")
                         }
@@ -46,7 +46,7 @@ struct TheaterEngineCards: View {
                     accessibilityIdentifier: "theater.translationEngine"
                 ) {
                     if self.showsTranslationCustomize, let openTranslationEngine {
-                        Button("Customize", action: openTranslationEngine)
+                        Button(TheaterEngineCopy.translationTitle, action: openTranslationEngine)
                             .buttonStyle(.theaterText)
                             .accessibilityIdentifier("theater.customizeTranslationEngine")
                     }
@@ -107,9 +107,9 @@ struct TheaterEngineCards: View {
         @ViewBuilder accessory: () -> Accessory
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .center) {
                 FluidSectionHeader(title: title, systemImage: systemImage)
-                Spacer(minLength: 8)
+                Spacer(minLength: 12)
                 accessory()
             }
             if let purpose {

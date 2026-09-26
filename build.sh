@@ -6,8 +6,9 @@
 #   ./build.sh            # signed Debug build
 #   ./build.sh public     # signed Debug build
 #   ./build.sh unsigned   # unsigned Debug build (CI / no signing identity)
-#   ./build.sh release    # signed Release zip; notarize when Apple credentials are set
+#   ./build.sh release    # signed Release zip and disk image; notarize when Apple credentials are set
 #   ./build.sh preview    # ad-hoc signed Release zip for a GitHub pre-release
+#   ./build.sh disk-image /path/to/fluidSubtitles.app
 
 set -euo pipefail
 
@@ -89,6 +90,56 @@ app_version() {
     /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${PROJECT_DIR}/Info.plist"
 }
 
+# Disk image with the app and an Applications shortcut, so the first install is a drag.
+write_drag_dmg() {
+    local app_path="$1"
+    local dmg_path="$2"
+    local identity="$3"
+    local stage
+    stage="$(mktemp -d)"
+    cp -R "${app_path}" "${stage}/$(basename "${app_path}")"
+    ln -s /Applications "${stage}/Applications"
+    rm -f "${dmg_path}"
+    hdiutil create \
+        -volname "fluidSubtitles" \
+        -srcfolder "${stage}" \
+        -ov \
+        -format UDZO \
+        "${dmg_path}"
+    rm -rf "${stage}"
+    codesign --force --sign "${identity}" --timestamp "${dmg_path}"
+    codesign --verify --strict "${dmg_path}"
+}
+
+submit_notarization() {
+    xcrun notarytool submit "$1" \
+        --apple-id "${APPLE_ID}" \
+        --team-id "${APPLE_TEAM_ID}" \
+        --password "${APPLE_APP_SPECIFIC_PASSWORD}" \
+        --wait
+}
+
+resolve_developer_id() {
+    local development_team="$1"
+    local identity="${FLUIDSUBTITLES_CODESIGN_IDENTITY:-}"
+    local identity_hash=""
+    identity_hash="$(security find-identity -v -p codesigning 2>/dev/null \
+        | grep "Developer ID Application:.*(${development_team})" \
+        | awk '{ print $2 }' \
+        | tail -n 1)"
+    if [[ "${identity}" =~ ^[A-Fa-f0-9]{40}$ ]]; then
+        printf '%s\n' "${identity}"
+        return
+    fi
+    if [ -n "${identity_hash}" ]; then
+        printf '%s\n' "${identity_hash}"
+        return
+    fi
+    if [ -n "${identity}" ]; then
+        printf '%s\n' "${identity}"
+    fi
+}
+
 restore_ctranscribe_layout() {
     local framework="$1/Contents/Frameworks/CTranscribe.framework"
     if [ ! -d "${framework}/Versions/A" ]; then
@@ -111,8 +162,9 @@ run_release_build() {
     local app_path
     local zip_name
     local zip_path
-    local identity="${FLUIDSUBTITLES_CODESIGN_IDENTITY:-}"
-    local identity_hash=""
+    local identity=""
+    local dmg_name
+    local dmg_path
     local -a build_args=(
         -project fluidSubtitles.xcodeproj
         -scheme fluidSubtitles

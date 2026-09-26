@@ -19,15 +19,8 @@ final class VoiceEngineSettingsViewModel: ObservableObject {
             || (!self.asr.isAsrReady && (self.asr.isDownloadingModel || self.asr.isLoadingModel))
     }
 
-    @Published var modelSortOption: ModelSortOption = .provider
-    @Published var providerFilter: SpeechProviderFilter = .all
-    @Published var englishOnlyFilter: Bool = false
-    @Published var installedOnlyFilter: Bool = false
-    @Published var showSpeechFilters: Bool = false
-
     @Published var selectedSpeechProvider: SettingsStore.SpeechModel.Provider
     @Published var previewSpeechModel: SettingsStore.SpeechModel
-    @Published var showAdvancedSpeechInfo: Bool = false
     @Published var suppressSpeechProviderSync: Bool = false
     @Published var skipNextSpeechModelSync: Bool = false
 
@@ -80,46 +73,6 @@ final class VoiceEngineSettingsViewModel: ObservableObject {
         guard !self.suppressSpeechProviderSync else { return }
         self.previewSpeechModel = newValue
         self.setSelectedSpeechProvider(newValue.provider)
-    }
-
-    var filteredSpeechModels: [SettingsStore.SpeechModel] {
-        var models = SettingsStore.SpeechModel.availableModels
-
-        switch self.providerFilter {
-        case .all:
-            break
-        case .nvidia:
-            models = models.filter { $0.provider == .nvidia }
-        case .apple:
-            models = models.filter { $0.provider == .apple }
-        case .cohere:
-            models = models.filter { $0.provider == .cohere }
-        case .openai:
-            models = models.filter { $0.provider == .openai }
-        }
-
-        if self.englishOnlyFilter {
-            models = models.filter { model in
-                let label = model.languageSupport.lowercased()
-                let title = model.humanReadableName.lowercased()
-                return label.contains("english only") || title.contains("english")
-            }
-        }
-
-        if self.installedOnlyFilter {
-            models = models.filter { $0.isInstalled }
-        }
-
-        switch self.modelSortOption {
-        case .provider:
-            models.sort { $0.brandName.localizedCaseInsensitiveCompare($1.brandName) == .orderedAscending }
-        case .accuracy:
-            models.sort { $0.accuracyPercent > $1.accuracyPercent }
-        case .speed:
-            models.sort { $0.speedPercent > $1.speedPercent }
-        }
-
-        return models
     }
 
     func activateSpeechModel(_ model: SettingsStore.SpeechModel) {
@@ -205,45 +158,6 @@ final class VoiceEngineSettingsViewModel: ObservableObject {
 
     func isActiveSpeechModel(_ model: SettingsStore.SpeechModel) -> Bool {
         self.settings.selectedSpeechModel == model
-    }
-
-    var modelDescriptionText: String {
-        let model = self.settings.selectedSpeechModel
-        switch model {
-        case .appleSpeech:
-            return "Apple Speech uses built-in macOS recognition. No download. It hears every supported language on Intel and Apple Silicon."
-        case .appleSpeechAnalyzer:
-            return "Apple Speech Analyzer is on-device recognition for the languages this Mac includes. Requires macOS 26+. Other languages use Apple Speech or Whisper."
-        case .parakeetTDT:
-            return "Parakeet TDT v3 is the fast English engine on Apple Silicon. Other languages use Apple Speech or Whisper."
-        case .parakeetTDTv2:
-            return "Parakeet TDT v2 is English-only on Apple Silicon."
-        case .parakeetRealtime:
-            return "Parakeet Flash streams English with live partial text. Other languages need another Voice Engine."
-        case .qwen3Asr:
-            return "Qwen3 ASR is a local model for Korean, English, Thai, or Japanese. Higher memory. Requires macOS 15+."
-        case .cohereTranscribeSixBit:
-            return "Cohere Transcribe is a local CoreML engine for Cohere's languages. Pick the language before Listen."
-        case .nemotronOffline:
-            return "Nemotron 3.5 is slower and more accurate for most supported languages. Thai is experimental. Malay and Indonesian need Apple Speech or Whisper."
-        case .nemotronStreaming, .nemotronStreaming320:
-            return "Nemotron Speech 3.5 streams most supported languages. Thai is experimental. Malay and Indonesian need Apple Speech or Whisper."
-        default:
-            return "Whisper works on any Mac for every supported language."
-        }
-    }
-
-    func downloadModels() async {
-        do {
-            try await self.asr.ensureAsrReady()
-        } catch is CancellationError {
-            DebugLogger.shared.info("Model download cancelled", source: "AISettingsView")
-        } catch {
-            DebugLogger.shared.error("Failed to download models: \(error)", source: "AISettingsView")
-            self.asr.errorTitle = "Model Download Failed"
-            self.asr.errorMessage = error.localizedDescription
-            self.asr.showError = true
-        }
     }
 
     func deleteModels() async {

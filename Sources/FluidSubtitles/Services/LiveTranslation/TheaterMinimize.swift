@@ -33,7 +33,10 @@ enum TheaterMinimize {
         }
     }
 
-    static func homeHelp(for action: HomeAction) -> String {
+    static func homeHelp(for action: HomeAction, listening: Bool = false) -> String {
+        if action == .close, listening {
+            return TheaterReadiness.closeWhileListening
+        }
         switch action {
         case .open: return TheaterReadiness.openTheaterHelp
         case .show: return TheaterReadiness.showTheaterHelp

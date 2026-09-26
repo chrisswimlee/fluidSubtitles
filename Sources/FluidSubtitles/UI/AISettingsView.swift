@@ -59,24 +59,6 @@ enum PromptEditorMode: Identifiable, Equatable {
     }
 }
 
-enum ModelSortOption: String, CaseIterable, Identifiable {
-    case provider = "Provider"
-    case accuracy = "Accuracy"
-    case speed = "Speed"
-
-    var id: String { self.rawValue }
-}
-
-enum SpeechProviderFilter: String, CaseIterable, Identifiable {
-    case all = "All"
-    case nvidia = "NVIDIA"
-    case apple = "Apple"
-    case cohere = "Cohere"
-    case openai = "OpenAI"
-
-    var id: String { self.rawValue }
-}
-
 enum AISettingsLayout {
     static let labelWidth: CGFloat = 110
     static let pickerWidth: CGFloat = 220
@@ -126,8 +108,7 @@ struct AISettingsView: View {
             VStack(alignment: .leading, spacing: 14) {
                 VoiceEngineSettingsView(
                     viewModel: self.voiceViewModel,
-                    settings: self.voiceViewModel.settings,
-                    theme: self.theme
+                    settings: self.voiceViewModel.settings
                 )
                 AIEnhancementSettingsView(
                     viewModel: self.enhancementViewModel,

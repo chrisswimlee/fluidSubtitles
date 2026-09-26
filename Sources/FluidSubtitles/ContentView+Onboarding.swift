@@ -647,6 +647,7 @@ struct SidebarOptionHoverModifier: ViewModifier {
     let isSelected: Bool
     let reduceMotion: Bool
 
+    @Environment(\.theme) private var theme
     @State private var isHovered = false
 
     func body(content: Content) -> some View {
@@ -665,7 +666,7 @@ struct SidebarOptionHoverModifier: ViewModifier {
 
     var backgroundColor: Color {
         if self.isSelected {
-            return Color(nsColor: .selectedContentBackgroundColor)
+            return self.theme.palette.accent
         }
         return self.isHovered ? Color.primary.opacity(0.06) : .clear
     }

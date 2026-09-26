@@ -652,35 +652,28 @@ final class DirectAudioReliabilityTests: XCTestCase {
                 .appendingPathComponent("Sources/FluidSubtitles/ContentView+Transcription.swift"),
             encoding: .utf8
         )
-        let normalOutputSection = try XCTUnwrap(
-            source.components(separatedBy: "if spokenSendAllowed {").last?
-                .components(separatedBy: "if spokenSendRequested, !spokenSendAllowed").first
+        let insertSection = try XCTUnwrap(
+            source.components(separatedBy: "func processStoppedTranslation(").last?
+                .components(separatedBy: "func processDictationPromptTest(").first
         )
-        let pasteIndex = try XCTUnwrap(normalOutputSection.range(of: "typeOutputPlanToActiveField("))
-        let deliveryCompletionIndex = try XCTUnwrap(normalOutputSection.range(of: "completion: { outcome in"))
-        let deliveryHandlerIndex = try XCTUnwrap(normalOutputSection.range(of: "self.handleTypingDelivery("))
+        let pasteIndex = try XCTUnwrap(insertSection.range(of: "typeOutputPlanToActiveField("))
+        let clearIndex = try XCTUnwrap(insertSection.range(of: "updateTranscriptionText(\"\")"))
+        XCTAssertLessThan(pasteIndex.lowerBound, clearIndex.lowerBound)
+        XCTAssertFalse(insertSection.contains("Task { @MainActor in"))
 
-        XCTAssertLessThan(pasteIndex.lowerBound, deliveryCompletionIndex.lowerBound)
-        XCTAssertLessThan(deliveryCompletionIndex.lowerBound, deliveryHandlerIndex.lowerBound)
-        let hideIndex = try XCTUnwrap(normalOutputSection.range(of: "self.hideOverlayForDispatchedPaste("))
-        XCTAssertLessThan(deliveryHandlerIndex.lowerBound, hideIndex.lowerBound)
-        let dispatchHideSection = try XCTUnwrap(source.components(separatedBy: "func hideOverlayForDispatchedPaste(").last?.components(separatedBy: "func handleTypingDelivery(").first)
+        let dispatchHideSection = try XCTUnwrap(
+            source.components(separatedBy: "func hideOverlayForDispatchedPaste(").last?
+                .components(separatedBy: "func handleTypingDelivery(").first
+        )
         XCTAssertTrue(dispatchHideSection.contains("reason=paste_dispatched"))
         XCTAssertTrue(dispatchHideSection.contains("self.overlayLifecycleID == lifecycleID"))
         XCTAssertFalse(dispatchHideSection.contains("Task {"))
-        XCTAssertFalse(normalOutputSection.contains("Task { @MainActor in"))
-        XCTAssertFalse(
-            normalOutputSection[pasteIndex.lowerBound..<deliveryHandlerIndex.lowerBound]
-                .contains("updateTranscriptionText(\"\")")
-        )
 
         let deliveryHandlerSection = try XCTUnwrap(
             source.components(separatedBy: "func handleTypingDelivery(").last?
-                .components(separatedBy: "func hideOverlayAfterOutput()").first
+                .components(separatedBy: "func logPipelineCompletion(").first
         )
         XCTAssertTrue(deliveryHandlerSection.contains("self.overlayLifecycleID == expectedOverlayLifecycleID"))
-        XCTAssertTrue(normalOutputSection.contains("shouldHideOverlay: shouldHideOverlayAfterDelivery && spokenSendRequested"))
-        XCTAssertTrue(normalOutputSection.contains("shouldHide: shouldHideOverlayAfterDelivery && !spokenSendRequested"))
         XCTAssertTrue(deliveryHandlerSection.contains("guard shouldHideOverlay else { return }"))
         XCTAssertFalse(deliveryHandlerSection.contains("await self.menuBarManager.beginProcessingCompletionAndHideOverlay"))
 
@@ -1265,6 +1258,200 @@ final class DirectAudioReliabilityTests: XCTestCase {
         XCTAssertEqual(recorder.events, ["quarantine", "make:24000"])
         await controller.shutdown(reason: "test_complete")
     }
+
+    func testNominalSampleRateStopFailureAllowsReplacement() async throws {
+        let oldFingerprint = makeFingerprint(sampleRate: 48_000, bufferFrameSize: 512)
+        let newFingerprint = makeFingerprint(sampleRate: 16_000, bufferFrameSize: 256)
+        let recorder = DirectAudioEventRecorder()
+        let factory = RecoveringAfterStoppedHardwareFactory(
+            oldFingerprint: oldFingerprint,
+            newFingerprint: newFingerprint,
+            recorder: recorder
+        )
+        let fingerprintReader = ScriptedFingerprintReader(
+            values: [oldFingerprint, oldFingerprint, newFingerprint, newFingerprint]
+        )
+        let controller = DirectCoreAudioLifecycleController(
+            packetHandler: { _, _, _, _, _ in },
+            inputFactory: { deviceID, _ in
+                factory.make(deviceID: deviceID)
+            },
+            fingerprintReader: { _ in
+                try fingerprintReader.read()
+            },
+            installsHardwareListeners: false,
+            deviceUIDReader: { _ in "built-in" },
+            onFormatInvalidated: { _ in }
+        )
+        _ = try await controller.prepare(
+            deviceID: oldFingerprint.deviceID,
+            deviceName: "Built-in microphone",
+            reason: "test_initial_prepare"
+        )
+
+        await controller.simulateFormatInvalidationForTesting(reason: "nominal_sample_rate")
+
+        XCTAssertEqual(controller.snapshot.phase, .empty)
+        let replacement = try await controller.prepare(
+            deviceID: newFingerprint.deviceID,
+            deviceName: "Replacement microphone",
+            reason: "test_rate_recovery"
+        )
+        XCTAssertEqual(replacement.phase, .prepared)
+        XCTAssertEqual(replacement.fingerprint, newFingerprint)
+        XCTAssertEqual(recorder.events, ["quarantine", "make:16000"])
+        await controller.shutdown(reason: "test_complete")
+    }
+
+    func testReusedDeviceIDAfterAirPodsDropAbandonsWithoutStopping() async throws {
+        let oldFingerprint = makeFingerprint(sampleRate: 24_000, bufferFrameSize: 512)
+        let newFingerprint = makeFingerprint(sampleRate: 48_000, bufferFrameSize: 512)
+        let recorder = DirectAudioEventRecorder()
+        let factory = RecoveringAfterStoppedHardwareFactory(
+            oldFingerprint: oldFingerprint,
+            newFingerprint: newFingerprint,
+            recorder: recorder
+        )
+        let fingerprintReader = ScriptedFingerprintReader(
+            values: [oldFingerprint, oldFingerprint, newFingerprint, newFingerprint]
+        )
+        let uids = ScriptedValueReader(values: ["airpods", "built-in"])
+        let controller = DirectCoreAudioLifecycleController(
+            packetHandler: { _, _, _, _, _ in },
+            inputFactory: { deviceID, _ in
+                factory.make(deviceID: deviceID)
+            },
+            fingerprintReader: { _ in
+                try fingerprintReader.read()
+            },
+            installsHardwareListeners: false,
+            deviceLivenessReader: { _ in true },
+            deviceUIDReader: { _ in uids.next() },
+            onFormatInvalidated: { _ in }
+        )
+        _ = try await controller.prepare(
+            deviceID: oldFingerprint.deviceID,
+            deviceName: "AirPods",
+            reason: "test_initial_prepare"
+        )
+
+        await controller.simulateFormatInvalidationForTesting(reason: "device_is_alive")
+
+        XCTAssertEqual(controller.snapshot.phase, .empty)
+        let replacement = try await controller.prepare(
+            deviceID: newFingerprint.deviceID,
+            deviceName: "Built-in microphone",
+            reason: "test_id_reuse_recovery"
+        )
+        XCTAssertEqual(replacement.phase, .prepared)
+        XCTAssertEqual(recorder.events, ["abandon", "make:48000"])
+        await controller.shutdown(reason: "test_complete")
+    }
+
+    func testCoreAudioServiceRestartAbandonsWithoutStopping() async throws {
+        let fingerprint = makeFingerprint(sampleRate: 48_000, bufferFrameSize: 512)
+        let recorder = DirectAudioEventRecorder()
+        let input = FailingStopDirectAudioInput(
+            fingerprint: fingerprint,
+            recorder: recorder
+        )
+        let controller = DirectCoreAudioLifecycleController(
+            packetHandler: { _, _, _, _, _ in },
+            inputFactory: { _, _ in input },
+            fingerprintReader: { _ in fingerprint },
+            installsHardwareListeners: false,
+            deviceUIDReader: { _ in "built-in" },
+            onFormatInvalidated: { _ in }
+        )
+        _ = try await controller.prepare(
+            deviceID: fingerprint.deviceID,
+            deviceName: "Built-in microphone",
+            reason: "test_initial_prepare"
+        )
+
+        await controller.simulateFormatInvalidationForTesting(reason: "audio_service_restarted")
+
+        XCTAssertEqual(controller.snapshot.phase, .empty)
+        _ = try await controller.prepare(
+            deviceID: fingerprint.deviceID,
+            deviceName: "Built-in microphone",
+            reason: "test_service_restart_recovery"
+        )
+        XCTAssertEqual(controller.snapshot.phase, .prepared)
+        XCTAssertEqual(recorder.events, ["abandon"])
+        await controller.shutdown(reason: "test_complete")
+    }
+
+    func testSleepWakeWithDeadDeviceAbandonsInsteadOfStopping() async throws {
+        let fingerprint = makeFingerprint(sampleRate: 48_000, bufferFrameSize: 512)
+        let recorder = DirectAudioEventRecorder()
+        let input = FakeDirectAudioInput(
+            deviceID: fingerprint.deviceID,
+            fingerprint: fingerprint,
+            recorder: recorder
+        )
+        let invalidations = InvalidationReasonLog()
+        let controller = DirectCoreAudioLifecycleController(
+            packetHandler: { _, _, _, _, _ in },
+            inputFactory: { _, _ in input },
+            fingerprintReader: { _ in fingerprint },
+            installsHardwareListeners: false,
+            deviceLivenessReader: { _ in false },
+            deviceUIDReader: { _ in "airpods" },
+            onFormatInvalidated: { invalidation in
+                invalidations.append(invalidation.reason)
+            }
+        )
+        _ = try await controller.start(
+            deviceID: fingerprint.deviceID,
+            deviceName: "AirPods",
+            reason: "test_start"
+        )
+
+        await controller.latchSystemSleep()
+        XCTAssertEqual(invalidations.reasons, ["system_sleep"])
+        XCTAssertEqual(controller.snapshot.phase, .running)
+
+        let report = await controller.stop(retainPrepared: false, reason: "system_wake")
+        XCTAssertEqual(report.status, noErr)
+        XCTAssertEqual(controller.snapshot.phase, .empty)
+        XCTAssertEqual(recorder.events, ["start:48000", "abandon:48000"])
+        await controller.shutdown(reason: "test_complete")
+    }
+
+    func testMissingHardwareObjectDoesNotPoisonLifecycle() async throws {
+        let fingerprint = makeFingerprint(sampleRate: 48_000, bufferFrameSize: 512)
+        let recorder = DirectAudioEventRecorder()
+        let input = FailingStopDirectAudioInput(
+            fingerprint: fingerprint,
+            recorder: recorder,
+            failureStatus: kAudioHardwareBadDeviceError
+        )
+        let controller = DirectCoreAudioLifecycleController(
+            packetHandler: { _, _, _, _, _ in },
+            inputFactory: { _, _ in input },
+            fingerprintReader: { _ in fingerprint },
+            installsHardwareListeners: false,
+            deviceUIDReader: { _ in "airpods" },
+            onFormatInvalidated: { _ in }
+        )
+        _ = try await controller.start(
+            deviceID: fingerprint.deviceID,
+            deviceName: "AirPods",
+            reason: "test_start"
+        )
+
+        let report = await controller.stop(retainPrepared: false, reason: "device_gone")
+        XCTAssertNotEqual(report.status, noErr)
+        XCTAssertEqual(controller.snapshot.phase, .empty)
+        _ = try await controller.prepare(
+            deviceID: fingerprint.deviceID,
+            deviceName: "Built-in microphone",
+            reason: "test_replacement_after_bad_device"
+        )
+        XCTAssertEqual(controller.snapshot.phase, .prepared)
+        await controller.shutdown(reason: "test_complete")
+    }
 }
 
 private nonisolated func makeFingerprint(
@@ -1326,6 +1513,39 @@ private final nonisolated class FakeDirectAudioInputFactory: @unchecked Sendable
                 recorder: self.recorder
             )
         }
+    }
+}
+
+private final class InvalidationReasonLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [String] = []
+
+    func append(_ reason: String) {
+        self.lock.lock()
+        self.stored.append(reason)
+        self.lock.unlock()
+    }
+
+    var reasons: [String] {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        return self.stored
+    }
+}
+
+private final class ScriptedValueReader: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [String]
+
+    init(values: [String]) {
+        self.values = values
+    }
+
+    func next() -> String? {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        guard self.values.isEmpty == false else { return nil }
+        return self.values.removeFirst()
     }
 }
 
@@ -1414,6 +1634,12 @@ private final nonisolated class FakeDirectAudioInput:
         }
         return noErr
     }
+
+    func abandonWithoutHardwareStop() -> OSStatus {
+        self.recorder.record("abandon:\(Int(self.sampleRate))")
+        self.running = false
+        return kAudioHardwareBadDeviceError
+    }
 }
 
 private final nonisolated class FailingStopDirectAudioInput:
@@ -1427,17 +1653,19 @@ private final nonisolated class FailingStopDirectAudioInput:
 
     private let recorder: DirectAudioEventRecorder
     private var running = false
-    private let failureStatus = OSStatus(-50)
+    private let failureStatus: OSStatus
 
     init(
         fingerprint: DirectCoreAudioFormatFingerprint,
-        recorder: DirectAudioEventRecorder
+        recorder: DirectAudioEventRecorder,
+        failureStatus: OSStatus = -50
     ) {
         self.deviceID = fingerprint.deviceID
         self.sampleRate = fingerprint.virtualFormat.sampleRate
         self.hardwareBufferFrameSize = fingerprint.bufferFrameSize
         self.formatFingerprint = fingerprint
         self.recorder = recorder
+        self.failureStatus = failureStatus
     }
 
     var isRunning: Bool {
@@ -1468,6 +1696,12 @@ private final nonisolated class FailingStopDirectAudioInput:
     func invalidate() -> OSStatus {
         self.recorder.record("quarantine")
         return self.failureStatus
+    }
+
+    func abandonWithoutHardwareStop() -> OSStatus {
+        self.recorder.record("abandon")
+        self.running = false
+        return kAudioHardwareBadDeviceError
     }
 }
 

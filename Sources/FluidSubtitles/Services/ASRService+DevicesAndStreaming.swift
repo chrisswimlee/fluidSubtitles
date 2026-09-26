@@ -352,6 +352,10 @@ extension ASRService {
             source: "ASRService"
         )
 
+        // A ready flag from the previous I speak language must not skip prepare.
+        // Streaming would then refuse every tick, and only Stop would transcribe.
+        provider.invalidateIfListeningLanguageChanged()
+
         // Check if already ready
         if self.isAsrReady, provider.isReady {
             DebugLogger.shared.debug("ASR already ready with loaded models, skipping initialization", source: "ASRService")
@@ -699,6 +703,7 @@ extension ASRService {
         _ = self.streamingTaskLifecycle.cancelScheduler()
         guard self.isAsrReady else { return }
         self.didRunStreamingTickThisListen = false
+        self.didReprepareStreamingProvider = false
         self.lastVoicedUptime = nil
         self.didConsumeSilenceEdgeTick = false
         self.pendingLatestChunk = false
@@ -810,6 +815,13 @@ extension ASRService {
             }
         }
 
+        if LiveTranslationModelGate.shouldDeferSpeechTick(
+            translationRunning: LiveTranslationModelGate.isTranslationRunning
+        ) {
+            self.benchmarkLog("chunk_skip index=\(chunkIndex) reason=translation ageMs=\(chunkAgeMs)")
+            return
+        }
+
         if LiveTranslationSilenceGate.shouldSkipASRTick(
             hadFirstTick: self.didRunStreamingTickThisListen,
             lastVoicedUptime: self.lastVoicedUptime,
@@ -828,6 +840,21 @@ extension ASRService {
             self.didConsumeSilenceEdgeTick = true
         }
 
+        if self.isAsrReady, !self.transcriptionProvider.isReady, !self.didReprepareStreamingProvider {
+            self.didReprepareStreamingProvider = true
+            self.isProcessingChunk = true
+            self.benchmarkLog("chunk_reprepare index=\(chunkIndex) ageMs=\(chunkAgeMs)")
+            do {
+                try await self.ensureAsrReady()
+            } catch {
+                self.benchmarkLog(
+                    "chunk_skip index=\(chunkIndex) reason=not_ready ageMs=\(chunkAgeMs) " +
+                        "isAsrReady=\(self.isAsrReady) providerReady=\(self.transcriptionProvider.isReady) " +
+                        "error=\(error.localizedDescription)"
+                )
+                return
+            }
+        }
         guard self.isAsrReady, self.transcriptionProvider.isReady else {
             self.benchmarkLog("chunk_skip index=\(chunkIndex) reason=not_ready ageMs=\(chunkAgeMs) isAsrReady=\(self.isAsrReady) providerReady=\(self.transcriptionProvider.isReady)")
             return
@@ -924,7 +951,7 @@ extension ASRService {
                         "Incremental delta preview failed; retrying with the retained window",
                         source: "ASRService"
                     )
-                    let retainedWindow = self.audioBuffer.getRetained()
+                    let retainedWindow = self.theaterBoundedWindow(self.audioBuffer.getRetained())
                     result = try await self.transcriptionExecutor.run { [provider = self.transcriptionProvider] in
                         let result = try await provider.transcribeStreaming(retainedWindow)
                         logStreamingProviderOperationReturn(
@@ -1468,10 +1495,16 @@ extension ASRService {
         ])
     }
 
-    func beginStreamingDrainRecovery(sessionID: Int, token: RecordingBufferHandoffGate.Token) {
+    func beginStreamingDrainRecovery(
+        sessionID: Int,
+        token: RecordingBufferHandoffGate.Token,
+        presentError: Bool = true
+    ) {
         self.timedOutStreamingHandoff = (sessionID, token)
         self.recordingBufferHandoffGate.markTimedOut(token)
-        self.presentStreamingRecoveryError()
+        if presentError {
+            self.presentStreamingRecoveryError()
+        }
         // Completion may have won the main-actor turn after the deadline fired.
         if self.streamingTaskLifecycle.activeTaskToDrain(sessionID: sessionID) == nil {
             self.finishStreamingDrainRecovery(sessionID: sessionID)

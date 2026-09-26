@@ -88,7 +88,10 @@ final class TheaterShellOwnershipTests: XCTestCase {
     }
 
     func testFirstCommitKeepsTheColdAppleTimeout() {
-        XCTAssertEqual(LiveTranslationTiming.translateClauseTimeoutNanoseconds, 25_000_000_000)
+        XCTAssertEqual(
+            LiveTranslationTiming.translateClauseTimeoutNanoseconds,
+            LiveTranslationTiming.commitMailboxTimeoutNanoseconds
+        )
         XCTAssertEqual(
             LiveTranslationTiming.mailboxTimeoutNanoseconds(for: .firstCommit),
             LiveTranslationTiming.translateClauseTimeoutNanoseconds

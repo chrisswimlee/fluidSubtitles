@@ -654,9 +654,11 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         self.statusMenuItem?.title = statusTitle
         self.theaterMenuItem?.title = SettingsStore.shared.theaterWindowEnabled ? "Close Theater" : "Open Theater"
         self.theaterMenuItem?.isEnabled = TheaterAvailability.isSupported
-        self.listenMenuItem?.title = isCaptionListening ? "Stop" : "Listen"
+        let isStopping = LiveTranslationController.shared.isFinishingSession
+        self.listenMenuItem?.title = isStopping ? "Stopping…" : (isCaptionListening ? "Stop" : "Listen")
         let dictationBusy = AppServices.shared.asr.isRunningOrStarting && !isCaptionListening
-        self.listenMenuItem?.isEnabled = TheaterAvailability.isSupported
+        self.listenMenuItem?.isEnabled = !isStopping
+            && TheaterAvailability.isSupported
             && (isCaptionListening || (ready.canListen && !dictationBusy))
         self.copyLastTranscriptMenuItem?.isEnabled = self.canCopyLastTranscript
         self.microphoneMenuItem?.isEnabled = true

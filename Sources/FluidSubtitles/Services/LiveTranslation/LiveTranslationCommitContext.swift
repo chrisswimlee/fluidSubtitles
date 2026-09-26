@@ -3,6 +3,79 @@ import Foundation
 /// Prior-4 MT context and confirmation peel. When-to-commit lives on
 /// TranslationClauseSegmenter (`nextCompletedSentence` / `nextCommitUnit`).
 enum LiveTranslationCommitContext {
+    /// Interlinear annotation anchors, same family as glossary lock tokens.
+    /// Lock tokens are `\u{FFF9}` plus digits plus `\u{FFFA}`. These use
+    /// triangles so a term lock cannot collide with a clause boundary.
+    static let contextClauseStart = "\u{FFF9}\u{25B9}\u{FFFA}"
+    static let contextClauseEnd = "\u{FFF9}\u{25C3}\u{FFFA}"
+
+    /// Priors stay unmarked context. Only the new clause sits between the marks.
+    static func markedContextPayload(
+        priors: [String],
+        current: String,
+        languageID: String
+    ) -> String {
+        let marked = Self.contextClauseStart + current + Self.contextClauseEnd
+        let head = priors
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !head.isEmpty else { return marked }
+        let context = TranslationClauseSegmenter.joinTranslatedLines(
+            head,
+            languageID: languageID
+        )
+        return context + "\n" + marked
+    }
+
+    /// Last line after a preserved break, when the model dropped the marks
+    /// but did not fuse the new caption into the priors.
+    static func lineBoundNewTranslation(
+        _ translated: String,
+        priorTranslations: [String],
+        isolatedSource: String,
+        targetID: String
+    ) -> String? {
+        guard translated.contains("\n") else { return nil }
+        guard let line = translated
+            .split(whereSeparator: \.isNewline)
+            .map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+            .last(where: { !$0.isEmpty })
+        else { return nil }
+        if priorTranslations.contains(where: { TranslationClauseSegmenter.isSameClause($0, line) }) {
+            return nil
+        }
+        if Self.leftoverContainsPriorCaption(line, priors: priorTranslations) {
+            return nil
+        }
+        guard Self.isSanePeeledCaption(line, isolatedSource: isolatedSource, targetID: targetID) else {
+            return nil
+        }
+        return line
+    }
+
+    /// The span between one start mark and one end mark. A missing, doubled,
+    /// or empty span is not a caption.
+    static func markedNewTranslation(_ translated: String) -> String? {
+        let startToken = Self.contextClauseStart
+        let endToken = Self.contextClauseEnd
+        guard translated.components(separatedBy: startToken).count == 2,
+              translated.components(separatedBy: endToken).count == 2,
+              let start = translated.range(of: startToken),
+              let end = translated.range(of: endToken),
+              start.upperBound <= end.lowerBound
+        else {
+            return nil
+        }
+        let caption = translated[start.upperBound..<end.lowerBound]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !caption.isEmpty else { return nil }
+        return caption
+    }
+
+    static func containsContextClauseMark(_ translated: String) -> Bool {
+        translated.contains(Self.contextClauseStart) || translated.contains(Self.contextClauseEnd)
+    }
+
     /// Only this Listen. A restored board or yesterday's talk must not prime MT.
     static func priorClauses(
         entries: [LectureCaptionEntry],

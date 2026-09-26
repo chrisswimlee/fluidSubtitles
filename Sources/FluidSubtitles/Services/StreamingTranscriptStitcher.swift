@@ -45,8 +45,9 @@ enum StreamingTranscriptStitcher {
         self.stitchResult(committed: previous, incoming: incoming).confirmedPrefix
     }
 
-    /// Once a word is on the live row, only grow it. A restitch that rewrites
-    /// printed words holds the old target until a later decode settles.
+    /// Once a word is in the held leftover, only grow it. A restitch that rewrites
+    /// those words holds the old target until a later decode settles. The board
+    /// does not paint this leftover.
     static func monotonicTarget(printed: String, incoming: String) -> String {
         let printed = printed.trimmingCharacters(in: .whitespacesAndNewlines)
         let incoming = incoming.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -67,25 +68,29 @@ enum StreamingTranscriptStitcher {
         return printed
     }
 
-    /// A mid-talk commit may only fire for a clause the confirmed prefix
-    /// already contained as a finished unit. A late period on a printed
-    /// run-on is not enough to peel the next sentence off.
-    static func confirmedClauseContains(unit: String, confirmed: String) -> Bool {
+    /// The confirmed text already contains this clause, and that confirmed
+    /// text looks finished in the listen language. A sentence end that exists
+    /// only on `unit` does not count, and neither does the same words with
+    /// punctuation stripped.
+    static func confirmedClauseContains(
+        unit: String,
+        confirmed: String,
+        languageID: String
+    ) -> Bool {
         let unit = unit.trimmingCharacters(in: .whitespacesAndNewlines)
         let confirmed = confirmed.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !unit.isEmpty, !confirmed.isEmpty else { return false }
-        if confirmed.hasPrefix(unit) || confirmed.hasPrefix(unit + " ") { return true }
-        if TranslationClauseSegmenter.isSameClause(confirmed, unit) { return true }
+        guard TranslationClauseSegmenter.looksComplete(confirmed, languageID: languageID) else {
+            return false
+        }
+        if confirmed == unit || confirmed.hasPrefix(unit) || confirmed.hasPrefix(unit + " ") {
+            return true
+        }
         let stripped = unit.trimmingCharacters(in: CharacterSet(charactersIn: ".?!。！？…"))
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !stripped.isEmpty, confirmed.hasPrefix(stripped) else { return false }
         let after = confirmed.dropFirst(stripped.count)
-        guard let first = after.first else {
-            return TranslationClauseSegmenter.looksComplete(confirmed, languageID: "en")
-                || TranslationClauseSegmenter.looksComplete(confirmed, languageID: "ko")
-                || TranslationClauseSegmenter.looksComplete(confirmed, languageID: "ja")
-                || TranslationClauseSegmenter.looksComplete(confirmed, languageID: "th")
-        }
+        guard let first = after.first else { return true }
         return ".?!。！？…".contains(first)
     }
 

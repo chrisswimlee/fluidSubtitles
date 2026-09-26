@@ -57,6 +57,14 @@ final class TheaterMinimizeTests: XCTestCase {
             TheaterMinimize.homeHelp(for: .close),
             TheaterReadiness.closeTheaterHelp
         )
+        XCTAssertEqual(
+            TheaterMinimize.homeHelp(for: .close, listening: true),
+            TheaterReadiness.closeWhileListening
+        )
+        XCTAssertEqual(
+            TheaterMinimize.homeHelp(for: .open, listening: true),
+            TheaterReadiness.openTheaterHelp
+        )
     }
 }
 
@@ -88,6 +96,13 @@ final class TheaterOverlayPolicyTests: XCTestCase {
         XCTAssertTrue(TheaterOverlayPolicy.showsWindowShadow(presentation: .popup))
         XCTAssertFalse(
             TheaterOverlayPolicy.hidesTitlebarButtons(presentation: .popup, toolsPinned: false)
+        )
+        XCTAssertTrue(
+            TheaterOverlayPolicy.hidesTitlebarButtons(
+                presentation: .popup,
+                toolsPinned: false,
+                hideChrome: true
+            )
         )
     }
 
@@ -142,6 +157,22 @@ final class TheaterOverlayPolicyTests: XCTestCase {
         )
         XCTAssertFalse(
             TheaterOverlayPolicy.usesCaptionsOnlyChrome(presentation: .transparent, hideChrome: true)
+        )
+        XCTAssertTrue(
+            TheaterOverlayPolicy.reservesToolBarSlot(presentation: .popup, hideChrome: false)
+        )
+        XCTAssertFalse(
+            TheaterOverlayPolicy.reservesToolBarSlot(presentation: .popup, hideChrome: true)
+        )
+        XCTAssertFalse(
+            TheaterOverlayPolicy.reservesToolBarSlot(presentation: .transparent, hideChrome: false)
+        )
+        XCTAssertTrue(
+            TheaterOverlayPolicy.reservesToolBarSlot(
+                presentation: .transparent,
+                hideChrome: false,
+                toolsPinned: true
+            )
         )
         XCTAssertTrue(
             TheaterOverlayPolicy.movableByBackground(
@@ -339,6 +370,8 @@ final class TheaterMenuBarTests: XCTestCase {
         XCTAssertTrue(titles.contains("Smaller Captions"))
         XCTAssertTrue(titles.contains("Caption Font"))
         XCTAssertTrue(titles.contains("Theme"))
+        XCTAssertTrue(titles.contains(TheaterReadiness.linePrintTitle))
+        XCTAssertTrue(titles.contains(TheaterReadiness.printGapTitle))
         XCTAssertTrue(titles.contains(TheaterPresentationStyle.transparent.displayName))
         XCTAssertTrue(titles.contains("Caption Plate"))
         XCTAssertNotNil(menu.items.first { $0.title == "Caption Font" }?.submenu)
@@ -400,22 +433,11 @@ final class TheaterMenuBarTests: XCTestCase {
         )
     }
 
-    func testMenuBarSaysWhenTheBoardIsHiddenFromZoom() {
-        let settings = SettingsStore.shared
-        let previous = settings.theaterHideFromScreenShare
-        defer { settings.theaterHideFromScreenShare = previous }
+    func testMenuBarDoesNotOfferAScreenShareToggle() {
         let menu = self.overlayMenu()
-        let share = TheaterMenuBarController.item(.hideShare, in: menu)
-
-        settings.theaterHideFromScreenShare = true
-        TheaterMenuBarController.applyState(to: menu)
-        XCTAssertEqual(share?.state, .on)
-        XCTAssertTrue(share?.title.contains(TheaterReadiness.hiddenFromZoomBadge) == true)
-
-        settings.theaterHideFromScreenShare = false
-        TheaterMenuBarController.applyState(to: menu)
-        XCTAssertEqual(share?.state, .off)
-        XCTAssertEqual(share?.title, "Hide from Screen Share")
+        XCTAssertNil(menu.items.first { $0.title == "Hide from Screen Share" })
+        XCTAssertEqual(TheaterReadiness.screenShare.contains("Share the slides window"), true)
+        XCTAssertEqual(TheaterReadiness.screenShare.contains("include these captions"), true)
     }
 
     func testMenuBarMinimizeFlipsToShowTheater() {
@@ -427,7 +449,7 @@ final class TheaterMenuBarTests: XCTestCase {
 
         settings.theaterMinimized = true
         TheaterMenuBarController.applyState(to: menu)
-        XCTAssertEqual(minimize?.title, "Show Theater")
+        XCTAssertEqual(minimize?.title, "Expand Theater")
         XCTAssertEqual(minimize?.toolTip, TheaterChromeHelp.expand)
         XCTAssertEqual(minimize?.isEnabled, settings.theaterWindowEnabled)
 
@@ -591,5 +613,68 @@ final class TheaterCaptionScaleTests: XCTestCase {
         XCTAssertEqual(narrow.translated, TheaterCaptionScale.translatedSize(setting: 42))
         XCTAssertGreaterThan(wide.translated, narrow.translated)
         XCTAssertGreaterThan(wide.spoken, narrow.spoken)
+    }
+
+    func testCaptionSizeShrinksWhenTheBoardIsShorterThanTheLine() {
+        let proposed = TheaterCaptionScale.displaySize(setting: 42, stageWidth: 1920)
+        let stageHeight: CGFloat = 140
+        let fitted = TheaterCaptionScale.fittedDisplaySize(
+            proposed: proposed,
+            stageHeight: stageHeight
+        ) { display in
+            let spoken = TheaterCaptionScale.spokenSize(setting: display)
+            let translated = TheaterCaptionScale.translatedSize(setting: display)
+            return TheaterBilingualWrap.boardHeight(
+                rows: [
+                    TheaterBilingualWrap.Row(text: " ", isSpoken: false),
+                    TheaterBilingualWrap.Row(text: " ", isSpoken: true)
+                ],
+                spokenFont: NSFont.systemFont(ofSize: spoken, weight: .semibold),
+                translatedFont: NSFont.systemFont(ofSize: translated, weight: .semibold)
+            )
+        }
+        XCTAssertLessThan(fitted, proposed)
+        let height = TheaterBilingualWrap.boardHeight(
+            rows: [
+                TheaterBilingualWrap.Row(text: " ", isSpoken: false),
+                TheaterBilingualWrap.Row(text: " ", isSpoken: true)
+            ],
+            spokenFont: NSFont.systemFont(
+                ofSize: TheaterCaptionScale.spokenSize(setting: fitted),
+                weight: .semibold
+            ),
+            translatedFont: NSFont.systemFont(
+                ofSize: TheaterCaptionScale.translatedSize(setting: fitted),
+                weight: .semibold
+            )
+        )
+        XCTAssertLessThanOrEqual(height, stageHeight)
+    }
+
+    func testCaptionSizeStaysPutAcrossASmallMeasurementTick() {
+        XCTAssertEqual(
+            TheaterCaptionScale.resolvedDisplaySize(proposed: 42.4, locked: 42, lockedFits: true),
+            42
+        )
+        XCTAssertEqual(
+            TheaterCaptionScale.resolvedDisplaySize(proposed: 44, locked: 42, lockedFits: true),
+            42
+        )
+        XCTAssertEqual(
+            TheaterCaptionScale.resolvedDisplaySize(proposed: 36, locked: 42, lockedFits: true),
+            36
+        )
+        XCTAssertEqual(
+            TheaterCaptionScale.resolvedDisplaySize(proposed: 30, locked: 42, lockedFits: false),
+            30
+        )
+        XCTAssertEqual(
+            TheaterCaptionScale.resolvedDisplaySize(
+                proposed: 50,
+                locked: 42,
+                lockedFits: true
+            ),
+            50
+        )
     }
 }

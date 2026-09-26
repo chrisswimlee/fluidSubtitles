@@ -10,32 +10,20 @@ enum TheaterExportFormat {
 
 @MainActor
 final class PresenterCaptionModel: ObservableObject {
-    @Published var committed: [String] = []
-    @Published var committedIDs: [UInt64] = []
-    @Published var nextCaptionID: UInt64 = 1
-    @Published var committedSources: [String] = []
-    @Published var pendingSources: [String] = []
-    @Published var inFlightCount: Int = 0
-    @Published var liveRowID: UInt64 = 0
-    @Published var source: String = ""
-    @Published var tentativeSpoken: String = ""
-    @Published var draft: String = ""
+    @Published var board = TheaterBoardState()
     @Published var pairLabel: String = ""
     @Published var status: String = ""
     @Published var statusKind: TheaterStatusKind = .idle
     @Published var isListening: Bool = false
     @Published var isPaused: Bool = false
-    @Published var isEditing: Bool = false
-    @Published var editedText: String = ""
     @Published var canRetryTranslation: Bool = false
-    @Published var approachingLineLimit: Bool = false
     @Published var latencyReadout: String = ""
     @Published var compactLatencyReadout: String = ""
     @Published var paceCueLabel: String = ""
     @Published var paceCueCompactLabel: String = ""
     @Published var paceCueKind: String = ""
     @Published var showCloseConfirmation: Bool = false
-    /// True while the export save panel is open. The More button reads Saved.
+    /// True while the export save panel is open. The Board menu reads Saved.
     @Published var exportShowsSaved: Bool = false
     /// Session-only. Overlay starts unpinned (text only). Pop-up, minimize, and close clear it.
     @Published var overlayToolsPinned: Bool = false

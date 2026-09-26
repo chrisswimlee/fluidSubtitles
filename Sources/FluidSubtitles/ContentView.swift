@@ -1524,7 +1524,7 @@ struct ContentView: View {
         // Set cancel callback for Escape key handling (closes transient UI, resets recording state)
         // Returns true if it handled something (so GlobalHotkeyManager knows to consume the event)
         self.hotkeyManager?.setCancelCallback {
-            var handled = false
+            let handled = false
 
             // The suggestion panel is non-activating, so its Escape key arrives
             // through the global event tap while the target app stays focused.

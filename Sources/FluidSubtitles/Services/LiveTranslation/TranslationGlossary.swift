@@ -472,16 +472,21 @@ enum SpokenScriptDetector {
 nonisolated enum LiveTranslationTiming {
     /// English confirm after a finished ending.
     static let completeSettleNanoseconds: UInt64 = 500_000_000
-    /// English open-thought silence before a forced cut.
-    static let openSettleNanoseconds: UInt64 = 3_500_000_000
+    /// English open-thought silence before a forced cut. The room is already
+    /// quiet for the 400 ms silence hold and the 400 ms end-of-utterance hold
+    /// before this starts, so this is the extra wait the audience feels.
+    static let openSettleNanoseconds: UInt64 = 1_200_000_000
+    /// A local sharpen that is slower than this loses. The Apple line prints.
+    static let firstPrintSharpenNanoseconds: UInt64 = 700_000_000
     /// Brief hold after end-of-utterance so the last ASR tick can land.
     static let eouHoldNanoseconds: UInt64 = 400_000_000
     static let minPauseFinalizeCharacters = 22
     static let minPauseFinalizeWords = 4
     /// Thai needs a real clause, not a few syllables.
     static let minPauseFinalizeCharactersThai = 22
-    /// Korean/Japanese: only force a pause-cut on a long run-on.
-    static let minPauseFinalizeCharactersVerbFinal = 48
+    /// Korean/Japanese pause-cut. Same character floor as other languages,
+    /// so a real leftover does not wait for a long run-on.
+    static let minPauseFinalizeCharactersVerbFinal = 22
     static let maxDraftCharacters = 240
     /// Floor for a pause-cut so a leftover is a clause, not two words.
     static let followAlongWords = 8
@@ -489,9 +494,10 @@ nonisolated enum LiveTranslationTiming {
     static let maxLineWords = 12
     static let maxLineCharacters = 80
     static let contextSentenceCount = 4
-    /// The window is the viewport. This only bounds a very long Listen.
-    /// Resizing the board shows more or less of the lines still kept.
-    static let visibleTheaterLines = 240
+    /// Recent lines the board can still show. A tall window fills from this
+    /// list and the presenter can scroll back a few minutes. Older lines stay
+    /// in the session record for History and export.
+    static let visibleTheaterLines = 48
     static let maxCommittedLines = visibleTheaterLines
     /// Leftover peel runs on every speech update. It uses this recent
     /// suffix, not the whole board, so a full-screen talk stays inside one tick.
@@ -506,15 +512,11 @@ nonisolated enum LiveTranslationTiming {
     static let polishPriorCaptionCount = 4
     static let polishTemperature = 0.2
     static let polishMaxTokens = 256
-    /// A commit MT call must fail, not hang, since the burst-safe log
-    /// holds the row until `inFlightSources` is empty again. `warmAppleTranslation`
-    /// is fire-and-forget at session start, not awaited — the session's first
-    /// commit can race a cold Apple Translation session start (model load,
-    /// first `.translationTask` attach), which can take longer than a few
-    /// seconds. This only needs to catch a truly hung call, not enforce
-    /// snappy latency, so the floor stays generous.
-    static let translateClauseTimeoutNanoseconds: UInt64 = 25_000_000_000
-    /// After mailbox cancel exists, a hung commit fails here instead of at 25 s.
+    /// A commit MT call must fail, not hang. Warmup runs before the first
+    /// Listen, so the first caption uses the same mailbox timeout as the rest.
+    /// A hung call must not hold later sentences.
+    static let translateClauseTimeoutNanoseconds: UInt64 = 7_000_000_000
+    /// A hung commit fails here instead of blocking the board.
     static let commitMailboxTimeoutNanoseconds: UInt64 = 7_000_000_000
     static let liveMailboxTimeoutNanoseconds: UInt64 = 1_500_000_000
 
@@ -522,9 +524,7 @@ nonisolated enum LiveTranslationTiming {
         switch kind {
         case .live:
             return Self.liveMailboxTimeoutNanoseconds
-        case .firstCommit:
-            return Self.translateClauseTimeoutNanoseconds
-        case .commit:
+        case .firstCommit, .commit:
             return Self.commitMailboxTimeoutNanoseconds
         }
     }
@@ -548,9 +548,9 @@ nonisolated enum LiveTranslationTiming {
     static func openSettleNanoseconds(languageID: String) -> UInt64 {
         switch TranslationClauseSegmenter.languageCode(from: languageID) {
         case "ko", "ja":
-            return 6_000_000_000
+            return 2_000_000_000
         case "th":
-            return 4_000_000_000
+            return 1_500_000_000
         default:
             return Self.openSettleNanoseconds
         }

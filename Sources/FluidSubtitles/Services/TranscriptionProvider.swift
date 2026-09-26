@@ -189,6 +189,9 @@ protocol TranscriptionProvider {
 
     /// Drop in-memory model sessions without deleting the on-disk cache.
     func releaseMemory() async
+
+    /// Drop a prepared session whose listening language is not I speak.
+    func invalidateIfListeningLanguageChanged()
 }
 
 // Default implementation for optional methods
@@ -225,6 +228,8 @@ extension TranscriptionProvider {
     }
 
     func releaseMemory() async {}
+
+    func invalidateIfListeningLanguageChanged() {}
 }
 
 // MARK: - Architecture Detection

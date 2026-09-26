@@ -610,17 +610,18 @@ final class LiveTranslationGlossaryTests: XCTestCase {
             SpokenLanguageHints.orderedIDs(primaryID: "ko", alsoHearOthers: false),
             ["ko"]
         )
-        XCTAssertEqual(
-            SpokenLanguageHints.orderedIDs(primaryID: "ko", alsoHearOthers: true),
-            ["ko", "en", "ja", "th"]
-        )
+        // I speak first, then every other product language once.
+        let ordered = SpokenLanguageHints.orderedIDs(primaryID: "ko", alsoHearOthers: true)
+        XCTAssertEqual(ordered.first, "ko")
+        XCTAssertEqual(ordered.count, TranslationLanguageCatalog.all.count)
+        XCTAssertEqual(Set(ordered), Set(TranslationLanguageCatalog.all.map(\.id)))
+        XCTAssertEqual(Array(ordered.prefix(4)), ["ko", "en", "ja", "th"])
         XCTAssertNil(SpokenLanguageHints.whisperLanguageCode(stored: "ko", alsoHearOthers: true))
         XCTAssertEqual(SpokenLanguageHints.whisperLanguageCode(stored: "ko", alsoHearOthers: false), "ko")
     }
 
-    func testTheaterHidesFromScreenShareWithSharingTypeNone() {
-        XCTAssertEqual(TheaterWindowSharing.sharingType(hideFromScreenShare: true), .none)
-        XCTAssertEqual(TheaterWindowSharing.sharingType(hideFromScreenShare: false), .readOnly)
+    func testTheaterStaysInScreenshots() {
+        XCTAssertEqual(TheaterWindowSharing.sharingType(), .readOnly)
     }
 
     func testLectureTermPackReadsTypeWhisperCorrectionsAndBareNames() throws {

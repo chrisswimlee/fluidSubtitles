@@ -386,6 +386,9 @@ nonisolated protocol DirectCoreAudioInputControlling: AnyObject, Sendable {
     func markFormatDirty()
     func openPacketGateIfClean() -> Bool
     func invalidate() -> OSStatus
+    /// Drops the HAL registration without AudioDeviceStop or DestroyIOProcID.
+    /// The callback context stays allocated.
+    func abandonWithoutHardwareStop() -> OSStatus
 }
 
 private final nonisolated class DirectCoreAudioInput: DirectCoreAudioInputControlling, @unchecked Sendable {
@@ -531,28 +534,70 @@ private final nonisolated class DirectCoreAudioInput: DirectCoreAudioInputContro
         return noErr
     }
 
+    @discardableResult
+    func abandonWithoutHardwareStop() -> OSStatus {
+        guard let capture else { return self.poisonedStopStatus ?? noErr }
+        fv_core_audio_capture_abandon(capture)
+        self.workerGroup.wait()
+        // The IOProc may still be inside HAL, or this AudioObjectID may already
+        // name a different device. Freeing or stopping here is the crash.
+        self.capture = nil
+        self.poisonedStopStatus = kAudioHardwareBadDeviceError
+        return kAudioHardwareBadDeviceError
+    }
+
     private nonisolated static func consumePackets(
         capture: FVCoreAudioCaptureRef,
-        packetHandler: DirectCoreAudioPacketHandler
+        packetHandler: @escaping DirectCoreAudioPacketHandler
     ) {
+        let handoff = CapturePacketHandoff(sampleRate: fv_core_audio_capture_sample_rate(capture))
+        let scratch = CaptureScratch(capacity: Int(FV_CORE_AUDIO_MAX_FRAMES_PER_PACKET))
+        let commitQueue = DispatchQueue(
+            label: "com.fluidsubtitles.audio.pcm-commit",
+            qos: .userInitiated,
+            autoreleaseFrequency: .workItem
+        )
+        defer { commitQueue.sync {} }
+
         while true {
             var packet = FVCoreAudioPacket()
+            var published = false
             while fv_core_audio_capture_peek(capture, &packet) {
                 if let samples = packet.samples, packet.frameCount > 0 {
-                    packetHandler(
-                        samples,
-                        Int(packet.frameCount),
-                        packet.sampleRate,
-                        packet.inputHostTime,
-                        packet.inputSampleTime
+                    let stored = handoff.write(
+                        samples: samples,
+                        frameCount: Int(packet.frameCount),
+                        sampleRate: packet.sampleRate,
+                        inputHostTime: packet.inputHostTime,
+                        inputSampleTime: packet.inputSampleTime
                     )
+                    fv_core_audio_capture_consume(capture)
+                    if stored {
+                        published = true
+                    } else if handoff.consumeDropNotice() {
+                        DebugLogger.shared.warning(
+                            "Capture handoff dropped PCM after releasing the HAL slot",
+                            source: "DirectCoreAudioInput"
+                        )
+                    }
+                } else {
+                    fv_core_audio_capture_consume(capture)
                 }
-                fv_core_audio_capture_consume(capture)
+            }
+            if published {
+                let handoff = handoff
+                let scratch = scratch
+                let packetHandler = packetHandler
+                commitQueue.async {
+                    handoff.deliver(using: scratch, to: packetHandler)
+                }
             }
 
             guard fv_core_audio_capture_is_running(capture) else {
                 // AudioDeviceStop waits for the IOProc to leave. One final
                 // acquire/drain above therefore captures the complete tail.
+                // commitQueue.sync in defer delivers copies already released
+                // from the HAL ring before stop returns.
                 return
             }
             _ = fv_core_audio_capture_wait(capture, 100)
@@ -649,6 +694,8 @@ final nonisolated class DirectCoreAudioLifecycleController: @unchecked Sendable 
     ) throws -> any DirectCoreAudioInputControlling
     typealias FingerprintReader = (_ deviceID: AudioObjectID) throws
         -> DirectCoreAudioFormatFingerprint
+    typealias DeviceLivenessReader = (_ deviceID: AudioObjectID) -> Bool?
+    typealias DeviceUIDReader = (_ deviceID: AudioObjectID) -> String?
 
     private struct ListenerRegistration {
         let objectID: AudioObjectID
@@ -686,6 +733,8 @@ final nonisolated class DirectCoreAudioLifecycleController: @unchecked Sendable 
     private let packetHandler: PacketHandler
     private let inputFactory: InputFactory
     private let fingerprintReader: FingerprintReader
+    private let deviceLivenessReader: DeviceLivenessReader
+    private let deviceUIDReader: DeviceUIDReader
     private let onFormatInvalidated: @Sendable (FormatInvalidation) -> Void
     private let installsHardwareListeners: Bool
 
@@ -697,6 +746,8 @@ final nonisolated class DirectCoreAudioLifecycleController: @unchecked Sendable 
     private var isShutDown = false
     private var isPoisoned = false
     private var inputDeviceName: String?
+    private var preparedDeviceUID: String?
+    private var sleepLatched = false
 
     init(
         packetHandler: @escaping PacketHandler,
@@ -707,11 +758,19 @@ final nonisolated class DirectCoreAudioLifecycleController: @unchecked Sendable 
             try DirectCoreAudioFormatFingerprint.read(deviceID: $0)
         },
         installsHardwareListeners: Bool = true,
+        deviceLivenessReader: DeviceLivenessReader? = nil,
+        deviceUIDReader: DeviceUIDReader? = nil,
         onFormatInvalidated: @escaping @Sendable (FormatInvalidation) -> Void
     ) {
         self.packetHandler = packetHandler
         self.inputFactory = inputFactory
         self.fingerprintReader = fingerprintReader
+        self.deviceLivenessReader = deviceLivenessReader ?? { deviceID in
+            Self.readDeviceLiveness(objectID: deviceID)
+        }
+        self.deviceUIDReader = deviceUIDReader ?? { deviceID in
+            Self.readDeviceUID(objectID: deviceID)
+        }
         self.installsHardwareListeners = installsHardwareListeners
         self.onFormatInvalidated = onFormatInvalidated
     }
@@ -917,9 +976,43 @@ final nonisolated class DirectCoreAudioLifecycleController: @unchecked Sendable 
         }
     }
 
+    func latchSystemSleep() async {
+        await withCheckedContinuation { continuation in
+            self.lifecycleQueue.async {
+                self.sleepLatched = true
+                if let input = self.input {
+                    input.markFormatDirty()
+                    self.onFormatInvalidated(
+                        FormatInvalidation(
+                            generation: self.generation,
+                            deviceID: input.deviceID,
+                            reason: "system_sleep",
+                            wasRunning: input.isRunning
+                        )
+                    )
+                }
+                continuation.resume()
+            }
+        }
+    }
+
     func stop(retainPrepared: Bool, reason: String) async -> StopReport {
         await withCheckedContinuation { continuation in
             self.lifecycleQueue.async {
+                if self.consumeSleepLatchForTeardown() {
+                    _ = self.invalidateLocked(
+                        reason: "system_wake:\(reason)",
+                        abandonWithoutHardwareStop: true
+                    )
+                    continuation.resume(
+                        returning: StopReport(
+                            status: noErr,
+                            droppedPackets: 0,
+                            retainedPreparedCapture: false
+                        )
+                    )
+                    return
+                }
                 guard let input = self.input else {
                     continuation.resume(
                         returning: StopReport(
@@ -945,13 +1038,21 @@ final nonisolated class DirectCoreAudioLifecycleController: @unchecked Sendable 
                 let status = input.stop()
                 let droppedPackets = input.droppedPacketCount
                 if status != noErr {
-                    self.isPoisoned = true
-                    _ = self.invalidateLocked(reason: "stop_failed:\(reason)")
-                    self.publishSnapshot(
-                        phase: .failed,
-                        input: nil,
-                        fingerprint: nil
+                    let deviceGone = Self.hardwareObjectIsGone(status)
+                    if deviceGone == false {
+                        self.isPoisoned = true
+                    }
+                    _ = self.invalidateLocked(
+                        reason: "stop_failed:\(reason)",
+                        allowStoppedHardwareReplacement: deviceGone
                     )
+                    if self.isPoisoned {
+                        self.publishSnapshot(
+                            phase: .failed,
+                            input: nil,
+                            fingerprint: nil
+                        )
+                    }
                 } else if retainPrepared, self.isShutDown == false {
                     self.publishSnapshot(
                         phase: .prepared,
@@ -982,7 +1083,11 @@ final nonisolated class DirectCoreAudioLifecycleController: @unchecked Sendable 
     func invalidate(reason: String) async {
         await withCheckedContinuation { continuation in
             self.lifecycleQueue.async {
-                _ = self.invalidateLocked(reason: reason)
+                let abandon = self.consumeSleepLatchForTeardown()
+                _ = self.invalidateLocked(
+                    reason: reason,
+                    abandonWithoutHardwareStop: abandon
+                )
                 continuation.resume()
             }
         }
@@ -1051,6 +1156,7 @@ final nonisolated class DirectCoreAudioLifecycleController: @unchecked Sendable 
         self.generation &+= 1
         let generation = self.generation
         self.inputDeviceName = deviceName
+        self.preparedDeviceUID = self.deviceUIDReader(deviceID)
         self.publishSnapshot(
             phase: .preparing,
             input: nil,
@@ -1131,7 +1237,8 @@ final nonisolated class DirectCoreAudioLifecycleController: @unchecked Sendable 
     @discardableResult
     private func invalidateLocked(
         reason: String,
-        allowStoppedHardwareReplacement: Bool = false
+        allowStoppedHardwareReplacement: Bool = false,
+        abandonWithoutHardwareStop: Bool = false
     ) -> OSStatus {
         guard self.input != nil || self.listenerRegistrations.isEmpty == false else {
             self.inputDeviceName = nil
@@ -1154,8 +1261,14 @@ final nonisolated class DirectCoreAudioLifecycleController: @unchecked Sendable 
         self.packetGate?.retire()
         self.packetGate = nil
         let listenerCount = self.listenerRegistrations.count
-        Self.removeListeners(self.listenerRegistrations, queue: self.listenerQueue)
-        self.listenerRegistrations.removeAll(keepingCapacity: false)
+        if abandonWithoutHardwareStop {
+            // coreaudiod has dropped these registrations, or the AudioObjectID
+            // may already belong to another device. Removing them is the crash.
+            self.listenerRegistrations.removeAll(keepingCapacity: false)
+        } else {
+            Self.removeListeners(self.listenerRegistrations, queue: self.listenerQueue)
+            self.listenerRegistrations.removeAll(keepingCapacity: false)
+        }
         if listenerCount > 0 {
             let listenerDrainStartedAt = ProcessInfo.processInfo.systemUptime
             // Removal does not guarantee that an already-dispatched listener
@@ -1169,29 +1282,42 @@ final nonisolated class DirectCoreAudioLifecycleController: @unchecked Sendable 
                 level: .debug
             )
         }
-        let status = input?.invalidate() ?? noErr
-        let stoppedHardwareWasReported =
-            self.consumeStoppedHardwareNotification(generation: self.generation)
-        let replacementAllowed =
-            allowStoppedHardwareReplacement || stoppedHardwareWasReported
-        if status != noErr {
-            if replacementAllowed {
-                Self.log(
-                    "Direct capture stale hardware teardown generation=\(self.generation) " +
-                        "status=\(status); callback context quarantined, replacement allowed",
-                    level: .warning
-                )
-            } else {
-                self.isPoisoned = true
-                Self.log(
-                    "Direct capture teardown failed generation=\(self.generation) " +
-                        "status=\(status); lifecycle poisoned and callback context quarantined",
-                    level: .warning
-                )
+        let status: OSStatus
+        if abandonWithoutHardwareStop {
+            status = input?.abandonWithoutHardwareStop() ?? noErr
+            Self.log(
+                "Direct capture abandoned without hardware stop generation=\(self.generation) " +
+                    "reason=\(reason) status=\(status)",
+                level: .warning
+            )
+        } else {
+            status = input?.invalidate() ?? noErr
+            let stoppedHardwareWasReported =
+                self.consumeStoppedHardwareNotification(generation: self.generation)
+            let replacementAllowed =
+                allowStoppedHardwareReplacement ||
+                stoppedHardwareWasReported ||
+                Self.hardwareObjectIsGone(status)
+            if status != noErr {
+                if replacementAllowed {
+                    Self.log(
+                        "Direct capture stale hardware teardown generation=\(self.generation) " +
+                            "status=\(status); callback context quarantined, replacement allowed",
+                        level: .warning
+                    )
+                } else {
+                    self.isPoisoned = true
+                    Self.log(
+                        "Direct capture teardown failed generation=\(self.generation) " +
+                            "status=\(status); lifecycle poisoned and callback context quarantined",
+                        level: .warning
+                    )
+                }
             }
         }
         self.input = nil
         self.inputDeviceName = nil
+        self.preparedDeviceUID = nil
         let finalPhase: Phase =
             self.isShutDown ? .shutDown : (self.isPoisoned ? .failed : .empty)
         self.publishSnapshot(
@@ -1296,27 +1422,22 @@ final nonisolated class DirectCoreAudioLifecycleController: @unchecked Sendable 
 
         let invalidationHandler = self.onFormatInvalidated
         let block: AudioObjectPropertyListenerBlock = { [weak self, weak input] listenerObjectID, _ in
-            let deviceIsAlive =
-                name == "device_is_alive"
-                    ? Self.readDeviceLiveness(objectID: listenerObjectID)
-                    : nil
+            // Mark the IOProc dirty before any other work. A nominal-rate or
+            // AirPods format change can already be delivering the new layout.
+            input?.markFormatDirty()
             let hardwareIsKnownStopped =
                 name == "audio_service_restarted" ||
-                name == "io_stopped_abnormally" ||
-                (name == "device_is_alive" && deviceIsAlive != true)
+                name == "io_stopped_abnormally"
             if hardwareIsKnownStopped {
                 self?.recordStoppedHardwareNotification(generation: generation)
             }
             if name == "device_is_alive" {
                 Self.log(
                     "Direct capture liveness notification generation=\(generation) " +
-                        "device=\(listenerObjectID) " +
-                        "alive=\(deviceIsAlive.map(String.init) ?? "unreadable") " +
-                        "knownStopped=\(hardwareIsKnownStopped)",
-                    level: hardwareIsKnownStopped ? .warning : .info
+                        "device=\(listenerObjectID) alive=deferred",
+                    level: .warning
                 )
             }
-            input?.markFormatDirty()
             invalidationHandler(
                 FormatInvalidation(
                     generation: generation,
@@ -1385,10 +1506,67 @@ final nonisolated class DirectCoreAudioLifecycleController: @unchecked Sendable 
                 "fingerprint={\(input.formatFingerprint.logDescription)}",
             level: .warning
         )
+        let identityReused =
+            (reason == "device_is_alive" || reason == "device_changed") &&
+            self.deviceIdentityWasReused(input)
+        if reason == "audio_service_restarted" || identityReused {
+            self.invalidateLocked(
+                reason: "format_listener:\(reason)",
+                abandonWithoutHardwareStop: true
+            )
+            return
+        }
+        let alive = reason == "device_is_alive"
+            ? self.deviceLivenessReader(input.deviceID)
+            : true
+        if reason == "device_is_alive", alive != true {
+            self.invalidateLocked(
+                reason: "format_listener:\(reason)",
+                abandonWithoutHardwareStop: true
+            )
+            return
+        }
         self.invalidateLocked(
             reason: "format_listener:\(reason)",
-            allowStoppedHardwareReplacement: hardwareIsKnownStopped
+            allowStoppedHardwareReplacement: hardwareIsKnownStopped ||
+                Self.failedHardwareStopAllowsReplacement(reason)
         )
+    }
+
+    private func deviceIdentityWasReused(_ input: any DirectCoreAudioInputControlling) -> Bool {
+        guard let preparedDeviceUID = self.preparedDeviceUID else { return false }
+        guard let currentUID = self.deviceUIDReader(input.deviceID) else { return false }
+        return currentUID != preparedDeviceUID
+    }
+
+    private func consumeSleepLatchForTeardown() -> Bool {
+        guard self.sleepLatched else { return false }
+        self.sleepLatched = false
+        guard let input = self.input else { return false }
+        return self.deviceLivenessReader(input.deviceID) != true
+    }
+
+    private static func failedHardwareStopAllowsReplacement(_ reason: String) -> Bool {
+        switch reason {
+        case "nominal_sample_rate",
+             "virtual_format",
+             "physical_format",
+             "streams",
+             "stream_configuration",
+             "buffer_frame_size",
+             "variable_buffer_frame_size",
+             "data_source",
+             "device_changed",
+             "stream_is_active",
+             "io_stopped_abnormally":
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func hardwareObjectIsGone(_ status: OSStatus) -> Bool {
+        status == kAudioHardwareBadDeviceError || status == kAudioHardwareBadObjectError
     }
 
     private func recordStoppedHardwareNotification(generation: UInt64) {
@@ -1425,6 +1603,26 @@ final nonisolated class DirectCoreAudioLifecycleController: @unchecked Sendable 
         return isAlive != 0
     }
 
+    private static func readDeviceUID(objectID: AudioObjectID) -> String? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceUID,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var value: Unmanaged<CFString>?
+        var dataSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        let status = AudioObjectGetPropertyData(
+            objectID,
+            &address,
+            0,
+            nil,
+            &dataSize,
+            &value
+        )
+        guard status == noErr else { return nil }
+        return value?.takeRetainedValue() as String?
+    }
+
     #if DEBUG
     func simulateStoppedHardwareNotificationForTesting(
         generation: UInt64,
@@ -1435,6 +1633,18 @@ final nonisolated class DirectCoreAudioLifecycleController: @unchecked Sendable 
             self.lifecycleQueue.async {
                 self.handleFormatInvalidationLocked(
                     generation: generation,
+                    reason: reason
+                )
+                continuation.resume()
+            }
+        }
+    }
+
+    func simulateFormatInvalidationForTesting(reason: String) async {
+        await withCheckedContinuation { continuation in
+            self.lifecycleQueue.async {
+                self.handleFormatInvalidationLocked(
+                    generation: self.generation,
                     reason: reason
                 )
                 continuation.resume()

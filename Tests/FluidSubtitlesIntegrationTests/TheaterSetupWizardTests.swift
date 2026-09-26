@@ -12,6 +12,13 @@ final class TheaterSetupWizardTests: XCTestCase {
         XCTAssertEqual(TheaterSetupWizard.Step.captions.previous, .languages)
         XCTAssertNil(TheaterSetupWizard.Step.ready.next)
         XCTAssertEqual(TheaterSetupWizard.Step.ready.continueTitle, "Finish")
+        XCTAssertEqual(
+            TheaterSetupWizard.Step.welcome.subtitle,
+            "A preview of the caption the room sees."
+        )
+        XCTAssertTrue(TheaterSetupWizard.Step.ready.subtitle.contains("open Theater"))
+        XCTAssertTrue(TheaterReadiness.screenShareIncluded.contains("Screenshots"))
+        XCTAssertTrue(TheaterReadiness.screenShare.contains("Share the slides window"))
         XCTAssertEqual(TheaterSetupWizard.Step.resolved(99), .welcome)
         XCTAssertEqual(TheaterSetupWizard.progress(for: .welcome), 0, accuracy: 0.001)
         XCTAssertEqual(TheaterSetupWizard.progress(for: .ready), 1, accuracy: 0.001)
@@ -24,12 +31,20 @@ final class TheaterSetupWizardTests: XCTestCase {
         XCTAssertEqual(TheaterSetupWizard.accentTitle, "Accent color")
         XCTAssertTrue(TheaterSetupWizard.accentDetail.contains("Caption gold"))
         XCTAssertTrue(TheaterChromeHelp.spokenLine.contains("original language"))
-        XCTAssertTrue(TheaterSpokenLineMode.whileTalking.translatesLive)
-        XCTAssertTrue(TheaterSpokenLineMode.afterPause.holdsTranslationUntilPause)
-        XCTAssertFalse(TheaterSpokenLineMode.off.translatesLive)
-        XCTAssertFalse(TheaterSpokenLineMode.off.holdsTranslationUntilPause)
-        XCTAssertTrue(TheaterSpokenLineMode.afterPause.help.contains("original language"))
-        XCTAssertTrue(TheaterSpokenLineMode.whileTalking.help.contains("original language"))
+        XCTAssertFalse(TheaterSpokenLineMode.off.showsSpokenLine)
+        XCTAssertTrue(TheaterSpokenLineMode.afterPause.showsSpokenLine)
+        XCTAssertEqual(TheaterSpokenLineMode.afterPause.displayName, "On the board")
+        XCTAssertEqual(TheaterSpokenLineMode.resolved("whileTalking"), .afterPause)
+        XCTAssertFalse(TheaterSpokenLineMode.allCases.map(\.displayName).contains("Board and Insert"))
+        XCTAssertEqual(TheaterLinePrint.resolved(nil), .atOnce)
+        XCTAssertEqual(TheaterCaptionSpacing.resolved(nil), 14)
+        XCTAssertEqual(TheaterCaptionSpacing.resolved(0), 0)
+        XCTAssertEqual(TheaterCaptionSpacing.resolved(48), 48)
+        XCTAssertEqual(TheaterCaptionSpacing.resolved(-4), 0)
+        XCTAssertEqual(TheaterCaptionSpacing.resolved(80), 48)
+        XCTAssertEqual(TheaterLinePrint.resolved("word"), .word)
+        XCTAssertTrue(TheaterSpokenLineMode.afterPause.help.contains("when the sentence is ready"))
+        XCTAssertFalse(TheaterSpokenLineMode.afterPause.help.contains("notch"))
     }
 
     func testExistingOnboardingUsersSkipTheWizardUntilTheyOpenIt() {
@@ -151,67 +166,31 @@ final class TheaterSetupWizardTests: XCTestCase {
         settings.defaults.set(true, forKey: "TranslationShowSource")
         XCTAssertEqual(settings.theaterSpokenLineMode, .afterPause)
 
-        settings.theaterSpokenLineMode = .whileTalking
-        XCTAssertEqual(settings.theaterSpokenLineMode, .whileTalking)
+        settings.defaults.set("whileTalking", forKey: "TheaterSpokenLineMode")
+        XCTAssertEqual(settings.theaterSpokenLineMode, .afterPause)
         XCTAssertTrue(settings.translationShowSource)
-        XCTAssertTrue(TheaterSpokenLineMode.whileTalking.printsLiveSpoken)
-        XCTAssertFalse(TheaterSpokenLineMode.afterPause.printsLiveSpoken)
     }
 
     func testAfterPauseHidesLiveSpokenAndWhileTalkingKeepsCommittedSources() {
-        let whileTalking = TheaterCaptionFlow.lines(
-            committed: ["안녕."],
-            committedIDs: [1],
-            committedSources: ["Hello we trained"],
-            draft: "",
-            sourceDraft: "And we shipped it",
-            spokenDisplay: .paired
-        )
+        let whileTalking = TheaterCaptionFlow.lines(board: .make(translated: ["안녕."], sources: ["Hello we trained"], ids: [1]))
         XCTAssertEqual(whileTalking.map(\.text), ["안녕."])
         XCTAssertEqual(whileTalking.map(\.source), ["Hello we trained"])
         XCTAssertFalse(whileTalking.contains { $0.source == "And we shipped it" })
 
-        let afterPause = TheaterCaptionFlow.lines(
-            committed: ["안녕."],
-            committedIDs: [1],
-            committedSources: ["Hello we trained"],
-            draft: "",
-            sourceDraft: "And we shipped it",
-            spokenDisplay: .pairedAfterPause
-        )
+        let afterPause = TheaterCaptionFlow.lines(board: .make(translated: ["안녕."], sources: ["Hello we trained"], ids: [1]))
         XCTAssertEqual(afterPause.map(\.text), ["안녕."])
         XCTAssertEqual(afterPause.map(\.source), ["Hello we trained"])
         XCTAssertFalse(afterPause.contains { $0.source == "And we shipped it" })
 
-        let afterPauseTitle = TheaterCaptionFlow.lines(
-            committed: ["안녕."],
-            committedIDs: [1],
-            committedSources: ["Hello we trained"],
-            draft: "그리고 출시했습니다",
-            sourceDraft: "And we shipped it",
-            spokenDisplay: .pairedAfterPause
-        )
+        let afterPauseTitle = TheaterCaptionFlow.lines(board: .make(translated: ["안녕."], sources: ["Hello we trained"], ids: [1]))
         XCTAssertEqual(afterPauseTitle.map(\.text), ["안녕."])
         XCTAssertEqual(afterPauseTitle.last?.source, "Hello we trained")
         XCTAssertFalse(afterPauseTitle.contains { $0.isDraft })
 
-        let afterPausePending = TheaterCaptionFlow.lines(
-            committed: [],
-            draft: "",
-            sourceDraft: "And we shipped it",
-            pendingSources: ["Today we trained the model."],
-            spokenDisplay: .pairedAfterPause
-        )
+        let afterPausePending = TheaterCaptionFlow.lines(board: .make(translated: []))
         XCTAssertTrue(afterPausePending.isEmpty)
 
-        let afterPauseCommitted = TheaterCaptionFlow.lines(
-            committed: ["안녕."],
-            committedIDs: [1],
-            committedSources: ["Hello we trained"],
-            draft: "",
-            sourceDraft: "",
-            spokenDisplay: .pairedAfterPause
-        )
+        let afterPauseCommitted = TheaterCaptionFlow.lines(board: .make(translated: ["안녕."], sources: ["Hello we trained"], ids: [1]))
         XCTAssertEqual(afterPauseCommitted.last?.source, "Hello we trained")
     }
 

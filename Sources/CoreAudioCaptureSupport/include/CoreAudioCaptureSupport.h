@@ -11,6 +11,10 @@ extern "C" {
 
 typedef void *FVCoreAudioCaptureRef;
 
+/// Largest packet the ring will publish. The consumer copies at most this
+/// many frames out of a slot before releasing it.
+#define FV_CORE_AUDIO_MAX_FRAMES_PER_PACKET 8192u
+
 typedef struct {
     const float *samples;
     uint32_t frameCount;
@@ -55,6 +59,10 @@ void fv_core_audio_capture_wake(FVCoreAudioCaptureRef capture);
 
 bool fv_core_audio_capture_is_running(FVCoreAudioCaptureRef capture);
 void fv_core_audio_capture_mark_format_dirty(FVCoreAudioCaptureRef capture);
+/// Stops publication and wakes the consumer without calling AudioDeviceStop
+/// or AudioDeviceDestroyIOProcID. The capture allocation stays alive so a
+/// callback still inside HAL does not touch freed memory.
+void fv_core_audio_capture_abandon(FVCoreAudioCaptureRef capture);
 bool fv_core_audio_capture_open_packet_gate_if_clean(FVCoreAudioCaptureRef capture);
 bool fv_core_audio_capture_copy_stream_format(
     FVCoreAudioCaptureRef capture,

@@ -14,7 +14,6 @@ final class TheaterMenuBarController: NSObject {
         case popupStyle
         case overlayTools
         case captionPlate
-        case hideShare
         case largerText
         case smallerText
         case sizeLabel
@@ -25,6 +24,7 @@ final class TheaterMenuBarController: NSObject {
         case insert
         case undo
         case clear
+        case retry
     }
 
     static func appendOverlayControls(to menu: NSMenu, target: TheaterMenuBarController) {
@@ -87,15 +87,6 @@ final class TheaterMenuBarController: NSObject {
         plate.toolTip = TheaterChromeHelp.captionPlate
         add(plate, symbol: "rectangle.fill")
 
-        let share = NSMenuItem(
-            title: "Hide from Screen Share",
-            action: #selector(toggleHideFromScreenShare),
-            keyEquivalent: ""
-        )
-        share.tag = ItemTag.hideShare.rawValue
-        share.toolTip = TheaterChromeHelp.hideFromScreenShare
-        add(share, symbol: "eye.slash")
-
         menu.addItem(.separator())
 
         let larger = TheaterPresenterHotkey.menuItem(
@@ -155,6 +146,40 @@ final class TheaterMenuBarController: NSObject {
         themeItem.submenu = themeMenu
         themeItem.toolTip = TheaterChromeHelp.theme
         menu.addItem(themeItem)
+
+        let printMenu = NSMenu(title: TheaterReadiness.linePrintTitle)
+        for style in TheaterLinePrint.allCases {
+            let item = NSMenuItem(
+                title: style.displayName,
+                action: #selector(chooseLinePrint(_:)),
+                keyEquivalent: ""
+            )
+            item.representedObject = style.rawValue
+            item.toolTip = style.help
+            item.target = target
+            printMenu.addItem(item)
+        }
+        let printItem = NSMenuItem(title: TheaterReadiness.linePrintTitle, action: nil, keyEquivalent: "")
+        printItem.submenu = printMenu
+        printItem.toolTip = TheaterChromeHelp.linePrint
+        menu.addItem(printItem)
+
+        let gapMenu = NSMenu(title: TheaterReadiness.printGapTitle)
+        for gap in TheaterPrintGap.allCases {
+            let item = NSMenuItem(
+                title: gap.displayName,
+                action: #selector(choosePrintGap(_:)),
+                keyEquivalent: ""
+            )
+            item.representedObject = gap.rawValue
+            item.toolTip = TheaterChromeHelp.printGap
+            item.target = target
+            gapMenu.addItem(item)
+        }
+        let gapItem = NSMenuItem(title: TheaterReadiness.printGapTitle, action: nil, keyEquivalent: "")
+        gapItem.submenu = gapMenu
+        gapItem.toolTip = TheaterChromeHelp.printGap
+        menu.addItem(gapItem)
 
         menu.addItem(.separator())
 
@@ -240,6 +265,15 @@ final class TheaterMenuBarController: NSObject {
         undo.toolTip = TheaterChromeHelp.undo
         add(undo, symbol: "arrow.uturn.backward")
 
+        let retry = TheaterPresenterHotkey.menuItem(
+            title: "Retry Translation",
+            action: #selector(retryTranslation),
+            shortcut: .retry
+        )
+        retry.tag = ItemTag.retry.rawValue
+        retry.toolTip = TheaterChromeHelp.retry
+        add(retry, symbol: "arrow.clockwise")
+
         let clear = TheaterPresenterHotkey.menuItem(
             title: "Clear Captions",
             action: #selector(clearCaptions),
@@ -289,12 +323,6 @@ final class TheaterMenuBarController: NSObject {
         plate?.state = settings.theaterBackingBar ? .on : .off
         plate?.isEnabled = isOverlay
 
-        let share = item(ItemTag.hideShare, in: menu)
-        share?.state = settings.theaterHideFromScreenShare ? .on : .off
-        share?.title = settings.theaterHideFromScreenShare
-            ? "Hide from Screen Share — \(TheaterReadiness.hiddenFromZoomBadge)"
-            : "Hide from Screen Share"
-
         item(ItemTag.largerText, in: menu)?.isEnabled = size < range.upperBound
         item(ItemTag.smallerText, in: menu)?.isEnabled = size > range.lowerBound
         item(ItemTag.sizeLabel, in: menu)?.title = "Size \(size) pt"
@@ -307,21 +335,20 @@ final class TheaterMenuBarController: NSObject {
         item(ItemTag.highContrast, in: menu)?.state = settings.theaterHighContrast ? .on : .off
 
         let minimize = item(ItemTag.minimize, in: menu)
-        minimize?.title = settings.theaterMinimized ? "Show Theater" : "Minimize Theater"
+        minimize?.title = settings.theaterMinimized ? "Expand Theater" : "Minimize Theater"
         minimize?.isEnabled = windowOpen
         minimize?.toolTip = settings.theaterMinimized ? TheaterChromeHelp.expand : TheaterChromeHelp.minimize
 
         item(ItemTag.copy, in: menu)?.isEnabled = PresenterCaptionController.shared.hasDeliverableText
         let insertItem = item(ItemTag.insert, in: menu)
-        let hasUntyped = PresenterCaptionController.shared.isEditing
-            ? PresenterCaptionController.shared.hasDeliverableText
-            : controller.subscriber.hasPendingInsertText
+        let hasUntyped = controller.subscriber.hasPendingInsertText
         insertItem?.isEnabled = hasUntyped
         insertItem?.toolTip = !hasUntyped && PresenterCaptionController.shared.hasDeliverableText
             ? TheaterReadiness.insertAlreadyTyped
             : TheaterChromeHelp.insert
         item(ItemTag.undo, in: menu)?.isEnabled = controller.hasUndoableCaption
         item(ItemTag.clear, in: menu)?.isEnabled = controller.hasClearableBoard
+        item(ItemTag.retry, in: menu)?.isEnabled = controller.subscriber.canRetryTranslation
 
         applySubmenuState(
             in: menu,
@@ -332,6 +359,24 @@ final class TheaterMenuBarController: NSObject {
             in: menu,
             title: "Theme",
             selected: TheaterAppearance.resolved(settings.theaterAppearance).rawValue
+        )
+        applySubmenuState(
+            in: menu,
+            title: TheaterReadiness.linePrintTitle,
+            selected: settings.theaterLinePrint.rawValue
+        )
+        let gapEnabled = settings.theaterLinePrint != .atOnce
+        if let gapParent = menu.items.first(where: { $0.title == TheaterReadiness.printGapTitle }),
+           let gapMenu = gapParent.submenu
+        {
+            for item in gapMenu.items {
+                item.isEnabled = gapEnabled
+            }
+        }
+        applySubmenuState(
+            in: menu,
+            title: TheaterReadiness.printGapTitle,
+            selected: settings.theaterPrintGap.rawValue
         )
         applySubmenuState(
             in: menu,
@@ -391,11 +436,6 @@ final class TheaterMenuBarController: NSObject {
         self.refresh()
     }
 
-    @objc private func toggleHideFromScreenShare() {
-        SettingsStore.shared.theaterHideFromScreenShare.toggle()
-        self.refresh()
-    }
-
     @objc private func makeTextLarger() {
         TheaterPresenterHotkey.perform(.fontLarger)
         self.refresh()
@@ -415,6 +455,19 @@ final class TheaterMenuBarController: NSObject {
     @objc private func chooseTheme(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String else { return }
         SettingsStore.shared.theaterAppearance = raw
+        self.refresh()
+    }
+
+    @objc private func chooseLinePrint(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String else { return }
+        SettingsStore.shared.theaterLinePrint = TheaterLinePrint.resolved(raw)
+        self.refresh()
+    }
+
+    @objc private func choosePrintGap(_ sender: NSMenuItem) {
+        guard SettingsStore.shared.theaterLinePrint != .atOnce else { return }
+        guard let raw = sender.representedObject as? String else { return }
+        SettingsStore.shared.theaterPrintGap = TheaterPrintGap.resolved(raw)
         self.refresh()
     }
 
@@ -458,6 +511,11 @@ final class TheaterMenuBarController: NSObject {
 
     @objc private func clearCaptions() {
         LiveTranslationController.shared.clearBoard()
+        self.refresh()
+    }
+
+    @objc private func retryTranslation() {
+        LiveTranslationController.shared.retryFailedTranslation()
         self.refresh()
     }
 }

@@ -68,12 +68,8 @@ final class TheaterSmokeTests: XCTestCase {
             "Listen is on Theater chrome"
         )
         XCTAssertTrue(
-            app.descendants(matching: .any)["theater.minimize"].waitForExistence(timeout: 4),
-            "Minimize is on Theater chrome before Listen"
-        )
-        XCTAssertTrue(
-            app.descendants(matching: .any)["theater.window.clear"].waitForExistence(timeout: 4),
-            "Clear captions is on Theater chrome"
+            app.descendants(matching: .any)["theater.presentationStyle"].waitForExistence(timeout: 4),
+            "Settings stays on Theater chrome"
         )
         XCTAssertTrue(
             app.descendants(matching: .any)["theater.status"].waitForExistence(timeout: 4),

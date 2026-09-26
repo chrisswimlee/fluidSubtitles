@@ -100,7 +100,7 @@ final class LiveTranslationPrefetchCache: @unchecked Sendable {
         self.lock.unlock()
     }
 
-    /// Commit reuse. Prefix growth stays on the live row via `caption(for:)`.
+    /// Commit reuse. Prefix growth stays in the cache via `caption(for:)`.
     func exactCaption(for key: LiveTranslationPrefetchKey) -> String? {
         self.lock.lock()
         defer { self.lock.unlock() }
@@ -114,7 +114,7 @@ final class LiveTranslationPrefetchCache: @unchecked Sendable {
         guard let stored else { return nil }
         if stored.key == key { return stored.caption }
         // Fast speech grows the leftover before the next prefetch lands.
-        // Keep the prefix title on the live row instead of going blank.
+        // Keep the cached prefix instead of going blank.
         if LiveTranslationPrefetch.isPrefixGrowth(from: stored.key, to: key) {
             return stored.caption
         }

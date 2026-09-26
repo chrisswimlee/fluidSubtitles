@@ -691,8 +691,8 @@ extension OnboardingFlowView {
                             }
                             .buttonStyle(.plain)
                             .disabled(!self.playgroundListenIsActive && !self.canOpenOnboardingTheater)
-                            .onChange(of: self.translationController.subscriber.committedLines) { _, lines in
-                                guard !lines.isEmpty else { return }
+                            .onChange(of: self.translationController.subscriber.boardState) { _, board in
+                                guard !board.translatedLines.isEmpty else { return }
                                 self.settings.theaterListenUsed = true
                                 self.settings.onboardingPlaygroundValidated = true
                             }

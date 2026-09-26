@@ -96,7 +96,7 @@ struct CommercialLicenseStatusCard: View {
                 self.draft = ""
                 self.message = nil
             }
-            .buttonStyle(.theaterText)
+            .buttonStyle(.theaterTextDestructive)
             .accessibilityIdentifier("commercial.license.remove")
         } else {
             TextField("Paste a commercial license key", text: self.$draft)

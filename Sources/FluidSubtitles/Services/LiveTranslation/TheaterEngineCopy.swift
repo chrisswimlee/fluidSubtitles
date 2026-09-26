@@ -31,6 +31,32 @@ enum TheaterEngineCopy {
     static let voiceTitle = "Voice Engine"
     static let voicePurpose = "Sharpens speech into text for the language you speak."
 
+    /// Name on the Voice Engine screen. The stored display names still say
+    /// "Blazing Fast" and "Apple ASR Legacy" for older cards.
+    static func voiceEngineName(_ model: SettingsStore.SpeechModel) -> String {
+        switch model {
+        case .parakeetTDT: return "Parakeet TDT v3"
+        case .parakeetTDTv2: return "Parakeet TDT v2"
+        case .parakeetRealtime: return "Parakeet Flash"
+        case .qwen3Asr: return "Qwen3"
+        case .cohereTranscribeSixBit: return "Cohere Transcribe"
+        case .nemotronOffline: return "Nemotron 3.5"
+        case .nemotronStreaming, .nemotronStreaming320: return "Nemotron Speech 3.5"
+        case .appleSpeech: return "Apple Speech"
+        case .appleSpeechAnalyzer: return "Apple Speech Analyzer"
+        case .whisperTiny: return "Whisper Tiny"
+        case .whisperBase: return "Whisper Base"
+        case .whisperSmall: return "Whisper Small"
+        case .whisperMedium: return "Whisper Medium"
+        case .whisperLargeTurbo: return "Whisper Large Turbo"
+        case .whisperLarge: return "Whisper Large"
+        }
+    }
+
+    static func voiceEngineDetail(_ model: SettingsStore.SpeechModel) -> String {
+        "\(model.languageSupport) · \(model.downloadSize)"
+    }
+
     static let translationTitle = "Translation Engine"
     static let translationPurpose =
         "Apple Translation on this Mac, not a chat model. Optional experimental local LLM to sharpen the first print."

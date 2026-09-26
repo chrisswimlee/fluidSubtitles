@@ -83,6 +83,9 @@ final class LLMTranslationEngine: TranslationEngine {
         target: TranslationLanguage
     ) async throws -> String {
         let settings = SettingsStore.shared
+        guard TheaterAcceleratorGate.shared.allowsSharpen else {
+            throw TranslationEngineError.sharpenWithdrawn
+        }
         guard self.isAvailable(settings: settings) else {
             throw TranslationEngineError(message: "Local caption translation is off.")
         }
@@ -110,7 +113,9 @@ final class LLMTranslationEngine: TranslationEngine {
         )
         config.maxRetries = 1
         config.timeoutSeconds = Double(LiveTranslationTiming.commitTranslationTimeoutNanoseconds) / 1_000_000_000
-        let response = try await LLMClient.shared.call(config)
+        let response = try await TheaterAcceleratorGate.shared.track {
+            try await LLMClient.shared.call(config)
+        }
         let cleaned = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
         switch Self.commitVerdict(cleaned, sourceText: text, target: target) {
         case .accept(let caption):
@@ -210,6 +215,9 @@ final class LLMTranslationEngine: TranslationEngine {
         target: TranslationLanguage
     ) async throws -> String {
         let settings = SettingsStore.shared
+        guard TheaterAcceleratorGate.shared.allowsSharpen else {
+            throw TranslationEngineError.sharpenWithdrawn
+        }
         guard self.isAvailable(settings: settings) else {
             throw TranslationEngineError(message: "Local caption polish is off or no local chat provider is configured.")
         }
@@ -242,7 +250,9 @@ final class LLMTranslationEngine: TranslationEngine {
         config.maxRetries = 1
         config.timeoutSeconds = Double(LiveTranslationTiming.commitTranslationTimeoutNanoseconds) / 1_000_000_000
         let started = ProcessInfo.processInfo.systemUptime
-        let response = try await client.call(config)
+        let response = try await TheaterAcceleratorGate.shared.track {
+            try await client.call(config)
+        }
         let ms = Int(((ProcessInfo.processInfo.systemUptime - started) * 1000).rounded())
         DebugLogger.shared.info(
             "Caption polish finished in \(ms)ms chars=\(sourceText.count) model=\(route.model)",

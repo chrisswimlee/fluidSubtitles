@@ -39,7 +39,7 @@ English mid-listen confirmation re-decode is skipped so preview ticks keep the N
 
 Speech edges: the first ASR tick is immediate. After 400 ms of RMS silence, one last tick still runs, then later ticks are skipped so a long keynote pause does not keep the Neural Engine hot. Parakeet end-of-utterance holds 400 ms, then commits leftover speech that is a real clause. A mid-talk period commits only when more speech already follows that finished sentence. A twelve-word timer stays pause-only. Same-language pairs skip Apple Translation and print the spoken sentence. There is no neural VAD on this path.
 
-Memory: live PCM is 30 seconds of 16 kHz float. The live Theater transcript keeps unread speech only. Theater keeps the 3 on-screen captions. Off-screen lines are dropped. Export bilingual text from the visible board. SRT/VTT use commit times when every cue has a date; otherwise they fall back to 4-second slots.
+Memory: live PCM is 30 seconds of 16 kHz float. The live Theater transcript keeps unread speech only. The board keeps the latest 48 captions and scrolls through what fits. Rows past that leave the on-screen log. History and bilingual export use this listen’s session record. SRT/VTT use commit times when every cue has a date; otherwise they fall back to 4-second slots.
 
 The presenter pace cue repeats the last measured `e2e` when the spoken line is still ahead of the printed caption. It is not a second score.
 

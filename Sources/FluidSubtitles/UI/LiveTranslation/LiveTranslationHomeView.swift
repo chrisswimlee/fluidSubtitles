@@ -17,6 +17,7 @@ struct LiveTranslationHomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 self.header
+                    .padding(.bottom, 8)
                 if !TheaterAvailability.isSupported {
                     Text(TheaterAvailability.unsupportedCopy)
                         .font(self.theme.typography.body)
@@ -39,7 +40,7 @@ struct LiveTranslationHomeView: View {
                             TheaterTalkPackCard()
                         }
                     }
-                    if !self.readySnapshot.canListen || !self.readySnapshot.microphoneAllowed {
+                    if self.readySnapshot.needsAttention {
                         self.readinessCard
                     }
                 }
@@ -61,23 +62,7 @@ struct LiveTranslationHomeView: View {
     }
 
     private var modePicker: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            TheaterWordPicker(
-                accessibilityLabel: "Theater mode",
-                accessibilityIdentifier: "theater.mode",
-                options: Array(TheaterSessionMode.allCases),
-                title: { $0.displayName },
-                selection: Binding(
-                    get: { self.settings.theaterSessionMode },
-                    set: { self.controller.applyTheaterSessionMode($0) }
-                )
-            )
-            .help(TheaterReadiness.modeStopsListen)
-            Text(self.settings.theaterSessionMode.help)
-                .font(self.theme.typography.bodySmall)
-                .foregroundStyle(self.theme.palette.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+        TheaterModeSection(accessibilityIdentifier: "theater.mode")
     }
 
     private var stageCard: some View {
@@ -89,68 +74,92 @@ struct LiveTranslationHomeView: View {
                         session: self.settings.theaterSessionMode,
                         spokenMode: self.settings.theaterSpokenLineMode
                     ),
-                    titleSize: 32,
-                    spokenSize: 16
+                    titleSize: 22,
+                    spokenSize: 13
                 )
-                Text(self.arrivalSummary)
-                    .font(self.theme.typography.body)
-                    .foregroundStyle(self.theme.palette.primaryText)
+                self.modePicker
+                self.sectionRule
+                TranslationLanguagePairCard(showsCard: false)
+                if self.settings.theaterSessionMode.showsTranslation {
+                    self.sectionRule
+                    self.spokenLineRow
+                }
+                self.sectionRule
+                TheaterAudienceCard(showsCard: false)
                 DisclosureGroup("Adjust") {
-                    VStack(alignment: .leading, spacing: 16) {
-                        self.modePicker
-                        TranslationLanguagePairCard(showsCard: false)
-                        if self.settings.theaterSessionMode.showsTranslation {
-                            self.spokenLineRow
-                            TheaterAudienceCard(showsCard: false)
-                        }
-                    }
-                    .padding(.top, 8)
+                    self.linePrintRow
+                        .padding(.top, 12)
                 }
             }
         }
         .accessibilityIdentifier("theater.stage")
     }
 
-    private var arrivalSummary: String {
-        let mode = self.settings.theaterSessionMode.displayName
-        let spoken = SpokenLanguageResolver.sourceLanguage().displayName
-        guard self.settings.theaterSessionMode.showsTranslation else {
-            return "\(mode) · \(spoken)"
-        }
-        let shown = SpokenLanguageResolver.targetLanguage().displayName
-        return "\(mode) · \(spoken) → \(shown)"
+    private var sectionRule: some View {
+        Rectangle()
+            .fill(self.theme.palette.separator)
+            .frame(height: 1)
+            .accessibilityHidden(true)
     }
 
-    @ViewBuilder
-    private var spokenLineRow: some View {
-        if SpokenLanguageResolver.isSameLanguagePair() {
-            Text(TheaterReadiness.spokenLineSameLanguage)
-                .font(self.theme.typography.bodySmall)
-                .foregroundStyle(self.theme.palette.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-        } else {
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(TheaterReadiness.spokenLineTitle)
-                        .font(self.theme.typography.bodyStrong)
-                    Text(self.settings.theaterSpokenLineMode.help)
-                        .font(self.theme.typography.bodySmall)
-                        .foregroundStyle(self.theme.palette.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer()
-                TheaterSpokenLinePicker(accessibilityIdentifier: "theater.home.spokenLine")
+    private var linePrintRow: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            TheaterSettingRow(
+                title: TheaterReadiness.linePrintTitle,
+                detail: self.settings.theaterLinePrint.help
+            ) {
+                TheaterWordPicker(
+                    accessibilityLabel: TheaterReadiness.linePrintTitle,
+                    accessibilityIdentifier: "theater.home.linePrint",
+                    options: Array(TheaterLinePrint.allCases),
+                    title: { $0.displayName },
+                    selection: Binding(
+                        get: { self.settings.theaterLinePrint },
+                        set: { self.settings.theaterLinePrint = $0 }
+                    )
+                )
+            }
+            TheaterSettingRow(
+                title: TheaterReadiness.printGapTitle,
+                detail: "The pause between each word or letter. Fade uses this as how long the line takes to arrive."
+            ) {
+                TheaterWordPicker(
+                    accessibilityLabel: TheaterReadiness.printGapTitle,
+                    accessibilityIdentifier: "theater.home.printGap",
+                    options: Array(TheaterPrintGap.allCases),
+                    title: { $0.displayName },
+                    selection: Binding(
+                        get: { self.settings.theaterPrintGap },
+                        set: { self.settings.theaterPrintGap = $0 }
+                    )
+                )
+                .disabled(self.settings.theaterLinePrint == .atOnce)
+                .opacity(self.settings.theaterLinePrint == .atOnce ? 0.45 : 1)
             }
         }
+    }
+
+    private var spokenLineRow: some View {
+        TheaterSpokenLineSection(accessibilityIdentifier: "theater.home.spokenLine")
     }
 
     private var statusRow: some View {
         Group {
             if let status = self.theaterStatusText {
-                Text(status)
-                    .font(self.theme.typography.caption)
-                    .foregroundStyle(self.theaterStatusColor)
-                    .accessibilityIdentifier("theater.status")
+                HStack(spacing: 8) {
+                    Text(status)
+                        .font(self.theme.typography.caption)
+                        .foregroundStyle(self.theaterStatusColor)
+                        .accessibilityIdentifier("theater.status")
+                    if self.controller.subscriber.canRetryTranslation {
+                        Button("Retry") {
+                            self.controller.retryFailedTranslation()
+                        }
+                        .buttonStyle(.theaterTextCompact)
+                        .help(TheaterChromeHelp.retry)
+                        .accessibilityIdentifier("theater.home.retry")
+                    }
+                }
             }
         }
     }
@@ -216,51 +225,13 @@ struct LiveTranslationHomeView: View {
 
     private var readinessCard: some View {
         ThemedCard(style: .standard, hoverEffect: false) {
-            VStack(alignment: .leading, spacing: 8) {
-                FluidSectionHeader(title: "Before you Listen", systemImage: "checklist")
-                self.readyRow(TheaterEngineCopy.voiceTitle, done: self.readySnapshot.voiceEngineReady)
-                if self.settings.theaterSessionMode == .translation {
-                    self.readyRow(TheaterEngineCopy.translationTitle, done: self.readySnapshot.languagePackReady)
-                }
-                self.readyRow("Microphone", done: self.readySnapshot.microphoneAllowed)
-                Text(self.readySnapshot.nextAction)
-                    .font(self.theme.typography.bodySmall)
-                    .foregroundStyle(self.theme.palette.warning)
-                    .fixedSize(horizontal: false, vertical: true)
-                if !self.readySnapshot.voiceEngineReady, let openVoiceEngine {
-                    Button("Voice Engine", action: openVoiceEngine)
-                        .buttonStyle(.theaterText)
-                }
-                if self.settings.theaterSessionMode == .translation,
-                   !self.readySnapshot.languagePackReady,
-                   let openTranslationEngine
-                {
-                    Button("Translation Engine", action: openTranslationEngine)
-                        .buttonStyle(.theaterText)
-                }
-                if !self.readySnapshot.microphoneAllowed {
-                    Button(self.asr.micStatus == .notDetermined ? "Allow" : "Open Settings") {
-                        if self.asr.micStatus == .notDetermined {
-                            self.asr.requestMicAccess()
-                        } else {
-                            self.asr.openSystemSettingsForMic()
-                        }
-                    }
-                    .buttonStyle(.theaterText)
-                }
-            }
+            TheaterReadinessChecklist(
+                openVoiceEngine: self.openVoiceEngine,
+                openTranslationEngine: self.openTranslationEngine
+            )
         }
         .accessibilityIdentifier("theater.readiness")
-        .task {
-            await self.controller.refreshPackAvailability()
-        }
     }
-
-    private func readyRow(_ title: String, done: Bool) -> some View {
-        Label(title, systemImage: done ? "checkmark.circle.fill" : "circle")
-            .foregroundStyle(done ? self.theme.palette.accent : self.theme.palette.secondaryText)
-    }
-
 }
 
 struct LiveTranslationSettingsView: View {
@@ -385,23 +356,7 @@ struct LiveTranslationSettingsView: View {
                 }
 
                 if self.settings.theaterSessionMode == .translation {
-                    HStack(alignment: .center) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(TheaterReadiness.spokenLineTitle)
-                                .font(self.theme.typography.bodyStrong)
-                                .foregroundStyle(self.settingsTitleText)
-                            Text(
-                                SpokenLanguageResolver.isSameLanguagePair()
-                                    ? TheaterReadiness.spokenLineSameLanguage
-                                    : self.settings.theaterSpokenLineMode.help
-                            )
-                            .font(self.theme.typography.bodySmall)
-                            .foregroundStyle(self.settingsSecondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                        }
-                        Spacer()
-                        TheaterSpokenLinePicker(accessibilityIdentifier: "theater.settings.spokenLine")
-                    }
+                    TheaterSpokenLineSection(accessibilityIdentifier: "theater.settings.spokenLine")
                     Text(TheaterReadiness.spokenLineSetupNote)
                         .font(self.theme.typography.bodySmall)
                         .foregroundStyle(self.settingsSecondaryText)
@@ -423,17 +378,11 @@ struct LiveTranslationSettingsView: View {
                         .accessibilityLabel("Captions only")
                 }
 
-                self.settingsToggleRow(
-                    title: "Hide from screen share",
-                    description: TheaterReadiness.hideFromScreenShare
-                ) {
-                    Toggle("Hide from screen share", isOn: self.$settings.theaterHideFromScreenShare)
-                        .toggleStyle(.switch)
-                        .tint(self.theme.palette.accent)
-                        .labelsHidden()
-                        .accessibilityLabel("Hide from screen share")
-                        .accessibilityIdentifier("theater.settings.hideFromScreenShare")
-                }
+                Text(TheaterReadiness.screenShare)
+                    .font(self.theme.typography.bodySmall)
+                    .foregroundStyle(self.settingsSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("theater.settings.screenShare")
 
                 self.settingsToggleRow(
                     title: "Caption plate",
@@ -563,8 +512,17 @@ struct LiveTranslationSettingsView: View {
                                 .foregroundStyle(self.settingsSecondaryText)
                         }
                         Spacer()
-                        Text("\(self.settings.presenterFontSize) pt")
-                            .font(.caption.monospaced())
+                        TheaterPointField(
+                            label: "Caption size",
+                            range: SettingsStore.presenterFontSizeRange,
+                            value: Binding(
+                                get: { self.settings.presenterFontSize },
+                                set: { self.settings.presenterFontSize = $0 }
+                            ),
+                            accessibilityIdentifier: "theater.settings.captionSize"
+                        )
+                        Text("pt")
+                            .font(self.theme.typography.bodySmall)
                             .foregroundStyle(self.settingsSecondaryText)
                     }
 
@@ -577,6 +535,27 @@ struct LiveTranslationSettingsView: View {
                         step: 2
                     )
                     .controlSize(.regular)
+
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Spacing")
+                                .font(self.theme.typography.bodyStrong)
+                                .foregroundStyle(self.settingsTitleText)
+                            Text("Points between caption lines.")
+                                .font(self.theme.typography.bodySmall)
+                                .foregroundStyle(self.settingsSecondaryText)
+                        }
+                        Spacer()
+                        TheaterPointField(
+                            label: "Spacing",
+                            range: TheaterCaptionSpacing.range,
+                            value: self.$settings.theaterCaptionSpacing,
+                            accessibilityIdentifier: "theater.settings.captionSpacing"
+                        )
+                        Text("pt")
+                            .font(self.theme.typography.bodySmall)
+                            .foregroundStyle(self.settingsSecondaryText)
+                    }
                 }
 
                 Text(TheaterReadiness.printedLinesStay)
@@ -591,8 +570,7 @@ struct LiveTranslationSettingsView: View {
                     Button("Clear") {
                         self.showClearConfirmation = true
                     }
-                    .buttonStyle(.theaterText)
-                    .tint(self.theme.palette.warning)
+                    .buttonStyle(.theaterTextDestructive)
                     .disabled(!self.canClearCaptions)
                     .accessibilityLabel("Clear captions")
                     .accessibilityIdentifier("theater.settings.clear")
@@ -613,25 +591,19 @@ struct LiveTranslationSettingsView: View {
     private func settingsToggleRow<Accessory: View>(
         title: String,
         description: String,
-        @ViewBuilder accessory: () -> Accessory
+        @ViewBuilder accessory: @escaping () -> Accessory
     ) -> some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(self.theme.typography.bodyStrong)
-                    .foregroundStyle(self.settingsTitleText)
-                Text(description)
-                    .font(self.theme.typography.bodySmall)
-                    .foregroundStyle(self.settingsSecondaryText)
-            }
-            Spacer()
-            accessory()
-        }
+        TheaterSettingRow(title: title, detail: description, control: accessory)
+    }
+
+    /// What the caption title line actually renders at, before the window's
+    /// width grows it further or a short Overlay bar shrinks it to fit.
+    private var renderedCaptionSize: Int {
+        Int(TheaterCaptionScale.translatedSize(setting: CGFloat(self.settings.presenterFontSize)).rounded())
     }
 
     private var canClearCaptions: Bool {
         self.controller.hasClearableBoard
-            || self.subscriber.archivedLineCount > 0
             || self.subscriber.committedLines.contains {
                 !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
@@ -648,6 +620,7 @@ struct LiveTranslationSettingsView: View {
 
 struct OpenTheaterButton: View {
     @ObservedObject private var settings = SettingsStore.shared
+    @ObservedObject private var controller = LiveTranslationController.shared
 
     private var homeAction: TheaterMinimize.HomeAction {
         TheaterMinimize.homeAction(
@@ -674,7 +647,10 @@ struct OpenTheaterButton: View {
         .disabled(!TheaterAvailability.isSupported)
         .help(
             TheaterAvailability.isSupported
-                ? TheaterMinimize.homeHelp(for: self.homeAction)
+                ? TheaterMinimize.homeHelp(
+                    for: self.homeAction,
+                    listening: self.controller.isSessionActive && self.controller.listenKind == .captions
+                )
                 : TheaterAvailability.unsupportedCopy
         )
         .accessibilityLabel(TheaterMinimize.homeTitle(for: self.homeAction))
@@ -698,6 +674,11 @@ struct TheaterListenButton: View {
         self.controller.isSessionActive && self.controller.listenKind == .captions
     }
 
+    private var listenTitle: String {
+        if self.controller.isFinishingSession { return "Stopping…" }
+        return self.isListening ? "Stop" : "Listen"
+    }
+
     private var snapshot: TheaterReadyGate.Snapshot {
         TheaterReadyGate.liveSnapshot(
             pack: self.controller.packAvailability,
@@ -718,15 +699,15 @@ struct TheaterListenButton: View {
     }
 
     private var listenButtonStyle: TheaterTextButtonStyle {
-        if self.usesChromeKey {
-            return self.isListening ? .theaterTextCompact : .theaterTextCompactProminent
+        if self.isListening || self.controller.isFinishingSession {
+            return self.usesChromeKey ? .theaterTextCompactStop : .theaterTextStop
         }
-        return self.isListening ? .theaterText : .theaterTextProminent
+        return self.usesChromeKey ? .theaterTextCompactProminent : .theaterTextProminent
     }
 
     var body: some View {
-        HStack(spacing: self.usesChromeKey ? 6 : 8) {
-            if self.isListening {
+        HStack(spacing: self.usesChromeKey ? 4 : 8) {
+            if self.isListening, !self.usesChromeKey {
                 self.listeningWaveform
             }
             if self.isListening {
@@ -741,7 +722,9 @@ struct TheaterListenButton: View {
                 } label: {
                     TheaterActionLabel(
                         title: self.controller.isPaused ? "Resume" : "Pause",
-                        systemImage: self.controller.isPaused ? "play.fill" : "pause.fill",
+                        systemImage: self.usesChromeKey
+                            ? nil
+                            : (self.controller.isPaused ? "play.fill" : "pause.fill"),
                         compact: self.usesChromeKey
                     )
                 }
@@ -768,20 +751,25 @@ struct TheaterListenButton: View {
                 }
             } label: {
                 TheaterActionLabel(
-                    title: self.isListening ? "Stop" : "Listen",
-                    systemImage: self.isListening ? "stop.fill" : "mic.fill",
+                    title: self.listenTitle,
+                    systemImage: self.usesChromeKey
+                        ? nil
+                        : (self.isListening || self.controller.isFinishingSession ? "stop.fill" : "mic.fill"),
                     compact: self.usesChromeKey
                 )
             }
             .buttonStyle(self.listenButtonStyle)
-            .disabled(!self.isListening && (!self.snapshot.canListen || self.dictationBusy))
+            .disabled(
+                self.controller.isFinishingSession
+                    || (!self.isListening && (!self.snapshot.canListen || self.dictationBusy))
+            )
             .theaterTag(
                 self.usesChromeKey
                     ? (self.isListening ? TheaterChromeHelp.stop : TheaterChromeHelp.listen)
                     : self.listenHelp,
                 paints: self.usesChromeKey
             )
-            .accessibilityLabel(self.isListening ? "Stop" : "Listen")
+            .accessibilityLabel(self.listenTitle)
             .accessibilityIdentifier(self.isListening ? self.stopIdentifier : self.listenIdentifier)
         }
         .onAppear {
@@ -819,6 +807,7 @@ struct TranslationLanguagePairCard: View {
     @ObservedObject private var settings = SettingsStore.shared
     @ObservedObject private var controller = LiveTranslationController.shared
     @State private var availabilityText = ""
+    @State private var isRequestingPack = false
     var showsCard = true
 
     var body: some View {
@@ -868,21 +857,40 @@ struct TranslationLanguagePairCard: View {
     }
 
     private var languagePairRow: some View {
-        HStack(alignment: .bottom, spacing: 16) {
-            self.languagePicker(
-                title: "I speak",
-                selection: self.sourceLanguageID,
-                languages: TranslationLanguageCatalog.menuOrder
-            )
-            if self.settings.theaterSessionMode == .translation {
-                self.swapButton
-                self.languagePicker(
-                    title: "Show as",
-                    selection: self.targetLanguageID,
-                    languages: self.targetLanguages
-                )
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 10) {
+                self.iSpeakPicker
+                if self.settings.theaterSessionMode == .translation {
+                    self.swapButton
+                    self.showAsPicker
+                }
+            }
+            VStack(alignment: .leading, spacing: 12) {
+                self.iSpeakPicker
+                if self.settings.theaterSessionMode == .translation {
+                    HStack(alignment: .center, spacing: 10) {
+                        self.swapButton
+                        self.showAsPicker
+                    }
+                }
             }
         }
+    }
+
+    private var iSpeakPicker: some View {
+        self.languagePicker(
+            title: "I speak",
+            selection: self.sourceLanguageID,
+            languages: TranslationLanguageCatalog.menuOrder
+        )
+    }
+
+    private var showAsPicker: some View {
+        self.languagePicker(
+            title: "Show as",
+            selection: self.targetLanguageID,
+            languages: self.targetLanguages
+        )
     }
 
     private func languagePicker(
@@ -890,25 +898,24 @@ struct TranslationLanguagePairCard: View {
         selection: Binding<String>,
         languages: [TranslationLanguage]
     ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(self.theme.typography.caption)
-                .foregroundStyle(self.theme.palette.secondaryText)
-            TheaterLanguageMenu(
-                title: title,
-                selection: selection,
-                languages: languages
-            )
-        }
+        TheaterLanguageMenu(
+            title: title,
+            selection: selection,
+            languages: languages
+        )
     }
 
     private var swapButton: some View {
-        Button("Swap") {
+        Button {
             self.controller.swapDirection()
+        } label: {
+            Image(systemName: "arrow.left.arrow.right")
+                .font(.system(size: 12, weight: .semibold))
+                .accessibilityHidden(true)
         }
-        .buttonStyle(.theaterText)
+        .buttonStyle(.theaterTextIcon)
         .disabled(SpokenLanguageResolver.isSameLanguagePair())
-        .help("Swap I speak and Show as.")
+        .help(TheaterChromeHelp.swapLanguages)
         .accessibilityLabel("Swap languages")
     }
 
@@ -934,15 +941,18 @@ struct TranslationLanguagePairCard: View {
                 .font(self.theme.typography.caption)
                 .foregroundStyle(self.theme.palette.warning)
                 .fixedSize(horizontal: false, vertical: true)
-            Button(TheaterReadiness.downloadPack) {
+            Button(self.isRequestingPack ? TheaterReadiness.downloadPackBusy : TheaterReadiness.downloadPack) {
+                self.isRequestingPack = true
                 Task {
                     await self.controller.requestNeededLanguagePackDownload()
                     try? await Task.sleep(nanoseconds: 1_500_000_000)
                     await self.prepareAndRefreshAvailability()
+                    self.isRequestingPack = false
                 }
             }
             .buttonStyle(.theaterText)
-            .controlSize(.regular)
+            .disabled(self.isRequestingPack)
+            .help(TheaterChromeHelp.downloadPack)
         }
     }
 
@@ -981,6 +991,40 @@ struct TranslationLanguagePairCard: View {
     }
 }
 
+/// Shortcut key shown the same way on Listen and Listen and type.
+struct TheaterShortcutBadge: View {
+    @Environment(\.theme) private var theme
+
+    var text: String
+    var isRecording: Bool
+
+    var body: some View {
+        Text(self.text)
+            .font(self.theme.typography.caption.monospaced().weight(.medium))
+            .foregroundStyle(self.isRecording ? self.theme.palette.warning : self.theme.palette.primaryText)
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(
+                        self.isRecording
+                            ? self.theme.palette.warning.opacity(0.16)
+                            : self.theme.palette.separator.opacity(0.45)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .strokeBorder(
+                                self.isRecording
+                                    ? self.theme.palette.warning.opacity(0.5)
+                                    : self.theme.palette.separator,
+                                lineWidth: 1
+                            )
+                    }
+            }
+    }
+}
+
 struct TranslateListenShortcutCard: View {
     @Environment(\.theme) private var theme
     @ObservedObject private var settings = SettingsStore.shared
@@ -1000,15 +1044,10 @@ struct TranslateListenShortcutCard: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                HStack(alignment: .center) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Theater Listen shortcut")
-                            .font(self.theme.typography.bodyStrong)
-                        Text("Separate from dictation and Insert.")
-                            .font(self.theme.typography.bodySmall)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
+                TheaterSettingRow(
+                    title: "Theater Listen shortcut",
+                    detail: "Separate from dictation and Insert."
+                ) {
                     Toggle("Enable Theater Listen shortcut", isOn: Binding(
                         get: { self.settings.captionListenHotkeyEnabled },
                         set: { self.settings.captionListenHotkeyEnabled = $0 }
@@ -1020,44 +1059,28 @@ struct TranslateListenShortcutCard: View {
                     .accessibilityLabel("Enable Theater Listen shortcut")
                 }
 
-                HStack(spacing: 10) {
-                    if self.isRecordingListenShortcut {
-                        Text("Press shortcut…")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.orange)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                    .fill(.orange.opacity(0.2))
-                            )
-                    } else {
-                        Text(self.settings.captionListenHotkeyShortcut?.displayString ?? "Not set")
-                            .font(.caption.monospaced().weight(.medium))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                    .fill(.quaternary.opacity(0.5))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                            .stroke(.primary.opacity(0.15), lineWidth: 1)
-                                    )
-                            )
-                    }
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 10) {
+                        TheaterShortcutBadge(
+                            text: self.isRecordingListenShortcut
+                                ? "Press shortcut…"
+                                : (self.settings.captionListenHotkeyShortcut?.displayString ?? "Not set"),
+                            isRecording: self.isRecordingListenShortcut
+                        )
 
-                    if let recordListenShortcut {
-                        Button(self.isRecordingListenShortcut ? "Cancel" : "Change") {
-                            recordListenShortcut()
+                        if let recordListenShortcut {
+                            Button(self.isRecordingListenShortcut ? "Cancel" : "Change") {
+                                recordListenShortcut()
+                            }
+                            .buttonStyle(.theaterText)
                         }
-                        .buttonStyle(.theaterText)
-                        .controlSize(.regular)
                     }
 
                     if self.isRecordingListenShortcut, let shortcutRecordingMessage, !shortcutRecordingMessage.isEmpty {
                         Text(shortcutRecordingMessage)
                             .font(self.theme.typography.caption)
                             .foregroundStyle(self.theme.palette.warning)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
@@ -1106,15 +1129,10 @@ struct TranslateInsertShortcutCard: View {
                         .controlSize(.regular)
                 }
 
-                HStack(alignment: .center) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Listen and type shortcut")
-                            .font(self.theme.typography.bodyStrong)
-                        Text(TheaterReadiness.typeIntoAppShortcutDetail)
-                            .font(self.theme.typography.bodySmall)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
+                TheaterSettingRow(
+                    title: "Listen and type shortcut",
+                    detail: TheaterReadiness.typeIntoAppShortcutDetail
+                ) {
                     Toggle("Enable listen and type shortcut", isOn: Binding(
                         get: { self.settings.translationInsertHotkeyEnabled },
                         set: { enabled in
@@ -1138,45 +1156,29 @@ struct TranslateInsertShortcutCard: View {
                     .accessibilityLabel("Enable listen and type shortcut")
                 }
 
-                HStack(spacing: 10) {
-                    if self.isRecordingTranslateShortcut {
-                        Text("Press shortcut…")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.orange)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                    .fill(.orange.opacity(0.2))
-                            )
-                    } else {
-                        Text(self.settings.translationInsertHotkeyShortcut?.displayString ?? "Not set")
-                            .font(.caption.monospaced().weight(.medium))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                    .fill(.quaternary.opacity(0.5))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                            .stroke(.primary.opacity(0.15), lineWidth: 1)
-                                    )
-                            )
-                    }
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 10) {
+                        TheaterShortcutBadge(
+                            text: self.isRecordingTranslateShortcut
+                                ? "Press shortcut…"
+                                : (self.settings.translationInsertHotkeyShortcut?.displayString ?? "Not set"),
+                            isRecording: self.isRecordingTranslateShortcut
+                        )
 
-                    if let recordTranslateShortcut {
-                        Button(self.isRecordingTranslateShortcut ? "Cancel" : "Change") {
-                            recordTranslateShortcut()
+                        if let recordTranslateShortcut {
+                            Button(self.isRecordingTranslateShortcut ? "Cancel" : "Change") {
+                                recordTranslateShortcut()
+                            }
+                            .buttonStyle(.theaterText)
+                            .disabled(!self.settings.theaterListenUsed)
                         }
-                        .buttonStyle(.theaterText)
-                        .controlSize(.regular)
-                        .disabled(!self.settings.theaterListenUsed)
                     }
 
                     if self.isRecordingTranslateShortcut, let shortcutRecordingMessage, !shortcutRecordingMessage.isEmpty {
                         Text(shortcutRecordingMessage)
                             .font(self.theme.typography.caption)
                             .foregroundStyle(self.theme.palette.warning)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
@@ -1184,11 +1186,9 @@ struct TranslateInsertShortcutCard: View {
     }
 }
 
-/// Slides vs Zoom is a per-talk decision. Hide from screen share stays on by
-/// default; a Zoom talk with it on shows remote viewers nothing.
+/// One instruction: share the slides window. A whole-screen share includes the captions.
 struct TheaterAudienceCard: View {
     @Environment(\.theme) private var theme
-    @ObservedObject private var settings = SettingsStore.shared
     var showsCard = true
 
     var body: some View {
@@ -1204,26 +1204,11 @@ struct TheaterAudienceCard: View {
     }
 
     private var cardBody: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(TheaterReadiness.audienceTitle)
-                .font(self.theme.typography.bodyStrong)
-            TheaterWordPicker(
-                accessibilityLabel: TheaterReadiness.audienceTitle,
-                accessibilityIdentifier: "theater.audience",
-                options: [true, false],
-                title: { hidden in
-                    hidden ? TheaterReadiness.audienceSlides : TheaterReadiness.audienceZoom
-                },
-                selection: self.$settings.theaterHideFromScreenShare
-            )
-            Text(
-                self.settings.theaterHideFromScreenShare
-                    ? TheaterReadiness.audienceSlidesDetail
-                    : TheaterReadiness.audienceZoomDetail
-            )
+        Text(TheaterReadiness.screenShare)
             .font(self.theme.typography.bodySmall)
             .foregroundStyle(self.theme.palette.secondaryText)
             .fixedSize(horizontal: false, vertical: true)
-        }
+            .accessibilityIdentifier("theater.audience")
+            .help(TheaterChromeHelp.screenShare)
     }
 }

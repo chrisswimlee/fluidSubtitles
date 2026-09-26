@@ -28,6 +28,21 @@ enum TheaterOverlayPolicy {
         presentation == .popup && hideChrome
     }
 
+    /// Resting layout. Pop-up keeps the shelf. Captions only and idle Overlay
+    /// give that room to the text until tools are actually showing. A visible
+    /// shelf, including hover tools, still insets the board so a line cannot
+    /// draw under the buttons.
+    static func reservesToolBarSlot(
+        presentation: TheaterPresentationStyle,
+        hideChrome: Bool,
+        toolsPinned: Bool = false
+    ) -> Bool {
+        if presentation == .transparent {
+            return toolsPinned
+        }
+        return !hideChrome
+    }
+
     static func ignoresMouseEvents(
         presentation: TheaterPresentationStyle,
         toolsPinned: Bool,
@@ -43,9 +58,13 @@ enum TheaterOverlayPolicy {
 
     static func hidesTitlebarButtons(
         presentation: TheaterPresentationStyle,
-        toolsPinned: Bool
+        toolsPinned: Bool,
+        hideChrome: Bool = false
     ) -> Bool {
-        Self.hidesAllChrome(presentation: presentation, toolsPinned: toolsPinned)
+        if Self.hidesAllChrome(presentation: presentation, toolsPinned: toolsPinned) {
+            return true
+        }
+        return Self.usesCaptionsOnlyChrome(presentation: presentation, hideChrome: hideChrome)
     }
 
     static func movableByBackground(

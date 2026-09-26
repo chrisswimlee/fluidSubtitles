@@ -119,6 +119,15 @@ final class AppleSpeechAnalyzerProvider: TranscriptionProvider {
         DebugLogger.shared.info("AppleSpeechAnalyzerProvider ready", source: "AppleSpeechAnalyzerProvider")
     }
 
+    func invalidateIfListeningLanguageChanged() {
+        self.discardPreparedLocaleIfItDoesNotMatchISpeak()
+    }
+
+    func markPreparedLocaleForTesting(_ identifier: String) {
+        self.preparedLocale = Locale(identifier: identifier)
+        self.isReady = true
+    }
+
     func clearCache() async throws {
         // Release reserved locales
         let reserved = await AssetInventory.reservedLocales

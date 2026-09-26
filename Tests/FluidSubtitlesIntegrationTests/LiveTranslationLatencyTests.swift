@@ -341,6 +341,63 @@ final class LiveTranslationLatencyTests: XCTestCase {
         XCTAssertEqual(LiveTranslationThermalReadout.label(.serious), "serious")
     }
 
+    @MainActor
+    func testPolishYieldsWhileAnASRChunkIsStillRunning() async {
+        let asr = AppServices.shared.asr
+        let wasBusy = asr.isProcessingChunk
+        asr.isProcessingChunk = false
+        defer { asr.isProcessingChunk = wasBusy }
+        let idle = await LiveTranslationMT.polishYieldsToASRChunk(maxWait: 0)
+        XCTAssertFalse(idle)
+        asr.isProcessingChunk = true
+        let busy = await LiveTranslationMT.polishYieldsToASRChunk(maxWait: 0)
+        XCTAssertTrue(busy)
+    }
+
+    func testSpeechTickDefersWhileAppleTranslationIsRunning() {
+        XCTAssertFalse(LiveTranslationModelGate.isTranslationRunning)
+        XCTAssertFalse(LiveTranslationModelGate.shouldDeferSpeechTick(translationRunning: false))
+        LiveTranslationModelGate.beginTranslation()
+        XCTAssertTrue(LiveTranslationModelGate.shouldDeferSpeechTick(
+            translationRunning: LiveTranslationModelGate.isTranslationRunning
+        ))
+        LiveTranslationModelGate.endTranslation()
+        XCTAssertFalse(LiveTranslationModelGate.isTranslationRunning)
+    }
+
+    func testSharpenAdmissionYieldsWhenHotOrUnderMemoryPressure() {
+        XCTAssertTrue(TheaterSharpenAdmission.allows(thermal: .nominal, memoryPressure: .normal))
+        XCTAssertTrue(TheaterSharpenAdmission.allows(thermal: .fair, memoryPressure: .normal))
+        XCTAssertFalse(TheaterSharpenAdmission.allows(thermal: .serious, memoryPressure: .normal))
+        XCTAssertFalse(TheaterSharpenAdmission.allows(thermal: .critical, memoryPressure: .normal))
+        XCTAssertFalse(TheaterSharpenAdmission.allows(thermal: .nominal, memoryPressure: .warning))
+        XCTAssertFalse(TheaterSharpenAdmission.allows(thermal: .fair, memoryPressure: .critical))
+        XCTAssertTrue(TheaterSharpenAdmission.isWithdrawal(TranslationEngineError.sharpenWithdrawn))
+        XCTAssertTrue(TheaterSharpenAdmission.isWithdrawal(CancellationError()))
+        XCTAssertFalse(TheaterSharpenAdmission.isWithdrawal(TranslationEngineError.timeout))
+    }
+
+    func testAcceleratorGateCancelsInFlightSharpen() async {
+        let gate = TheaterAcceleratorGate(observingSystem: false)
+        let entered = expectation(description: "sharpen entered")
+        let work = Task {
+            try await gate.track {
+                entered.fulfill()
+                try await Task.sleep(nanoseconds: 5_000_000_000)
+                return true
+            }
+        }
+        await fulfillment(of: [entered], timeout: 2)
+        gate.cancelInFlight()
+        do {
+            _ = try await work.value
+            XCTFail("in-flight sharpen should cancel")
+        } catch is CancellationError {
+        } catch {
+            XCTFail("unexpected \(error)")
+        }
+    }
+
     private func temporaryArchiveURL() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("theater-archive-\(UUID().uuidString).jsonl")

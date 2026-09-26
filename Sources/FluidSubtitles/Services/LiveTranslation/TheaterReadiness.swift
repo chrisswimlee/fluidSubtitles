@@ -23,14 +23,10 @@ enum TheaterReadiness {
 
     static let talkPackCarryOver = "These names stay for the next talk until you Remove."
 
-    static let audienceTitle = "Who sees captions?"
-    static let audienceSlides = "Slides in the room"
-    static let audienceZoom = "Zoom or Meet"
-    static let audienceSlidesDetail =
-        "Captions show on this Mac and a wired projector. Screen share and recordings do not see them."
-    static let audienceZoomDetail =
-        "Remote viewers see captions when you share the whole screen. Sharing only the slides window leaves captions out. Check once before the talk."
-    static let hiddenFromZoomBadge = "Hidden from Zoom"
+    static let screenShareTitle = "Screen share"
+    static let screenShare =
+        "Share the slides window. Screenshots and a whole-screen Zoom or Meet share include these captions."
+    static let screenShareIncluded = screenShare
 
     /// Idle Overlay hides every control and lets clicks reach the slides.
     static let overlayIdleCoach =
@@ -43,18 +39,18 @@ enum TheaterReadiness {
         "Slides stay clickable. Use the Theater item in the menu bar to show tools or Listen."
 
     static let stopHelp =
-        "Stop. A real leftover sentence appears once. Printed lines stay."
+        "Stops the microphone. A real leftover sentence appears once. Printed lines and talk notes stay."
 
     static let pauseHelp =
-        "Pause. Drops a leftover. Printed lines stay. A translation already on its way may still land."
+        "Holds the microphone and drops a leftover. Printed lines and talk notes stay. A translation already on its way may still land."
 
     static let resumeHelp =
-        "Resume. Printed lines stay. A dropped leftover does not come back."
+        "Starts the microphone again. Printed lines and talk notes stay. A dropped leftover does not come back."
 
     static let pausedStatus = "Paused."
 
     static let dictationBusy =
-        "Stop dictation first"
+        "The microphone is already in use."
 
     static let openTheaterHelp =
         "Open Theater. Choose Pop-up or Overlay in Theater Window."
@@ -70,7 +66,7 @@ enum TheaterReadiness {
         "Close Theater."
 
     static let minimizeHelp =
-        "Minimize. Theater leaves the stage. Listen stays."
+        "Hides the board. The microphone stays on. Printed lines and talk notes stay."
 
     static let expandTheaterHelp =
         "Show the caption board"
@@ -109,10 +105,10 @@ enum TheaterReadiness {
         "A line already on screen stays. Each sentence appears when it is ready. Pause and Stop drop a leftover. Listen and type still types that leftover into the other app."
 
     static let clearCaptions =
-        "Clear removes every caption. Talk notes stay. Listen can keep going."
+        "Removes every caption. The microphone stays on. Talk notes stay."
 
     static let clearCaptionsConfirm =
-        "This removes every caption. Talk notes stay. Listen can keep going."
+        "This removes every caption. The microphone stays on. Talk notes stay."
 
     static let talkPack =
         "Lock names from notes, a PDF, or a JSON list. They stay on this Mac."
@@ -151,10 +147,10 @@ enum TheaterReadiness {
         "Remove the last printed line. Off-screen captions are already gone. Listen can keep going."
 
     static let closeWhileListening =
-        "Close Theater stops Listen."
+        "Close Theater. The microphone is on, so this asks before it stops. Printed lines come back when you open it again. Talk notes stay."
 
     static let closeWhileListeningConfirm =
-        "This stops Listen and hides Theater. Printed lines come back when you open it again."
+        "This stops the microphone and hides Theater. Printed lines come back when you open it again. Talk notes stay."
 
     static let closeWhileListeningTitle = "Stop and close Theater?"
 
@@ -164,30 +160,32 @@ enum TheaterReadiness {
         "Voice writes what you say. Translate turns each sentence into a supported language with Apple Translation. Switching stops Listen."
 
     static let spokenLineTitle = "Spoken line"
+    static let linePrintTitle = "Line print"
+    static let printGapTitle = "Print gap"
 
     static let spokenLineSameLanguage =
         "Same-language captions already show the spoken line."
 
     static let spokenLineTranslate =
-        "Off is translation only. After a pause prints the original language under the sentence. While talking grows it under the title."
+        "Off is translation only. On the board prints the original language under Show-as when the sentence is ready."
 
     static let spokenLineSetupNote =
-        "Off keeps the translation only. The other choices put the original language under the title."
+        "Off keeps the translation only. On the board puts the original language under Show-as when the sentence is ready."
 
     static let captionsOnlyWindow =
-        "On the Theater window, show captions only. Listen stays. Move the pointer to show languages and the rest."
+        "On the Theater window, hide the tool bar. Move the pointer to show Listen and the other controls."
 
     static let captionsOnlyPopupOnly =
         "Captions only is for Pop-up. Overlay is already text-only. Control-Option-T shows Overlay tools."
 
-    static let howCaptionsAppear = "How new captions appear"
-
-    static let captionSize = "Caption size."
+    static let captionSize =
+        "Caption size — the number shown. A wide window grows this further; a short Overlay bar can shrink it to fit."
 
     static let captionSizeSpoken =
-        "Spoken and Show-as size. Show-as stays larger."
+        "Show-as size — the number shown. Spoken stays about 70% of this. A wide window grows this further; a short Overlay bar can shrink it to fit."
 
     static let downloadPack = "Download pack"
+    static let downloadPackBusy = "Downloading…"
 
     static let allowMicrophone =
         "Press Listen to allow the microphone."
@@ -198,9 +196,6 @@ enum TheaterReadiness {
     static let timedExportHonesty =
         "SRT/VTT times are when the caption committed, not the spoken word."
 
-    static let hideFromScreenShare =
-        "Hide from screen share keeps Theater off Zoom, Keynote, and recordings. The window still shows on your display and on a wired projector. Turn it off for a Zoom or Meet talk so remote viewers see captions. On macOS 15 and later some apps still capture hidden windows, so share one window, not the whole screen."
-
     static let backingBar =
         "Caption plate puts a dark box behind each Overlay line so the text stays readable on white slides."
 
@@ -208,7 +203,7 @@ enum TheaterReadiness {
         "Clear these notes so their names do not carry into the next talk."
 
     static let presenterHotkeys =
-        "Control-Option-H hides or shows Theater, P pauses, K clears, T shows Overlay tools, L starts or stops Listen, = and - change caption size. The menu-bar Theater item changes font, size, plate, and position. Your slides keep focus. A custom Listen shortcut with the same chord wins."
+        "Control-Option-H hides or shows Theater, P pauses, K clears, T shows Overlay tools, L starts or stops Listen, R retries a failed translation, = and - change caption size. The menu-bar Theater item changes font, size, plate, and position. Your slides keep focus. A custom Listen shortcut with the same chord wins."
 
     static let popupStyle =
         "Pop-up is a solid board that fills this display. Drag a corner to resize."
@@ -272,6 +267,11 @@ enum TheaterReadyGate {
 
         var isFullyReady: Bool {
             self.canListen && self.firstCaptionPrinted
+        }
+
+        /// The readiness checklist is worth showing: something is still unmet.
+        var needsAttention: Bool {
+            !self.canListen || !self.microphoneAllowed
         }
 
         var nextAction: String {

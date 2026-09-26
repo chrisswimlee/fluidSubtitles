@@ -30,6 +30,7 @@ final nonisolated class AudioCapturePipeline: @unchecked Sendable {
     let lock = NSLock()
     var recordingEnabled: Bool = false
     var capturePaused: Bool = false
+    var needsResumeSilenceWall: Bool = false
     var levelMonitoringEnabled: Bool = false
     var firstAudioReported: Bool = false
     var recordingSessionID: Int = 0
@@ -89,6 +90,7 @@ final nonisolated class AudioCapturePipeline: @unchecked Sendable {
             self.recordingStartHostTime = startHostTime == 0 ? mach_absolute_time() : startHostTime
             self.recordingStopHostTime = nil
             self.capturePaused = false
+            self.needsResumeSilenceWall = false
             self.resetResamplerLocked()
             self.lastInputSampleEnd = nil
             self.resetCaptureHealthLocked()
@@ -97,6 +99,7 @@ final nonisolated class AudioCapturePipeline: @unchecked Sendable {
         if enabled == false {
             self.recordingEnabled = false
             self.capturePaused = false
+            self.needsResumeSilenceWall = false
             self.recordingSessionID = 0
             self.recordingAttemptID = 0
             self.recordingStartHostTime = 0
@@ -123,6 +126,7 @@ final nonisolated class AudioCapturePipeline: @unchecked Sendable {
         if wasPaused, paused == false {
             self.lastInputSampleEnd = nil
             self.resetResamplerLocked()
+            self.needsResumeSilenceWall = true
         }
         self.lock.unlock()
     }
@@ -289,6 +293,17 @@ final nonisolated class AudioCapturePipeline: @unchecked Sendable {
         // Keep append and first-audio attribution inside the capture lock.
         // Disabling an attempt therefore returns only after every accepted
         // callback has committed its PCM and queued its attempt-scoped signal.
+        // The silence wall shares this append with the first post-resume
+        // packet so a commit-queue deliver cannot land between Time A and
+        // the zeros. History audio stays the real microphone packet.
+        if self.needsResumeSilenceWall {
+            let wall = [Float](
+                repeating: 0,
+                count: LiveAudioRetention.resumeSilenceWallSamples
+            )
+            self.audioBuffer.append(wall)
+            self.needsResumeSilenceWall = false
+        }
         self.audioBuffer.append(mono16k)
         self.onAcceptedSamples(mono16k)
         if shouldReportFirstAudio {

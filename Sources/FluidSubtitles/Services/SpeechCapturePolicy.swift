@@ -21,9 +21,11 @@ protocol SpeechCapturePolicy: AnyObject {
 }
 
 /// Theater Listen never pauses the presenter's deck or chimes into the room.
+/// A missing policy is not FluidVoice dictation, so the old pause-media switch does not apply.
 enum TheaterListenCapture {
     static func shouldPauseMedia(policyPausesMedia: Bool?, settingEnabled: Bool) -> Bool {
-        policyPausesMedia ?? settingEnabled
+        _ = settingEnabled
+        return policyPausesMedia == true
     }
 
     static func shouldPlayListenChime(policyPlaysChime: Bool?) -> Bool {

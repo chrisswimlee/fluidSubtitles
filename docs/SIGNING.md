@@ -45,6 +45,10 @@ Ad-hoc, `not set`, and empty team IDs are rejected by `UpdateSignaturePolicy`.
 5. Hosted CI still cannot prove a live Theater listen. Keep [STAGE_SCORE.md](STAGE_SCORE.md) next to the release notes. Watch is not a product gate.
 6. Homebrew listing is a personal tap first, then an official cask PR. See [HOMEBREW.md](HOMEBREW.md).
 
+## Microphone
+
+Hardened runtime will not show the app in Privacy & Security → Microphone, and will not present the Allow prompt, unless `fluidSubtitles.entitlements` contains `com.apple.security.device.audio-input`.
+
 ## Library validation
 
 `com.apple.security.cs.disable-library-validation` is still on because Whisper’s `CTranscribe.framework` can fail to load after Xcode flattens the XCFramework. Removing it without fixing that copy step breaks Whisper.

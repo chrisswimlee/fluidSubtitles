@@ -25,7 +25,12 @@ final class LiveTranslationMailboxTests: XCTestCase {
         )
         for language in TranslationLanguageCatalog.all {
             XCTAssertFalse(language.localeLanguage.minimalIdentifier.isEmpty)
-            XCTAssertEqual(language.appleLanguageCode, language.id)
+            // Norwegian is the sole exception: voice engines use "no", Apple Translation uses "nb".
+            if language.id == TranslationLanguageCatalog.norwegian.id {
+                XCTAssertEqual(language.appleLanguageCode, "nb")
+            } else {
+                XCTAssertEqual(language.appleLanguageCode, language.id)
+            }
         }
     }
 

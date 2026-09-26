@@ -284,6 +284,15 @@ final class ASRService: ObservableObject {
 
     func shutdownForTermination() async {
         self.isTerminating = true
+        let workspaceCenter = NSWorkspace.shared.notificationCenter
+        if let systemSleepObserver = self.systemSleepObserver {
+            workspaceCenter.removeObserver(systemSleepObserver)
+            self.systemSleepObserver = nil
+        }
+        if let systemWakeObserver = self.systemWakeObserver {
+            workspaceCenter.removeObserver(systemWakeObserver)
+            self.systemWakeObserver = nil
+        }
         let routeRecoveryShutdownStartedAt = Date().timeIntervalSince1970
         await self.cancelAudioRouteRecoveryAndWait()
         self.benchmarkLog(
@@ -1086,6 +1095,7 @@ final class ASRService: ObservableObject {
     var didConsumeSilenceEdgeTick: Bool = false
     var lastVoicedUptime: TimeInterval?
     var didRunStreamingTickThisListen = false
+    var didReprepareStreamingProvider = false
     var previousFullTranscription: String = ""
     var benchmarkSessionID: Int = 0
     var benchmarkRecordingStartedAt: TimeInterval?
@@ -1095,6 +1105,8 @@ final class ASRService: ObservableObject {
     let transcriptionExecutor = TranscriptionExecutor() // Serializes all CoreML access
     var providerResetDrain: (id: UUID, task: Task<Void, Never>)?
     var engineConfigurationChangeObserver: NSObjectProtocol?
+    var systemSleepObserver: NSObjectProtocol?
+    var systemWakeObserver: NSObjectProtocol?
     let audioEngineRetirementDrain = AudioEngineRetirementDrain()
     var audioRouteRecoveryTask: Task<Void, Never>?
     let audioRouteRecoveryDelayNanoseconds: UInt64 = 300_000_000
@@ -1195,7 +1207,17 @@ final class ASRService: ObservableObject {
                 }
             }
         }
-        return (self.audioBuffer.getRetained(), .retainedWindow)
+        let retained = self.theaterBoundedWindow(self.audioBuffer.getRetained())
+        return (retained, .retainedWindow)
+    }
+
+    /// Whisper re-reads this slice. The 30 s ring stays for dictation; a Theater
+    /// tick must not decode the whole ring and then dump it as one paragraph.
+    func theaterBoundedWindow(_ samples: [Float]) -> [Float] {
+        guard self.speechCapturePolicy?.isSessionActive == true,
+              samples.count > LiveAudioRetention.theaterPreviewSamples
+        else { return samples }
+        return Array(samples.suffix(LiveAudioRetention.theaterPreviewSamples))
     }
 
     func dropRetainedAudioAfterPreview(currentSampleCount: Int, usedIncrementalDelta: Bool) {
@@ -1269,7 +1291,7 @@ final class ASRService: ObservableObject {
                         attemptID: attemptID
                     )
                 }
-                DispatchQueue.main.async { [weak self] in
+                DispatchQueue.main.async { [weak self = self] in
                     self?.speechCapturePolicy?.markFirstBuffer()
                     let bufferMs = Int((Double(frameLength) / sampleRate * 1000).rounded())
                     DebugLogger.shared.benchmark(
@@ -1528,6 +1550,7 @@ final class ASRService: ObservableObject {
         self.registerDefaultDeviceChangeListener()
         self.registerEngineConfigurationChangeObserver()
         self.registerDeviceListChangeListener()
+        self.registerSystemSleepObservers()
 
         // Initialize device list cache
         self.cacheCurrentDeviceList(initialInputSnapshot.0)

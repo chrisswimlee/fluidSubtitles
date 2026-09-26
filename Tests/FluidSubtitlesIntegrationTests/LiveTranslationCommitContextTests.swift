@@ -41,6 +41,79 @@ final class LiveTranslationCommitContextTests: XCTestCase {
         XCTAssertEqual(result.translations, ["T2", "T3"])
     }
 
+    // MARK: - marked context
+
+    func testMarkedPayloadWrapsOnlyTheNewClause() {
+        let payload = LiveTranslationCommitContext.markedContextPayload(
+            priors: ["저는 모델을 학습했습니다."],
+            current: "그걸 적용했습니다.",
+            languageID: "ko"
+        )
+        XCTAssertEqual(
+            payload,
+            "저는 모델을 학습했습니다.\n"
+                + LiveTranslationCommitContext.contextClauseStart
+                + "그걸 적용했습니다."
+                + LiveTranslationCommitContext.contextClauseEnd
+        )
+        let english = LiveTranslationCommitContext.markedContextPayload(
+            priors: ["Hello."],
+            current: "Next.",
+            languageID: "en"
+        )
+        XCTAssertEqual(
+            english,
+            "Hello.\n"
+                + LiveTranslationCommitContext.contextClauseStart
+                + "Next."
+                + LiveTranslationCommitContext.contextClauseEnd
+        )
+    }
+
+    func testLineBoundNewTranslationKeepsTheLastLineWhenMarksAreGone() {
+        XCTAssertEqual(
+            LiveTranslationCommitContext.lineBoundNewTranslation(
+                "Applied the model today.\nI applied it.",
+                priorTranslations: ["I trained the model."],
+                isolatedSource: "그걸 적용했습니다.",
+                targetID: "en"
+            ),
+            "I applied it."
+        )
+        XCTAssertNil(
+            LiveTranslationCommitContext.lineBoundNewTranslation(
+                "I applied it.\nI trained the model.",
+                priorTranslations: ["I trained the model."],
+                isolatedSource: "그걸 적용했습니다.",
+                targetID: "en"
+            )
+        )
+    }
+
+    func testMarkedNewTranslationReadsAReorderedSpan() {
+        let start = LiveTranslationCommitContext.contextClauseStart
+        let end = LiveTranslationCommitContext.contextClauseEnd
+        XCTAssertEqual(
+            LiveTranslationCommitContext.markedNewTranslation(
+                "\(start)I applied it.\(end) I trained the model."
+            ),
+            "I applied it."
+        )
+    }
+
+    func testMarkedNewTranslationRejectsMissingDoubledAndEmptySpans() {
+        let start = LiveTranslationCommitContext.contextClauseStart
+        let end = LiveTranslationCommitContext.contextClauseEnd
+        XCTAssertNil(LiveTranslationCommitContext.markedNewTranslation("I applied it."))
+        XCTAssertNil(
+            LiveTranslationCommitContext.markedNewTranslation("\(start)\(start)I applied it.\(end)")
+        )
+        XCTAssertNil(
+            LiveTranslationCommitContext.markedNewTranslation("\(end)I applied it.\(start)")
+        )
+        XCTAssertNil(LiveTranslationCommitContext.markedNewTranslation("\(start)   \(end)"))
+    }
+
     // MARK: - peeledNewTranslation
 
     func testPeeledNewTranslationReturnsLeftoverAfterPriorClause() {

@@ -193,7 +193,7 @@ enum SettingsSearchIndex {
                 "caption font size spoken line source translation theater window captions only dark light appearance theme",
                 "popup pop-up transparent overlay board slides keynote see-through caption bar caption plate",
                 "menu bar theater font size plate theme position overlay tools",
-                "hide from screen share zoom keynote recording capture projector OBS",
+                "screen share screenshots zoom meet slides window capture projector OBS",
                 "also hear english korean thai questions whisper auto detect Q&A",
                 "clear captions board archive wipe reset high contrast",
                 "talk notes notes pdf rtf markdown json glossary names",
@@ -206,7 +206,7 @@ enum SettingsSearchIndex {
             title: "Setup Wizard",
             terms: [
                 "setup wizard first run theater captions spoken line original language",
-                "pause finish sentence while talking word by word whole sentence show as I speak Korean English Thai Japanese",
+                "spoken line after a pause while talking sentence ready show as I speak Korean English Thai Japanese",
             ]
         ),
         .init(

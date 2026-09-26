@@ -5,6 +5,7 @@
 //  Stop, finalize, and tear down a recording.
 //
 
+import AppKit
 import AVFoundation
 import Combine
 import Foundation
@@ -121,10 +122,33 @@ extension ASRService {
 
         // The idle scheduler was cancelled before teardown. Only real provider work
         // can still own the PCM buffer here, so drain that operation without sending
-        // cancellation into incremental provider state.
+        // cancellation into incremental provider state. A Theater listen already
+        // printed from the live partial, so it does not sit on a long decode.
         DebugLogger.shared.debug("⏳ Awaiting active streaming work...", source: "ASRService")
+        let theaterListen = self.speechCapturePolicy?.isSessionActive == true
         let streamingStopStartedAt = Date().timeIntervalSince1970
-        guard await self.drainActiveStreamingWork(sessionID: stoppingSessionID) else {
+        let drainTimeout = theaterListen
+            ? UInt64(3_000_000_000)
+            : Self.streamingDrainTimeoutNanoseconds
+        guard await self.streamingTaskLifecycle.drain(
+            sessionID: stoppingSessionID,
+            timeoutNanoseconds: drainTimeout
+        ) else {
+            if theaterListen {
+                let preview = ASRService.textForTheaterListen(self.partialTranscription)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                self.beginStreamingDrainRecovery(
+                    sessionID: stoppingSessionID,
+                    token: bufferHandoffToken,
+                    presentError: false
+                )
+                completedBufferHandoff = true
+                self.publishStoppedState(for: stoppingSessionID)
+                if shouldResumeMedia { await MediaPlaybackService.shared.resumeIfWePaused(true) }
+                self.lastStopOutcome = preview.isEmpty ? .empty : .success
+                self.benchmarkLog("stop_end result=theater_preview_timeout totalMs=\(self.elapsedMilliseconds(since: stopStartedAt))")
+                return preview
+            }
             self.abortStreamingWavWriter()
             self.beginStreamingDrainRecovery(sessionID: stoppingSessionID, token: bufferHandoffToken)
             completedBufferHandoff = true // Recovery owns the PCM handoff until real work ends.
@@ -254,6 +278,24 @@ extension ASRService {
             }
 
             DebugLogger.shared.debug("Starting transcription with \(pcm.count) samples (\(Float(pcm.count) / 16_000.0) seconds)", source: "ASRService")
+            if theaterListen {
+                let preview = ASRService.textForTheaterListen(
+                    committedPreviewText.isEmpty ? self.partialTranscription : committedPreviewText
+                ).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !preview.isEmpty {
+                    self.publishStoppedState(for: stoppingSessionID)
+                    self.finishStreamingWavWriter(model: SettingsStore.shared.selectedSpeechModel.rawValue)
+                    self.scheduleIdleMemoryRelease()
+                    if shouldResumeMedia {
+                        await MediaPlaybackService.shared.resumeIfWePaused(true)
+                    }
+                    self.lastStopOutcome = .success
+                    self.benchmarkLog(
+                        "stop_end result=theater_preview totalMs=\(self.elapsedMilliseconds(since: stopStartedAt)) chars=\(preview.count)"
+                    )
+                    return preview
+                }
+            }
             let finalStartedAt = Date().timeIntervalSince1970
             var result: ASRTranscriptionResult
             let finalSource: String
@@ -1441,6 +1483,13 @@ extension ASRService {
         }
         let sessionID = self.benchmarkSessionID
         self.audioCapturePipeline.setRecordingEnabled(false)
+        if invalidation.reason == "system_sleep" {
+            self.benchmarkLog(
+                "direct_capture_system_sleep generation=\(invalidation.generation) " +
+                    "wasRunning=\(invalidation.wasRunning)"
+            )
+            return
+        }
         if self.isStarting, self.isRunning == false {
             self.audioCaptureReadinessGate.signalFormatInvalidation(
                 sessionID: sessionID,
@@ -1558,6 +1607,35 @@ extension ASRService {
                 "Failed to fully re-register \(logMessage)",
                 source: "ASRService"
             )
+        }
+    }
+
+    func registerSystemSleepObservers() {
+        guard self.systemSleepObserver == nil, self.systemWakeObserver == nil else { return }
+        let center = NSWorkspace.shared.notificationCenter
+        self.systemSleepObserver = center.addObserver(
+            forName: NSWorkspace.willSleepNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.isTerminating == false else { return }
+                await self.directAudioLifecycleController.latchSystemSleep()
+            }
+        }
+        self.systemWakeObserver = center.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.isTerminating == false else { return }
+                self.scheduleAudioRouteRecovery(
+                    reason: "system wake",
+                    requiresIdlePrewarm: true,
+                    invalidatesCurrentStart: true
+                )
+            }
         }
     }
 

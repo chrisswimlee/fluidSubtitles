@@ -133,7 +133,12 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
             )
         }
         let generation = self.mailbox.claimServe()
-        await self.serve(session: session, mailbox: self.mailbox, generation: generation)
+        let mailbox = self.mailbox
+        await withTaskCancellationHandler {
+            await self.serve(session: session, mailbox: mailbox, generation: generation)
+        } onCancel: {
+            mailbox.cancelWaiter(generation: generation)
+        }
     }
 
     private func tearDownSession(reason: String) {
@@ -263,9 +268,16 @@ final class AppleTranslationEngine: ObservableObject, TranslationEngine {
                 if request.isCancelled { continue }
                 request.resume(.failure(error))
                 if (error as? TranslationEngineError)?.isTimeout == true {
-                    self.remintSession()
                     break
                 }
+            }
+        }
+        // Only this generation's loop may ask for a new session, and only after
+        // this translationTask has returned. Invalidating here would cancel the
+        // listener that just attached, and nothing would print.
+        if mailbox.endServe(generation: generation) {
+            Task { @MainActor in
+                self.remintSession()
             }
         }
     }
@@ -511,10 +523,15 @@ enum TranslationSessionHostController {
         panel.isReleasedWhenClosed = false
         panel.ignoresMouseEvents = true
         panel.hasShadow = false
-        panel.alphaValue = 0.02
+        panel.alphaValue = 1
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
         panel.level = .normal
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle, .stationary]
         panel.contentViewController = hosting
+        if let screen = NSScreen.main {
+            panel.setFrameOrigin(screen.visibleFrame.origin)
+        }
         panel.orderFrontRegardless()
         self.panel = panel
     }
@@ -558,6 +575,30 @@ final class TranslationRequestMailbox: @unchecked Sendable {
         self.lock.unlock()
         previous?.resume(returning: nil)
         return generation
+    }
+
+    /// The serve loop for `generation` exited. Ready becomes false only when
+    /// no newer loop has claimed the mailbox.
+    func endServe(generation: UInt64) -> Bool {
+        self.lock.lock()
+        defer { self.lock.unlock() }
+        guard generation == self.serveGeneration else { return false }
+        self.isServing = false
+        return true
+    }
+
+    /// Drop this generation's parked wait so a cancelled host does not keep
+    /// the mailbox looking ready.
+    func cancelWaiter(generation: UInt64) {
+        self.lock.lock()
+        guard generation == self.serveGeneration else {
+            self.lock.unlock()
+            return
+        }
+        let parked = self.waiter
+        self.waiter = nil
+        self.lock.unlock()
+        parked?.resume(returning: nil)
     }
 
     /// True while a commit is waiting or running. Live may queue behind it.

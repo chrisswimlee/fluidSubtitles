@@ -32,12 +32,11 @@ extension ContentView {
                 Button {
                     self.settings.startSetupWizard()
                 } label: {
-                    Text(TheaterSetupWizard.title)
-                        .font(self.theme.typography.sidebarItem)
-                        .foregroundStyle(self.theme.palette.secondaryText)
-                        .padding(.vertical, self.theme.metrics.spacing.xs / 2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
+                    self.sidebarRowLabel(
+                        title: TheaterSetupWizard.title,
+                        systemImage: "checklist",
+                        isSelected: false
+                    )
                 }
                 .buttonStyle(.plain)
                 .sidebarOptionHover(isSelected: false, reduceMotion: self.accessibilityReduceMotion)
@@ -97,7 +96,7 @@ extension ContentView {
                     ForEach(self.filteredSettingsSections) { section in
                         let isSelected = self.settingsNavigation.selectedSection == section
                         let rowColor = isSelected
-                            ? Color(nsColor: .alternateSelectedControlTextColor)
+                            ? TheaterButtonInk.onAccent
                             : self.theme.palette.secondaryText
                         Button {
                             self.selectSettingsSection(section)
@@ -178,10 +177,13 @@ extension ContentView {
         Button {
             self.openSettings(.translation)
         } label: {
-            Text("Settings")
-                .font(self.theme.typography.sidebarItem)
+            HStack(spacing: self.theme.metrics.spacing.sm) {
+                SettingsIconTile(systemName: "gearshape", size: 16)
+                Text("Settings")
+                    .font(self.theme.typography.sidebarItem)
+            }
             .padding(.horizontal, self.theme.metrics.spacing.md)
-            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(SidebarChromeButtonStyle(
@@ -224,29 +226,31 @@ extension ContentView {
         self.settingsSearchScrollRequest += 1
     }
 
+    func sidebarRowLabel(title: String, systemImage: String, isSelected: Bool) -> some View {
+        let rowColor = isSelected ? TheaterButtonInk.onAccent : self.theme.palette.secondaryText
+        return HStack(spacing: self.theme.metrics.spacing.sm) {
+            SettingsIconTile(
+                systemName: systemImage,
+                size: 16,
+                emphasized: isSelected,
+                tint: isSelected ? rowColor : nil
+            )
+            Text(title)
+                .font(self.theme.typography.sidebarItem)
+                .fontWeight(isSelected ? .medium : .regular)
+                .foregroundStyle(rowColor)
+        }
+        .padding(.vertical, self.theme.metrics.spacing.xs / 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
     func sidebarNavigationLink(_ item: SidebarItem, title: String, systemImage: String) -> some View {
         let isSelected = self.selectedSidebarItem == item
-        let rowColor = isSelected
-            ? Color(nsColor: .alternateSelectedControlTextColor)
-            : self.theme.palette.secondaryText
         return Button {
             self.selectedSidebarItem = item
         } label: {
-            HStack(spacing: self.theme.metrics.spacing.sm) {
-                SettingsIconTile(
-                    systemName: systemImage,
-                    size: 16,
-                    emphasized: isSelected,
-                    tint: isSelected ? rowColor : nil
-                )
-                Text(title)
-                    .font(self.theme.typography.sidebarItem)
-                    .fontWeight(isSelected ? .medium : .regular)
-                    .foregroundStyle(rowColor)
-            }
-            .padding(.vertical, self.theme.metrics.spacing.xs / 2)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
+            self.sidebarRowLabel(title: title, systemImage: systemImage, isSelected: isSelected)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)

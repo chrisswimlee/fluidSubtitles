@@ -10,6 +10,11 @@ struct TheaterAppCommands: Commands {
         self.controller.isSessionActive && self.controller.listenKind == .captions
     }
 
+    private var listenTitle: String {
+        if self.controller.isFinishingSession { return "Stopping…" }
+        return self.isCaptionListening ? "Stop" : "Listen"
+    }
+
     private var canStartListen: Bool {
         let ready = TheaterReadyGate.liveSnapshot(
             pack: self.controller.packAvailability,
@@ -22,11 +27,11 @@ struct TheaterAppCommands: Commands {
 
     var body: some Commands {
         CommandMenu("Theater") {
-            Button(self.isCaptionListening ? "Stop" : "Listen") {
+            Button(self.listenTitle) {
                 self.controller.toggleCaptionListening()
             }
             .keyboardShortcut(self.shortcut(.listen), modifiers: self.presenterModifiers)
-            .disabled(!self.isCaptionListening && !self.canStartListen)
+            .disabled(self.controller.isFinishingSession || (!self.isCaptionListening && !self.canStartListen))
 
             Button(self.controller.isPaused ? "Resume" : "Pause") {
                 if self.controller.isPaused {
@@ -77,6 +82,12 @@ struct TheaterAppCommands: Commands {
             }
             .keyboardShortcut(self.shortcut(.undo), modifiers: self.presenterModifiers)
             .disabled(!self.controller.hasUndoableCaption)
+
+            Button("Retry Translation") {
+                self.controller.retryFailedTranslation()
+            }
+            .keyboardShortcut(self.shortcut(.retry), modifiers: self.presenterModifiers)
+            .disabled(!self.controller.subscriber.canRetryTranslation)
 
             Button("Clear Captions") {
                 self.controller.clearBoard()

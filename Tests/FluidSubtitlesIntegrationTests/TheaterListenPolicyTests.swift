@@ -75,9 +75,10 @@ final class TheaterListenPolicyTests: XCTestCase {
     }
 
     func testPauseDropsPacketsAndResumeResetsSampleClock() {
+        let accepted = SampleBatchSink()
         let pipeline = AudioCapturePipeline(
             audioBuffer: ThreadSafeAudioBuffer(),
-            onAcceptedSamples: { _ in },
+            onAcceptedSamples: { accepted.batches.append($0) },
             onFirstAudio: { _, _, _, _, _, _, _ in },
             onLevel: { _ in },
             onSpeechEnergy: { _, _ in },
@@ -96,6 +97,8 @@ final class TheaterListenPolicyTests: XCTestCase {
             )
         }
         XCTAssertEqual(pipeline.lastInputSampleEndForTesting, 4)
+        let beforePause = pipeline.audioBuffer.getRetained()
+        XCTAssertEqual(beforePause, samples)
 
         pipeline.setCapturePaused(true)
         samples.withUnsafeBufferPointer { pointer in
@@ -108,9 +111,11 @@ final class TheaterListenPolicyTests: XCTestCase {
             )
         }
         XCTAssertEqual(pipeline.lastInputSampleEndForTesting, 4)
+        XCTAssertEqual(pipeline.audioBuffer.getRetained(), beforePause)
 
         pipeline.setCapturePaused(false)
         XCTAssertNil(pipeline.lastInputSampleEndForTesting)
+        XCTAssertEqual(pipeline.audioBuffer.getRetained(), beforePause)
         samples.withUnsafeBufferPointer { pointer in
             pipeline.handle(
                 samples: pointer.baseAddress!,
@@ -121,11 +126,16 @@ final class TheaterListenPolicyTests: XCTestCase {
             )
         }
         XCTAssertEqual(pipeline.lastInputSampleEndForTesting, 4)
-    }
-
-    func testTheaterKeyPolicyHoldsKeyOnlyWhileEditing() {
-        XCTAssertFalse(TheaterKeyPolicy.shouldRestoreExternalApp(isEditing: true))
-        XCTAssertTrue(TheaterKeyPolicy.shouldRestoreExternalApp(isEditing: false))
+        let wallCount = LiveAudioRetention.resumeSilenceWallSamples
+        let retained = pipeline.audioBuffer.getRetained()
+        XCTAssertEqual(retained.count, beforePause.count + wallCount + samples.count)
+        XCTAssertEqual(Array(retained.prefix(beforePause.count)), beforePause)
+        XCTAssertEqual(
+            Array(retained.dropFirst(beforePause.count).prefix(wallCount)),
+            Array(repeating: Float(0), count: wallCount)
+        )
+        XCTAssertEqual(Array(retained.suffix(samples.count)), samples)
+        XCTAssertEqual(accepted.batches, [samples, samples])
     }
 
     func testStoredWatchModeResolvesToVoice() {
@@ -173,7 +183,7 @@ final class TheaterListenPolicyTests: XCTestCase {
         XCTAssertFalse(
             TheaterListenCapture.shouldPauseMedia(policyPausesMedia: false, settingEnabled: true)
         )
-        XCTAssertTrue(
+        XCTAssertFalse(
             TheaterListenCapture.shouldPauseMedia(policyPausesMedia: nil, settingEnabled: true)
         )
         XCTAssertFalse(
@@ -211,4 +221,8 @@ final class TheaterListenPolicyTests: XCTestCase {
                 .contains { $0.target == .pauseMedia }
         )
     }
+}
+
+private final class SampleBatchSink {
+    var batches: [[Float]] = []
 }

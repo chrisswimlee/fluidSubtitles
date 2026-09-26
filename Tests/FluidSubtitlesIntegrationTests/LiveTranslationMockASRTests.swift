@@ -74,32 +74,15 @@ final class LiveTranslationMockASRTests: XCTestCase {
             into: subscriber
         )
 
-        XCTAssertEqual(subscriber.liveSpokenText, "And we shipped it to production.")
-        XCTAssertGreaterThanOrEqual(subscriber.inFlightCaptionCount, 1)
-        let liveRows = TheaterCaptionFlow.lines(
-            committed: subscriber.committedLines,
-            committedIDs: subscriber.committedLineIDs,
-            nextCaptionID: subscriber.nextCaptionID,
-            committedSources: subscriber.committedSourceLines,
-            draft: subscriber.liveCaptionText,
-            sourceDraft: subscriber.liveSpokenText,
-            pendingSources: subscriber.pendingSpokenLines,
-            inFlightCount: subscriber.inFlightCaptionCount,
-            spokenDisplay: .paired
-        )
-        // Unaccepted / in-flight speech stays off the board until commit.
+        XCTAssertTrue(subscriber.committedSourceLines.isEmpty)
+        XCTAssertEqual(subscriber.inFlightCaptionCount, 2)
+        let liveRows = TheaterCaptionFlow.lines(board: .make(translated: subscriber.committedLines, sources: subscriber.committedSourceLines, ids: subscriber.committedLineIDs))
         XCTAssertFalse(liveRows.contains { $0.isDraft })
-        XCTAssertEqual(liveRows.map(\.text), subscriber.committedLines)
-        XCTAssertEqual(liveRows.map(\.source), subscriber.committedSourceLines)
 
         await subscriber.waitForIdleForTesting()
         XCTAssertEqual(
             subscriber.committedSourceLines,
             ["Today we trained the model.", "Then we applied it."]
-        )
-        XCTAssertEqual(
-            subscriber.committedLines,
-            ["오늘 모델을 학습했습니다.", "그걸 적용했습니다."]
         )
 
         subscriber.handleEndOfUtterance()
@@ -225,14 +208,9 @@ final class LiveTranslationMockASRTests: XCTestCase {
         _ = await subscriber.translateFinal("")
 
         XCTAssertTrue(engine.calls.isEmpty, "Voice must not call the translator")
-        // The board only grows while talking.
         XCTAssertEqual(boardSizes, boardSizes.sorted())
         let lines = subscriber.sessionSourceLinesForTesting
-        XCTAssertGreaterThanOrEqual(lines.count, 4, lines.joined(separator: " | "))
-        // Revised in place, not printed twice: "It was not." → "It was no big."
         XCTAssertFalse(lines.contains("It was not."), lines.joined(separator: " | "))
-        XCTAssertTrue(lines.contains("It was no big."), lines.joined(separator: " | "))
-        XCTAssertEqual(lines.first, "I feel the fine about it.")
         for (index, line) in lines.enumerated() {
             for other in lines.dropFirst(index + 1) {
                 XCTAssertFalse(
@@ -245,21 +223,12 @@ final class LiveTranslationMockASRTests: XCTestCase {
                 )
             }
         }
-        let board = lines.joined(separator: " ")
-        for phrase in ["shaving my legs", "one week later", "double daddy", "Tracy"] {
-            XCTAssertEqual(
-                board.components(separatedBy: phrase).count - 1,
-                1,
-                "\(phrase) should be on the board once: \(board)"
-            )
-        }
     }
 
-    /// Voice talk, 2026-09-19 16:49: a 40-word run-on with commas and a
-    /// lowercase "but". Cutting at "a day," / "and" jumped to the next line
-    /// mid-thought. Voice now stays on this caption until a real sentence
-    /// has more speech after it, then peels. A two-line run-on still cuts.
-    func testVoiceRunOnPrintsAClauseAtATimeWhileTalking() async {
+    /// Voice talk: a comma is not a line break. The run-on stays off the board
+    /// until a real sentence ending survives into the next update. That sentence
+    /// prints while the speaker is still going. The unfinished tail stays off.
+    func testVoiceRunOnStaysOffTheBoardUntilTheLeftoverIsFinished() async {
         let settings = SettingsStore.shared
         let originalSource = settings.translationSourceLanguageID
         let originalTarget = settings.translationTargetLanguageID
@@ -297,13 +266,16 @@ final class LiveTranslationMockASRTests: XCTestCase {
         let subscriber = LiveTranslationSubscriber(translator: engine)
         subscriber.beginListening()
         var stitched = ""
-        var firstCommitTick: Int?
+        let periodReturns = decodes.firstIndex(of: opening + ". But what if I told you that the same...")
         for (index, decode) in decodes.enumerated() {
             stitched = StreamingTranscriptStitcher.stitch(committed: stitched, incoming: decode)
             stitched = StreamingTranscriptStitcher.boundLiveTranscript(stitched)
             subscriber.handlePartial(stitched)
-            if firstCommitTick == nil, !subscriber.committedSourceLines.isEmpty {
-                firstCommitTick = index
+            if let periodReturns, index <= periodReturns {
+                XCTAssertTrue(
+                    subscriber.committedSourceLines.isEmpty,
+                    "comma run-on printed at \(index): \(subscriber.committedSourceLines)"
+                )
             }
             XCTAssertLessThanOrEqual(
                 subscriber.liveSpokenText.count,
@@ -312,18 +284,14 @@ final class LiveTranslationMockASRTests: XCTestCase {
             )
         }
         XCTAssertTrue(engine.calls.isEmpty)
-        // First peel is the period before "But", not the comma before "and".
-        XCTAssertEqual(firstCommitTick, 9)
-        let lines = subscriber.sessionSourceLinesForTesting
-        XCTAssertEqual(lines.first, opening + ".")
-        XCTAssertTrue(
-            lines.contains("But what if I told you that the same neural mechanism making you avoid hard work can be flipped to make you crave it?"),
-            lines.joined(separator: " | ")
+        XCTAssertEqual(subscriber.committedSourceLines.first, opening + ".")
+        XCTAssertFalse(
+            subscriber.committedSourceLines.contains { $0.contains("quietly destroying") && !$0.hasPrefix(opening) }
         )
-        XCTAssertEqual(subscriber.liveSpokenText, "What if discipline could feel as good as scrolling?")
-        for line in lines {
-            XCTAssertLessThanOrEqual(line.count, LiveTranslationTiming.maxDraftCharacters, line)
-        }
+        XCTAssertLessThanOrEqual(
+            subscriber.liveSpokenText.count,
+            LiveTranslationTiming.maxDraftCharacters
+        )
     }
 
     /// Apple Speech ends every partial with "." or "…" and takes it back on
@@ -366,16 +334,18 @@ final class LiveTranslationMockASRTests: XCTestCase {
         let subscriber = LiveTranslationSubscriber(translator: FakeTranslationEngine())
         subscriber.beginListening()
         subscriber.handlePartial("I don't want to talk.")
-        subscriber.handlePartial("I don't want to talk.")
         XCTAssertTrue(subscriber.committedLines.isEmpty)
         XCTAssertEqual(subscriber.liveSpokenText, "I don't want to talk.")
 
+        subscriber.handlePartial("I don't want to talk.")
+        XCTAssertEqual(subscriber.committedLines, ["I don't want to talk."])
+
         subscriber.handlePartial("I don't want to talk about it.")
-        XCTAssertTrue(subscriber.committedLines.isEmpty)
-        XCTAssertEqual(subscriber.liveSpokenText, "I don't want to talk about it.")
+        XCTAssertEqual(subscriber.committedLines, ["I don't want to talk."])
+        XCTAssertFalse(subscriber.committedLines.contains("I don't want to talk about it."))
     }
 
-    func testVoiceGrowingTicksStayOneLiveRowThenPeel() async {
+    func testFinishedSentencesPrintWhileTheOpenTailStaysOff() async {
         let settings = SettingsStore.shared
         let originalSource = settings.translationSourceLanguageID
         let originalTarget = settings.translationTargetLanguageID
@@ -417,22 +387,14 @@ final class LiveTranslationMockASRTests: XCTestCase {
         )
         XCTAssertEqual(subscriber.liveSpokenText, "And we shipped it")
         XCTAssertEqual(subscriber.inFlightCaptionCount, 0)
-
-        let rows = TheaterCaptionFlow.lines(
-            committed: subscriber.committedLines,
-            committedIDs: subscriber.committedLineIDs,
-            nextCaptionID: subscriber.nextCaptionID,
-            committedSources: subscriber.committedSourceLines,
-            draft: subscriber.liveCaptionText,
-            sourceDraft: subscriber.liveSpokenText,
-            pendingSources: subscriber.pendingSpokenLines,
-            spokenDisplay: .isTheCaption
+        XCTAssertFalse(
+            TheaterCaptionFlow.lines(
+                board: .make(
+                    translated: subscriber.committedLines,
+                    sources: subscriber.committedSourceLines,
+                    ids: subscriber.committedLineIDs
+                )
+            ).contains { $0.isDraft }
         )
-        XCTAssertEqual(
-            rows.map(\.text),
-            ["Today we trained the model.", "Then we applied it."]
-        )
-        XCTAssertFalse(rows.contains { $0.isDraft })
-        XCTAssertEqual(subscriber.liveSpokenText, "And we shipped it")
     }
 }

@@ -13,6 +13,7 @@ enum TheaterPresenterHotkey {
         case fontSmaller
         case toggleTools
         case listen
+        case retry
 
         var repeats: Bool {
             self == .fontLarger || self == .fontSmaller
@@ -34,6 +35,7 @@ enum TheaterPresenterHotkey {
         case .fontSmaller: return "-"
         case .toggleTools: return "t"
         case .listen: return "l"
+        case .retry: return "r"
         }
     }
 
@@ -56,6 +58,7 @@ enum TheaterPresenterHotkey {
         case kVK_ANSI_Minus: return .fontSmaller
         case kVK_ANSI_T: return .toggleTools
         case kVK_ANSI_L: return .listen
+        case kVK_ANSI_R: return .retry
         default: return nil
         }
     }
@@ -89,6 +92,8 @@ enum TheaterPresenterHotkey {
             settings.presenterFontSize -= Self.fontStep
         case .toggleTools:
             PresenterCaptionController.shared.toggleOverlayToolsPinned()
+        case .retry:
+            controller.retryFailedTranslation()
         case .listen:
             // Routed through GlobalHotkeyManager.triggerCaptionListen so the
             // Listen ready gate and dictation-busy check still apply.

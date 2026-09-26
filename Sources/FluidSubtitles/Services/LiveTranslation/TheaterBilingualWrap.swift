@@ -1,4 +1,5 @@
 import AppKit
+import CoreText
 import Foundation
 
 /// Splits a bilingual caption into visual lines and stacks them:
@@ -13,7 +14,7 @@ import Foundation
 /// board. Do not wrap at a fixed word count while the line still has room.
 /// Opening quotes, hyphens, closing marks, and Japanese small kana stay
 /// on the same token so a new line starts on a word, not a stray mark.
-/// Each caption is the spoken line and then its Show-as title. Empty wrap
+/// Each caption is the Show-as title and then the spoken line. Empty wrap
 /// slots stay off the ink so a short sentence does not look like it
 /// already wrapped.
 enum TheaterBilingualWrap {
@@ -49,6 +50,10 @@ enum TheaterBilingualWrap {
 
     /// Room inside the line box so a descender is not clipped by the field edge.
     static let linePad: CGFloat = 2
+
+    /// Empty space above the glyph box. The caption cell clips to its title
+    /// rect, and Thai marks sit on that edge when the rect starts at the top.
+    static let lineTopSlack: CGFloat = 6
 
     /// First-line halo / shadow sits above the ink. Keep it in the board height
     /// so ScrollView does not clip the opening title.
@@ -91,35 +96,73 @@ enum TheaterBilingualWrap {
         )
     }
 
-    /// Live caption height for the current pair. Spoken-only rows keep one
-    /// Show-as slot so the title does not grow the board when it starts.
-    /// A nearly-full last title line keeps one unused wrap slot so the next
-    /// glyph does not jump existing ink.
+    /// Live caption height for the current pair. A missing Show-as line keeps
+    /// its slot above the spoken line, and a nearly-full title line keeps the
+    /// next wrap slot there too, so later ink does not push words already shown.
     static func reservedDisplayHeight(
         rows: [Row],
         spokenFont: NSFont,
         translatedFont: NSFont,
         width: CGFloat
     ) -> CGFloat {
-        let base = self.displayHeight(
+        self.placedFrames(
             rows: rows,
             spokenFont: spokenFont,
-            translatedFont: translatedFont
-        )
-        if let lastTitle = rows.last(where: { !$0.isSpoken }) {
-            guard width >= Self.minimumWrapWidth,
-                  self.lastLineIsNearlyFull(lastTitle.text, font: translatedFont, width: width)
-            else {
-                return base
+            translatedFont: translatedFont,
+            width: width,
+            reserveGrowth: true
+        ).height
+    }
+
+    /// Frames for the rows that have ink. `reserveGrowth` inserts an empty
+    /// title slot where the next line will land, above the spoken line.
+    static func placedFrames(
+        rows: [Row],
+        spokenFont: NSFont,
+        translatedFont: NSFont,
+        width: CGFloat,
+        reserveGrowth: Bool
+    ) -> (frames: [CGRect], height: CGFloat) {
+        var layout = rows
+        if reserveGrowth {
+            if let titleIndex = layout.lastIndex(where: { !$0.isSpoken }) {
+                if width >= Self.minimumWrapWidth,
+                   self.lastLineIsNearlyFull(layout[titleIndex].text, font: translatedFont, width: width)
+                {
+                    layout.insert(Row(text: "", isSpoken: false), at: titleIndex + 1)
+                }
+            } else if !layout.isEmpty {
+                layout.insert(Row(text: "", isSpoken: false), at: 0)
             }
-            return base + Self.rowSpacing + Self.lineHeight(for: translatedFont)
         }
-        guard !rows.isEmpty else { return base }
-        return base + Self.rowSpacing + Self.lineHeight(for: translatedFont)
+        let all = self.lineFrames(
+            rows: layout,
+            spokenFont: spokenFont,
+            translatedFont: translatedFont,
+            width: width
+        )
+        var frames: [CGRect] = []
+        frames.reserveCapacity(rows.count)
+        for (index, row) in layout.enumerated() where !(row.text.isEmpty && !row.isSpoken) {
+            if index < all.count {
+                frames.append(all[index])
+            }
+        }
+        let height: CGFloat
+        if let last = all.last {
+            height = last.maxY + Self.boardTopClearance
+        } else {
+            height = self.displayHeight(
+                rows: [],
+                spokenFont: spokenFont,
+                translatedFont: translatedFont
+            )
+        }
+        return (frames, height)
     }
 
     static func lastLineIsNearlyFull(_ text: String, font: NSFont, width: CGFloat) -> Bool {
-        let usable = self.usableWidth(width)
+        let usable = self.fieldInkWidth(width, font: font)
         let used = text.isEmpty ? 0 : self.lineWidth(text, font: font)
         return usable - used < ceil(font.pointSize * Self.wrapLookaheadEm)
     }
@@ -162,7 +205,36 @@ enum TheaterBilingualWrap {
     static func lineHeight(for font: NSFont) -> CGFloat {
         let typographic = ceil(font.ascender - font.descender + max(0, font.leading))
         let ink = ceil(font.boundingRectForFont.height)
-        return max(typographic, ink) + Self.linePad
+        return max(typographic, ink) + Self.linePad + Self.lineTopSlack
+    }
+
+    /// Line height for a specific string. `font`'s own metrics (ascender,
+    /// descender, boundingRectForFont) describe its native glyphs only. Korean,
+    /// Thai, and other scripts the UI font does not cover render through
+    /// CoreText's font-substitution cascade, whose real ascent/descent can
+    /// exceed what the base font reports — use `inkHeight` so the reserved
+    /// row box actually fits what gets drawn.
+    static func lineHeight(for text: String, font: NSFont) -> CGFloat {
+        let typographic = ceil(font.ascender - font.descender + max(0, font.leading))
+        let ink = Self.inkHeight(for: text, font: font)
+        return max(typographic, ink) + Self.linePad + Self.lineTopSlack
+    }
+
+    /// Real rendered glyph height for `text` in `font`, after CoreText resolves
+    /// substitute fonts per character run. Falls back to the base font's own
+    /// bounding box when there is no text yet to measure (opening/empty state).
+    static func inkHeight(for text: String, font: NSFont) -> CGFloat {
+        guard !text.isEmpty else {
+            return ceil(font.boundingRectForFont.height)
+        }
+        let line = CTLineCreateWithAttributedString(
+            NSAttributedString(string: text, attributes: [.font: font])
+        )
+        var ascent: CGFloat = 0
+        var descent: CGFloat = 0
+        var leading: CGFloat = 0
+        CTLineGetTypographicBounds(line, &ascent, &descent, &leading)
+        return ceil(ascent + descent + leading)
     }
 
     /// Frames in the caption view's top-down space. Height uses the same walk,
@@ -184,7 +256,7 @@ enum TheaterBilingualWrap {
                     y += Self.spokenPairGap
                 }
             }
-            let height = Self.lineHeight(for: row.isSpoken ? spokenFont : translatedFont)
+            let height = Self.lineHeight(for: row.text, font: row.isSpoken ? spokenFont : translatedFont)
             frames.append(CGRect(x: 0, y: y, width: rowWidth, height: height))
             y += height
         }
@@ -228,9 +300,8 @@ enum TheaterBilingualWrap {
         translatedFont: NSFont,
         width: CGFloat
     ) -> [Row] {
-        let usable = Self.usableWidth(width)
-        let spokenLines = self.visualLines(spoken, font: spokenFont, width: usable)
-        let translatedLines = self.visualLines(translated, font: translatedFont, width: usable)
+        let spokenLines = self.visualLines(spoken, font: spokenFont, width: width)
+        let translatedLines = self.visualLines(translated, font: translatedFont, width: width)
         var rows: [Row] = []
         rows.reserveCapacity(spokenLines.count + translatedLines.count)
         for line in translatedLines {
@@ -284,13 +355,12 @@ enum TheaterBilingualWrap {
             return template
         }
 
-        let usable = Self.usableWidth(width)
         let spokenProgress = self.progress(
-            lines: self.visualLines(spoken, font: spokenFont, width: usable),
+            lines: self.visualLines(spoken, font: spokenFont, width: width),
             printed: printedSpoken
         )
         let translatedProgress = self.progress(
-            lines: self.visualLines(translated, font: translatedFont, width: usable),
+            lines: self.visualLines(translated, font: translatedFont, width: width),
             printed: printedTranslated
         )
 
@@ -321,10 +391,10 @@ enum TheaterBilingualWrap {
     static func visualLines(_ text: String, font: NSFont, width: CGFloat) -> [String] {
         let trimmed = text
         guard !trimmed.isEmpty else { return [] }
-        let usableWidth = max(width, 1)
-        if usableWidth < Self.minimumWrapWidth {
+        if width < Self.minimumWrapWidth {
             return [trimmed]
         }
+        let usableWidth = self.fieldInkWidth(width, font: font)
         let key = WrapCacheKey(
             text: trimmed,
             fontName: font.fontName,
@@ -377,8 +447,42 @@ enum TheaterBilingualWrap {
     private static var cacheOrder: [WrapCacheKey] = []
     private static let cacheLimit = 64
 
-    private static func usableWidth(_ width: CGFloat) -> CGFloat {
-        max(width - Self.textInset, 1)
+    /// Width the caption cell actually draws into. Wrap uses this so the last
+    /// word fills the line and is not clipped by the field inset.
+    static func fieldInkWidth(_ width: CGFloat, font: NSFont) -> CGFloat {
+        let field = max(width, 1)
+        return max(field - Self.horizontalInkInset(font: font), 1)
+    }
+
+    private struct InsetKey: Hashable {
+        let fontName: String
+        let fontSize: CGFloat
+    }
+
+    private static var insetCache: [InsetKey: CGFloat] = [:]
+
+    private static func horizontalInkInset(font: NSFont) -> CGFloat {
+        let key = InsetKey(fontName: font.fontName, fontSize: font.pointSize)
+        self.cacheLock.lock()
+        if let cached = self.insetCache[key] {
+            self.cacheLock.unlock()
+            return cached
+        }
+        self.cacheLock.unlock()
+        let cell = TheaterCaptionInkCell(textCell: String(repeating: "M", count: 40))
+        cell.font = font
+        cell.isBordered = false
+        cell.isBezeled = false
+        cell.usesSingleLineMode = true
+        cell.isScrollable = false
+        cell.lineBreakMode = .byClipping
+        let bounds = NSRect(x: 0, y: 0, width: 800, height: 240)
+        let title = cell.titleRect(forBounds: bounds)
+        let inset = max(Self.textInset, ceil(bounds.width - title.width))
+        self.cacheLock.lock()
+        self.insetCache[key] = inset
+        self.cacheLock.unlock()
+        return inset
     }
 
     private static func append(_ text: String, isSpoken: Bool, onto rows: inout [Row]) {
@@ -423,7 +527,7 @@ enum TheaterBilingualWrap {
             if piece.isEmpty {
                 piece = raw
             }
-            while !piece.isEmpty, self.lineWidth(piece, font: font) > width + 1, piece.count > 1 {
+            while !piece.isEmpty, self.lineWidth(piece, font: font) > width, piece.count > 1 {
                 let (head, tail) = self.prefixFitting(piece, font: font, width: width)
                 if head.isEmpty {
                     break
@@ -440,7 +544,7 @@ enum TheaterBilingualWrap {
                 continue
             }
             let candidate = current + token
-            if self.lineWidth(candidate, font: font) > width + 1 {
+            if self.lineWidth(candidate, font: font) > width {
                 commitCurrent()
                 startLine(token)
                 continue
@@ -461,7 +565,7 @@ enum TheaterBilingualWrap {
         var head = ""
         for character in text {
             let next = head + String(character)
-            if !head.isEmpty, self.lineWidth(next, font: font) > width + 1 {
+            if !head.isEmpty, self.lineWidth(next, font: font) > width {
                 break
             }
             head = next
@@ -667,5 +771,19 @@ enum TheaterBilingualWrap {
             return Row(text: progress.partial, isSpoken: row.isSpoken)
         }
         return Row(text: "", isSpoken: row.isSpoken)
+    }
+}
+
+/// Single-line caption cell. Glyphs sit at the top of the measured slot, so a
+/// taller line box cannot slide them. Wrap uses this cell's title width.
+final class TheaterCaptionInkCell: NSTextFieldCell {
+    override func titleRect(forBounds rect: NSRect) -> NSRect {
+        var title = super.titleRect(forBounds: rect)
+        guard let font = self.font else { return title }
+        let textHeight = TheaterBilingualWrap.inkHeight(for: self.stringValue, font: font)
+        let slack = min(TheaterBilingualWrap.lineTopSlack, max(rect.height - 1, 0))
+        title.origin.y = rect.minY + slack
+        title.size.height = min(rect.height - slack, max(textHeight, 1))
+        return title
     }
 }

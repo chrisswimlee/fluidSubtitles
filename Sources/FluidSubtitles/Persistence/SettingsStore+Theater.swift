@@ -18,6 +18,9 @@ extension SettingsStore {
         static let minimized = "TheaterMinimized"
         static let expandedWindowFrame = "TheaterExpandedWindowFrame"
         static let spokenLineMode = "TheaterSpokenLineMode"
+        static let linePrint = "TheaterLinePrint"
+        static let printGap = "TheaterPrintGap"
+        static let captionSpacing = "TheaterCaptionSpacing"
         static let lastTranslateTarget = "TheaterLastTranslateTargetLanguageID"
         static let backingBar = "TheaterBackingBar"
         static let positionPreset = "TheaterPositionPreset"
@@ -82,8 +85,8 @@ extension SettingsStore {
         TheaterPresentationStyle.resolved(self.theaterPresentationStyle)
     }
 
-    /// Keep Theater off Zoom, Keynote, and screen recordings. The window still
-    /// draws on this Mac and on a wired projector.
+    /// Kept so older backups still round-trip. The window stays capturable.
+    /// `SharingType.none` was blanking screenshots of a full-screen board.
     var theaterHideFromScreenShare: Bool {
         get { self.defaults.object(forKey: TheaterDefaults.hideFromScreenShare) as? Bool ?? true }
         set {
@@ -92,7 +95,7 @@ extension SettingsStore {
         }
     }
 
-    /// Off, after a pause, or while talking. Migrates the old Show the spoken line toggle.
+    /// Off or On the board. A stored Board and Insert value resolves to On the board.
     var theaterSpokenLineMode: TheaterSpokenLineMode {
         get {
             if let stored = self.defaults.string(forKey: TheaterDefaults.spokenLineMode)?
@@ -108,6 +111,33 @@ extension SettingsStore {
             objectWillChange.send()
             self.defaults.set(newValue.rawValue, forKey: TheaterDefaults.spokenLineMode)
             self.defaults.set(newValue.showsSpokenLine, forKey: Keys.translationShowSource)
+        }
+    }
+
+    /// At once, by word, by letter, or fade.
+    var theaterLinePrint: TheaterLinePrint {
+        get { TheaterLinePrint.resolved(self.defaults.string(forKey: TheaterDefaults.linePrint)) }
+        set {
+            objectWillChange.send()
+            self.defaults.set(newValue.rawValue, forKey: TheaterDefaults.linePrint)
+        }
+    }
+
+    /// Points between caption lines on the board. Default matches the previous fixed gap.
+    var theaterCaptionSpacing: Int {
+        get { TheaterCaptionSpacing.resolved(self.defaults.object(forKey: TheaterDefaults.captionSpacing) as? Int) }
+        set {
+            objectWillChange.send()
+            self.defaults.set(TheaterCaptionSpacing.resolved(newValue), forKey: TheaterDefaults.captionSpacing)
+        }
+    }
+
+    /// Pause between each printed word or letter.
+    var theaterPrintGap: TheaterPrintGap {
+        get { TheaterPrintGap.resolved(self.defaults.string(forKey: TheaterDefaults.printGap)) }
+        set {
+            objectWillChange.send()
+            self.defaults.set(newValue.rawValue, forKey: TheaterDefaults.printGap)
         }
     }
 

@@ -134,17 +134,16 @@ final class LiveTranslationArchiveTests: XCTestCase {
         for index in 1...205 {
             subscriber.seedCommittedForTesting(source: "line \(index).", translated: "caption \(index).")
         }
-        XCTAssertEqual(subscriber.committedLines.count, 205)
-        XCTAssertEqual(subscriber.sessionLineCount, 205)
-        // The board keeps the on-screen window; export and history keep the whole talk.
+        // The board keeps the latest 48 lines. Export and history keep the whole talk.
+        XCTAssertEqual(subscriber.committedLines.count, LiveTranslationTiming.maxCommittedLines)
+        XCTAssertEqual(subscriber.sessionLineCount, LiveTranslationTiming.maxCommittedLines)
+        XCTAssertEqual(subscriber.committedLines.last, "caption 205.")
         XCTAssertEqual(subscriber.exportCaptionPairs.count, 205)
         XCTAssertEqual(subscriber.exportCaptionPairs.first?.translated, "caption 1.")
         XCTAssertEqual(subscriber.exportCaptionPairs.last?.translated, "caption 205.")
-        XCTAssertNil(subscriber.lineWindowStatus)
 
         subscriber.reset(clearArchive: true)
         XCTAssertTrue(subscriber.committedLines.isEmpty)
-        XCTAssertEqual(subscriber.archivedLineCount, 0)
         XCTAssertTrue(subscriber.exportCaptionPairs.isEmpty)
         XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
     }
@@ -341,6 +340,130 @@ final class TheaterLanguagePairTests: XCTestCase {
             }
         }
         XCTAssertTrue(failures.isEmpty, failures.joined(separator: "\n"))
+    }
+
+    /// Two growths of one printed line. The shorter retranslation stays held
+    /// until the longer caption has painted, then it is released. Show-as must
+    /// stay the longer translation. One Show-as target: the peel is in the
+    /// spoken script.
+    func testSlowerGrowthCannotOverwriteALaterGrowthInCompactScripts() async {
+        let settings = SettingsStore.shared
+        let originalMode = settings.theaterSessionMode
+        defer { settings.theaterSessionMode = originalMode }
+        settings.theaterSessionMode = .translation
+
+        let cases: [(
+            id: String,
+            short: String,
+            medium: String,
+            long: String,
+            mediumMark: String,
+            longMark: String
+        )] = [
+            (
+                "ko",
+                "오늘 모델을 학습했습니다.",
+                "오늘 모델을 학습했습니다 새.",
+                "오늘 모델을 학습했습니다 새 데이터로 다시 했습니다.",
+                " 새.",
+                "데이터"
+            ),
+            (
+                "ja",
+                "今日はモデルを学習しました。",
+                "今日はモデルを学習しました新。",
+                "今日はモデルを学習しました新しいデータで。",
+                "新。",
+                "データ"
+            ),
+            (
+                "th",
+                "วันนี้เราฝึกโมเดล.",
+                "วันนี้เราฝึกโมเดลกับ.",
+                "วันนี้เราฝึกโมเดลกับข้อมูลใหม่ครับ",
+                "กับ.",
+                "ครับ"
+            ),
+        ]
+        var failures: [String] = []
+        for item in cases {
+            let engine = HeldTranslationEngine()
+            engine.holdIf = { $0.contains(item.mediumMark) && !$0.contains(item.longMark) }
+            engine.translation = { text in
+                if text.contains(item.longMark) { return "LONG" }
+                if text.contains(item.mediumMark) { return "MEDIUM" }
+                return "SHORT"
+            }
+            settings.translationSourceLanguageID = item.id
+            settings.translationTargetLanguageID = "en"
+            let subscriber = LiveTranslationSubscriber(translator: engine)
+            subscriber.beginListening()
+            subscriber.handlePartial(item.short)
+            subscriber.handlePartial(item.short)
+            await subscriber.waitForIdleForTesting()
+            guard subscriber.committedSourceLines == [item.short],
+                  subscriber.committedLines == ["SHORT"]
+            else {
+                failures.append(
+                    "\(item.id) short sources=\(subscriber.committedSourceLines) lines=\(subscriber.committedLines) calls=\(engine.calls)"
+                )
+                engine.release()
+                continue
+            }
+
+            subscriber.handlePartial(item.medium)
+            let held = await self.waitUntil { engine.heldCalls > 0 }
+            guard held else {
+                failures.append("\(item.id) medium never held calls=\(engine.calls)")
+                engine.release()
+                continue
+            }
+
+            subscriber.handlePartial(item.long)
+            guard subscriber.committedSourceLines == [item.short],
+                  subscriber.committedLines == ["SHORT"]
+            else {
+                failures.append(
+                    "\(item.id) published the longer source before its translation sources=\(subscriber.committedSourceLines) lines=\(subscriber.committedLines) calls=\(engine.calls)"
+                )
+                engine.release()
+                continue
+            }
+            let painted = await self.waitUntil {
+                subscriber.committedSourceLines == [item.long] && subscriber.committedLines == ["LONG"]
+            }
+            guard painted, !engine.staleReturned else {
+                failures.append(
+                    "\(item.id) long did not paint first lines=\(subscriber.committedLines) calls=\(engine.calls)"
+                )
+                engine.release()
+                continue
+            }
+
+            engine.release()
+            await subscriber.waitForIdleForTesting()
+            if !engine.staleReturned
+                || subscriber.committedSourceLines != [item.long]
+                || subscriber.committedLines != ["LONG"]
+                || subscriber.captionPairs.map(\.translated) != ["LONG"]
+            {
+                failures.append(
+                    "\(item.id) stale landed sources=\(subscriber.committedSourceLines) lines=\(subscriber.committedLines) pairs=\(subscriber.captionPairs.map(\.translated)) stale=\(engine.staleReturned)"
+                )
+            }
+        }
+        XCTAssertTrue(failures.isEmpty, failures.joined(separator: "\n"))
+    }
+
+    private func waitUntil(
+        timeout: TimeInterval = 2,
+        _ condition: () -> Bool
+    ) async -> Bool {
+        let deadline = ProcessInfo.processInfo.systemUptime + timeout
+        while !condition(), ProcessInfo.processInfo.systemUptime < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        return condition()
     }
 
     func testBoardPutsShowAsAboveTheSpokenLineForEveryPair() {
